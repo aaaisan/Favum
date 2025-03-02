@@ -1,0 +1,54 @@
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/*.log
+
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+frontend/*.local
+
+# Editor directories and files
+frontend/.vscode/*
+front!.vscode/extensions.json
+frontend/.idea
+frontend/.DS_Store
+frontend/*.suo
+frontend/*.ntvs*
+frontend/*.njsproj
+frontend/*.sln
+frontend/*.sw?
+
+# backend
+__pycache__/
+*.pyc
+backend/.*
+backend/.env
+backend/forum.db
+backend/logs/*
+backend/alembic*
+
+start_*
+test_*.py
+openapi.json
+logs/*
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+
+# Temporary files
+.tmp/
+*.swp
+
+# Alembic
+alembic_temp/
+alembic/
+alembic.ini 

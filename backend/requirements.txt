@@ -1,0 +1,61 @@
+# API框架
+fastapi>=0.110.0
+uvicorn>=0.27.1
+pydantic>=2.6.3
+pydantic[email]>=2.6.3
+pydantic-settings>=2.2.1
+
+# 数据库
+sqlalchemy>=2.0.38
+alembic>=1.13.1
+pymysql>=1.1.0
+mysqlclient>=2.2.4
+
+# 认证与安全
+passlib>=1.7.4
+python-jose>=3.3.0
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.1.2
+cryptography>=42.0.5
+python-multipart>=0.0.9
+
+# 缓存与消息队列
+redis>=5.0.1
+celery>=5.3.6
+
+# 日志
+structlog>=24.1.0
+python-json-logger>=2.0.7
+
+# 邮件
+fastapi-mail>=1.4.1
+
+# 性能优化
+uvloop>=0.19.0
+httptools>=0.6.1
+h11>=0.14.0
+
+# WebSocket
+websockets>=12.0
+
+# 工具
+python-dotenv>=1.0.1
+Pillow>=10.2.0
+click>=8.1.7
+aiofiles>=23.2.1
+python-slugify>=8.0.4
+pytz>=2024.1
+
+# 监控
+prometheus-client>=0.19.0
+starlette-prometheus>=0.9.0
+
+# 开发工具
+pytest>=8.0.0
+pytest-asyncio>=0.23.5
+pytest-cov>=4.1.0
+black>=24.2.0
+isort>=5.13.2
+flake8>=7.0.0
+mypy>=1.8.0
+pre-commit>=3.6.0 
