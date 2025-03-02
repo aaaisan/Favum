@@ -30,6 +30,7 @@ import { onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { usePostsStore } from '../stores/posts'
 import { formatDate } from '../utils/format'
+import type { Post } from '../types'
 
 const router = useRouter()
 const route = useRoute()
@@ -44,7 +45,7 @@ const userId = computed(() => {
 })
 
 // 从store获取数据的计算属性
-const favorites = computed(() => {
+const favorites = computed<Post[]>(() => {
   return postsStore.favoritesList?.posts || []
 })
 

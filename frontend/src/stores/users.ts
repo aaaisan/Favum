@@ -1,24 +1,6 @@
 import { defineStore } from 'pinia'
 import apiClient from '../services/api'
-
-interface User {
-  id: number
-  username: string
-  email: string
-  role: string
-  created_at: string
-  last_login?: string
-  bio?: string
-  is_active: boolean
-  is_deleted?: boolean
-}
-
-interface UserList {
-  users: User[]
-  total: number
-  page: number
-  page_size: number
-}
+import type { User, UserList } from '../types'
 
 export const useUsersStore = defineStore('users', {
   state: () => ({

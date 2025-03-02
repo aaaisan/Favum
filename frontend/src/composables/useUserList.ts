@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { useUsersStore } from '../stores/users'
+import type { User } from '../types'
 
 /**
  * 用户列表组合式函数
@@ -14,7 +15,7 @@ export function useUserList() {
   const pageSize = 10
   
   // 从store中获取数据的计算属性
-  const users = computed(() => usersStore.userList?.users || [])
+  const users = computed<User[]>(() => usersStore.userList?.users || [])
   const isLoading = computed(() => usersStore.isLoading)
   const errorMessage = computed(() => usersStore.error)
   const totalUsers = computed(() => usersStore.userList?.total || 0)

@@ -64,12 +64,12 @@
             <span v-else class="status-badge inactive">未激活</span>
           </td>
           <td class="actions">
-            <button @click="viewUser(user.id)" class="btn-view" title="查看用户详情">
+            <button @click="viewUser(user.id!)" class="btn-view" title="查看用户详情">
               查看
             </button>
             <button 
               v-if="!user.is_deleted" 
-              @click="deleteUser(user.id)" 
+              @click="deleteUser(user.id!)" 
               class="btn-delete"
               :title="`删除用户 ${user.username}`"
             >
@@ -77,7 +77,7 @@
             </button>
             <button 
               v-else 
-              @click="restoreUser(user.id)" 
+              @click="restoreUser(user.id!)" 
               class="btn-restore"
               :title="`恢复用户 ${user.username}`"
             >
@@ -115,8 +115,9 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatDate } from '../utils/format'
-import { formatRole } from '../utils/roles'
+import { formatRole, getRoleBadgeClass } from '../utils/roles'
 import { useUserList } from '../composables/useUserList'
+import type { User } from '../types'
 
 const router = useRouter()
 
@@ -147,22 +148,6 @@ const viewUser = (userId: number) => {
 const clearSearch = () => {
   searchQuery.value = '';
   handleSearch();
-}
-
-/**
- * 获取角色徽章类名
- */
-const getRoleBadgeClass = (role: string): string => {
-  switch (role) {
-    case 'admin':
-      return 'admin';
-    case 'super_admin':
-      return 'super-admin';
-    case 'moderator':
-      return 'moderator';
-    default:
-      return 'user';
-  }
 }
 
 onMounted(fetchUsers)

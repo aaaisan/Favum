@@ -8,6 +8,7 @@ export interface User {
   last_login?: string;
   bio?: string;
   is_active?: boolean;
+  is_deleted?: boolean;
 }
 
 // 用户列表响应接口

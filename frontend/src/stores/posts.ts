@@ -1,26 +1,6 @@
 import { defineStore } from 'pinia'
 import apiClient from '../services/api'
-
-interface Post {
-  id: number
-  title: string
-  content: string
-  author_id: number
-  author_name: string
-  created_at: string
-  updated_at: string
-  view_count: number
-  like_count: number
-  comment_count: number
-  is_favorite?: boolean
-}
-
-interface PostList {
-  posts: Post[]
-  total: number
-  page: number
-  page_size: number
-}
+import type { Post, PostList } from '../types'
 
 export const usePostsStore = defineStore('posts', {
   state: () => ({
