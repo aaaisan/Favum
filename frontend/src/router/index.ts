@@ -9,6 +9,7 @@ import UserProfile from '../views/UserProfile.vue'
 import UserPosts from '../views/UserPosts.vue'
 import UserFavorites from '../views/UserFavorites.vue'
 import NotFound from '../views/NotFound.vue'
+import Register from '../views/Register.vue'
 
 // 定义路由
 const routes: Array<RouteRecordRaw> = [
@@ -16,6 +17,11 @@ const routes: Array<RouteRecordRaw> = [
     path: '/',
     name: 'Home',
     component: Home
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: Register
   },
   {
     path: '/users',
@@ -50,7 +56,7 @@ const routes: Array<RouteRecordRaw> = [
 
 // 创建路由器实例
 const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes
 })
 
