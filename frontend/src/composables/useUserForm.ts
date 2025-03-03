@@ -66,7 +66,7 @@ export function useUserForm(initialValues: Partial<UserForm> = {}) {
     const updateData: UserUpdateRequest = {
       username: form.username,
       email: form.email,
-      bio: form.bio
+      bio: form.bio || null
     }
     
     if (form.password) {

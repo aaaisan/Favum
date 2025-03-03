@@ -112,12 +112,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatDate } from '../utils/format'
 import { formatRole, getRoleBadgeClass } from '../utils/roles'
 import { useUserList } from '../composables/useUserList'
-import type { User } from '../types'
 
 const router = useRouter()
 
@@ -146,8 +145,8 @@ const viewUser = (userId: number) => {
  * 清除搜索内容
  */
 const clearSearch = () => {
-  searchQuery.value = '';
-  handleSearch();
+  searchQuery.value = ''
+  handleSearch()
 }
 
 onMounted(fetchUsers)

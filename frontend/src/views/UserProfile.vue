@@ -12,7 +12,7 @@
       <button @click="fetchUserProfile" class="btn-retry">重试</button>
     </div>
     
-    <template v-else>
+    <template v-else-if="user">
       <div class="profile-header">
         <div class="avatar-container">
           <div class="avatar">{{ getInitials(user.username) }}</div>
@@ -66,11 +66,6 @@
           </div>
           
           <div class="info-item">
-            <div class="info-label">上次活跃</div>
-            <div class="info-value">{{ user.last_login ? formatDate(user.last_login) : '暂无数据' }}</div>
-          </div>
-          
-          <div class="info-item">
             <div class="info-label">个人简介</div>
             <div class="info-value">{{ user.bio || '暂无简介' }}</div>
           </div>
@@ -81,43 +76,35 @@
       <div v-else-if="activeTab === 'stats'" class="profile-section">
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="stat-number">{{ userStats.postCount || 0 }}</div>
+            <div class="stat-number">{{ userStats?.post_count || 0 }}</div>
             <div class="stat-label">发布帖子</div>
             <button @click="viewUserPosts" class="btn-view">查看帖子</button>
           </div>
           
           <div class="stat-card">
-            <div class="stat-number">{{ userStats.commentCount || 0 }}</div>
+            <div class="stat-number">{{ userStats?.comment_count || 0 }}</div>
             <div class="stat-label">发表评论</div>
           </div>
           
           <div class="stat-card">
-            <div class="stat-number">{{ userStats.favoriteCount || 0 }}</div>
-            <div class="stat-label">收藏帖子</div>
-            <button @click="viewUserFavorites" class="btn-view">查看收藏</button>
-          </div>
-          
-          <div class="stat-card">
-            <div class="stat-number">{{ userStats.likeCount || 0 }}</div>
-            <div class="stat-label">获得点赞</div>
+            <div class="stat-number">{{ userStats?.reputation || 0 }}</div>
+            <div class="stat-label">声望</div>
           </div>
         </div>
       </div>
       
       <!-- 编辑资料标签页 -->
       <div v-else-if="activeTab === 'edit'" class="profile-section">
-        <form @submit.prevent="updateProfile" class="edit-form">
+        <form @submit.prevent="handleSubmit" class="edit-form">
           <div class="form-group">
             <label for="username">用户名</label>
             <input 
               type="text" 
               id="username" 
               v-model="form.username" 
-              required
+              :class="{ error: errors.username }"
             />
-            <div v-if="errors.username" class="form-error">
-              {{ errors.username }}
-            </div>
+            <span class="error-message" v-if="errors.username">{{ errors.username }}</span>
           </div>
           
           <div class="form-group">
@@ -126,11 +113,9 @@
               type="email" 
               id="email" 
               v-model="form.email" 
-              required
+              :class="{ error: errors.email }"
             />
-            <div v-if="errors.email" class="form-error">
-              {{ errors.email }}
-            </div>
+            <span class="error-message" v-if="errors.email">{{ errors.email }}</span>
           </div>
           
           <div class="form-group">
@@ -148,11 +133,10 @@
               type="password" 
               id="password" 
               v-model="form.password"
+              :class="{ error: errors.password }"
               autocomplete="new-password"
             />
-            <div v-if="errors.password" class="form-error">
-              {{ errors.password }}
-            </div>
+            <span class="error-message" v-if="errors.password">{{ errors.password }}</span>
           </div>
           
           <div class="form-group">
@@ -161,11 +145,10 @@
               type="password" 
               id="confirmPassword" 
               v-model="form.confirmPassword"
+              :class="{ error: errors.confirmPassword }"
               :disabled="!form.password"
             />
-            <div v-if="errors.confirmPassword" class="form-error">
-              {{ errors.confirmPassword }}
-            </div>
+            <span class="error-message" v-if="errors.confirmPassword">{{ errors.confirmPassword }}</span>
           </div>
           
           <div class="form-actions">
@@ -185,8 +168,8 @@
             </button>
           </div>
           
-          <div v-if="updateSuccess" class="success-message">
-            资料更新成功！
+          <div v-if="successMessage" class="success-message">
+            {{ successMessage }}
           </div>
           
           <div v-if="errorMessage" class="error-message">
@@ -199,60 +182,91 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useUserProfile } from '../composables/useUserProfile'
+import { useUserStore } from '../stores/user'
+import { useUserProfileForm } from '../composables/useUserProfileForm'
 import { formatDate, getInitials } from '../utils/format'
 import { formatRole, getRoleBadgeClass } from '../utils/roles'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 
 // 获取用户ID
-const userId = computed(() => {
-  return Number(route.params.userId)
-})
+const userId = computed(() => Number(route.params.userId))
 
-// 使用用户个人资料组合式函数
+// 从store获取数据
+const user = computed(() => userStore.currentUser)
+const userStats = computed(() => userStore.userStats)
+const isLoading = computed(() => userStore.isLoading)
+const errorMessage = computed(() => userStore.error)
+
+// 使用用户资料表单组合式函数
 const {
-  user,
-  userStats,
-  isLoading,
-  errorMessage,
-  isSubmitting,
-  updateSuccess,
-  activeTab,
   form,
   errors,
-  fetchUserProfile,
-  updateProfile,
-  cancelEdit
-} = useUserProfile(userId)
+  isSubmitting,
+  successMessage,
+  resetForm,
+  validate
+} = useUserProfileForm(user.value)
+
+// 当前激活的标签页
+const activeTab = ref('info')
 
 // 检查是否有权限编辑
 const canEdit = computed(() => {
-  // 如果是当前用户或管理员
-  return true // 这里应该根据实际权限逻辑来判断
+  // TODO: 根据实际权限逻辑判断
+  return true
 })
+
+// 获取用户资料
+const fetchUserProfile = async () => {
+  try {
+    await userStore.fetchUserProfile(userId.value)
+    await userStore.fetchUserStats(userId.value)
+  } catch (error) {
+    console.error('获取用户资料失败:', error)
+  }
+}
+
+// 处理表单提交
+const handleSubmit = async () => {
+  if (!validate()) return
+  if (!user.value) return
+
+  try {
+    isSubmitting.value = true
+    await userStore.updateUserProfile(user.value.id, {
+      username: form.value.username,
+      email: form.value.email,
+      bio: form.value.bio || null,
+      password: form.value.password || undefined
+    })
+    successMessage.value = '资料更新成功'
+    resetForm()
+    activeTab.value = 'info'
+  } catch (error: any) {
+    userStore.error = error.response?.data?.detail || '更新资料失败'
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+// 取消编辑
+const cancelEdit = () => {
+  resetForm()
+  activeTab.value = 'info'
+}
 
 // 查看用户帖子
 const viewUserPosts = () => {
   router.push(`/users/${userId.value}/posts`)
 }
 
-// 查看用户收藏
-const viewUserFavorites = () => {
-  router.push(`/users/${userId.value}/favorites`)
-}
-
 // 监听用户ID变化，重新获取数据
-watch(() => userId.value, () => {
-  fetchUserProfile()
-})
-
-onMounted(() => {
-  fetchUserProfile()
-})
+watch(() => userId.value, fetchUserProfile, { immediate: true })
 </script>
 
 <style scoped>
@@ -262,22 +276,20 @@ onMounted(() => {
   padding: 20px;
 }
 
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 0;
+.loading, .error-container {
+  text-align: center;
+  padding: 40px;
+  color: #666;
 }
 
 .spinner {
-  width: 40px;
-  height: 40px;
   border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border-left-color: #3498db;
   animation: spin 1s linear infinite;
-  margin-bottom: 16px;
+  margin: 0 auto 10px;
 }
 
 @keyframes spin {
@@ -285,41 +297,49 @@ onMounted(() => {
   100% { transform: rotate(360deg); }
 }
 
-.error-container {
-  text-align: center;
-  padding: 40px 0;
-}
-
 .error-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 60px;
-  height: 60px;
+  display: inline-block;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  text-align: center;
   background-color: #e74c3c;
   color: white;
   border-radius: 50%;
-  font-size: 30px;
+  font-style: normal;
   font-weight: bold;
-  margin: 0 auto 20px;
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+
+.btn-retry {
+  margin-top: 20px;
+  padding: 8px 16px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .profile-header {
   display: flex;
   align-items: center;
+  gap: 20px;
   margin-bottom: 30px;
 }
 
 .avatar-container {
-  margin-right: 20px;
+  width: 80px;
+  height: 80px;
 }
 
 .avatar {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
+  width: 100%;
+  height: 100%;
   background-color: #3498db;
   color: white;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -328,94 +348,91 @@ onMounted(() => {
 }
 
 .profile-title {
-  display: flex;
-  flex-direction: column;
+  flex: 1;
 }
 
 .profile-title h1 {
-  margin: 0 0 8px 0;
-  font-size: 28px;
+  margin: 0 0 8px;
+  color: #2c3e50;
 }
 
 .role-badge {
   display: inline-block;
   padding: 4px 8px;
   border-radius: 4px;
-  font-size: 12px;
-  font-weight: bold;
-  width: fit-content;
+  font-size: 14px;
+  font-weight: 500;
 }
 
-.role-user {
-  background-color: #f1c40f;
-  color: #000;
-}
-
-.role-admin {
+.role-badge.admin {
   background-color: #e74c3c;
   color: white;
 }
 
-.role-super_admin {
-  background-color: #9b59b6;
+.role-badge.moderator {
+  background-color: #f39c12;
   color: white;
 }
 
-.role-moderator {
-  background-color: #27ae60;
+.role-badge.user {
+  background-color: #95a5a6;
   color: white;
 }
 
 .profile-tabs {
   display: flex;
-  gap: 2px;
+  gap: 10px;
   margin-bottom: 20px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
 }
 
 .profile-tabs button {
-  padding: 10px 16px;
-  background-color: transparent;
+  padding: 8px 16px;
   border: none;
-  border-bottom: 2px solid transparent;
+  background: none;
+  color: #666;
   cursor: pointer;
   font-size: 16px;
-  transition: all 0.3s;
+  border-radius: 4px;
 }
 
 .profile-tabs button.active {
-  border-bottom: 2px solid #3498db;
-  color: #3498db;
+  background-color: #3498db;
+  color: white;
 }
 
 .profile-section {
-  padding: 20px 0;
+  background-color: white;
+  border-radius: 8px;
+  padding: 20px;
 }
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 20px;
 }
 
 .info-item {
-  margin-bottom: 16px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
 }
 
 .info-label {
-  font-weight: bold;
-  margin-bottom: 4px;
   color: #666;
   font-size: 14px;
+  margin-bottom: 5px;
 }
 
 .info-value {
+  color: #2c3e50;
   font-size: 16px;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
 }
 
@@ -424,83 +441,19 @@ onMounted(() => {
   background-color: #f8f9fa;
   border-radius: 8px;
   text-align: center;
-  transition: transform 0.3s, box-shadow 0.3s;
-}
-
-.stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
 .stat-number {
   font-size: 32px;
   font-weight: bold;
-  color: #3498db;
+  color: #2c3e50;
   margin-bottom: 8px;
 }
 
 .stat-label {
   color: #666;
-  margin-bottom: 12px;
-}
-
-.edit-form {
-  max-width: 600px;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: bold;
-}
-
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px;
-}
-
-.form-group textarea {
-  resize: vertical;
-}
-
-.form-error {
-  color: #e74c3c;
   font-size: 14px;
-  margin-top: 4px;
-}
-
-.form-actions {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.btn-submit {
-  padding: 10px 16px;
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 16px;
-}
-
-.btn-cancel {
-  padding: 10px 16px;
-  background-color: #f8f9fa;
-  color: #333;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 16px;
+  margin-bottom: 12px;
 }
 
 .btn-view {
@@ -513,38 +466,78 @@ onMounted(() => {
   font-size: 14px;
 }
 
-.btn-retry {
-  padding: 8px 16px;
+.edit-form {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+input, textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+input.error {
+  border-color: #e74c3c;
+}
+
+.error-message {
+  color: #e74c3c;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.success-message {
+  color: #2ecc71;
+  font-size: 14px;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.btn-submit {
+  padding: 10px 20px;
   background-color: #3498db;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  margin-top: 16px;
 }
 
-.success-message {
-  padding: 10px;
-  background-color: #d4edda;
-  color: #155724;
+.btn-cancel {
+  padding: 10px 20px;
+  background-color: #95a5a6;
+  color: white;
+  border: none;
   border-radius: 4px;
-  margin-top: 16px;
+  cursor: pointer;
 }
 
-.error-message {
-  padding: 10px;
-  background-color: #f8d7da;
-  color: #721c24;
-  border-radius: 4px;
-  margin-top: 16px;
-}
-
-button:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-button:hover:not(:disabled) {
+.btn-submit:hover, .btn-cancel:hover {
   opacity: 0.9;
+}
+
+.btn-submit:disabled {
+  background-color: #95a5a6;
+  cursor: not-allowed;
 }
 </style>

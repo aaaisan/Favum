@@ -48,10 +48,11 @@ export const useProfileStore = defineStore('profile', {
         
         // 模拟数据
         this.stats = {
-          postCount: 15,
-          commentCount: 42,
-          favoriteCount: 7,
-          likeCount: 128
+          post_count: 15,
+          comment_count: 42,
+          reputation: 128,
+          join_date: new Date().toISOString(),
+          last_login: null
         }
         
         return this.stats

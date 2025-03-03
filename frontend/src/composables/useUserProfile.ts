@@ -13,18 +13,8 @@ export function useUserProfile(userId: ComputedRef<number>) {
   const activeTab = ref('info')
   
   // 从store获取数据的计算属性
-  const user = computed<User>(() => profileStore.profile || {
-    username: '',
-    email: '',
-    role: 'user'
-  })
-  
-  const userStats = computed<UserStats>(() => profileStore.stats || {
-    postCount: 0,
-    commentCount: 0,
-    favoriteCount: 0,
-    likeCount: 0
-  })
+  const user = computed(() => profileStore.profile)
+  const userStats = computed(() => profileStore.stats)
   
   const isLoading = computed(() => profileStore.isLoading)
   const errorMessage = computed(() => profileStore.error)
@@ -44,9 +34,9 @@ export function useUserProfile(userId: ComputedRef<number>) {
    * 初始化编辑表单
    */
   const initEditForm = () => {
-    form.username = user.value.username || ''
-    form.email = user.value.email || ''
-    form.bio = user.value.bio || ''
+    form.username = user.value?.username || ''
+    form.email = user.value?.email || ''
+    form.bio = user.value?.bio || ''
     form.password = ''
     form.confirmPassword = ''
   }

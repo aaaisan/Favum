@@ -49,46 +49,8 @@ export const usePostsStore = defineStore('posts', {
       }
     },
     
-    // 获取用户帖子
-    async fetchUserPosts(userId: number, page = 1, pageSize = 10) {
-      this.isLoading = true
-      this.error = null
-      
-      try {
-        const response = await apiClient.get(`/users/${userId}/posts`, {
-          params: { page, page_size: pageSize }
-        })
-        this.userPosts = response.data
-        return response.data
-      } catch (err: any) {
-        this.error = err.response?.data?.detail || '获取用户帖子失败'
-        throw err
-      } finally {
-        this.isLoading = false
-      }
-    },
-    
-    // 获取用户收藏
-    async fetchUserFavorites(userId: number, page = 1, pageSize = 10) {
-      this.isLoading = true
-      this.error = null
-      
-      try {
-        const response = await apiClient.get(`/users/${userId}/favorites`, {
-          params: { page, page_size: pageSize }
-        })
-        this.favoritesList = response.data
-        return response.data
-      } catch (err: any) {
-        this.error = err.response?.data?.detail || '获取收藏帖子失败'
-        throw err
-      } finally {
-        this.isLoading = false
-      }
-    },
-    
-    // 获取单个帖子详情
-    async fetchPostById(postId: number) {
+    // 获取单个帖子
+    async fetchPost(postId: number) {
       this.isLoading = true
       this.error = null
       
@@ -101,6 +63,56 @@ export const usePostsStore = defineStore('posts', {
         throw err
       } finally {
         this.isLoading = false
+      }
+    },
+    
+    // 获取用户帖子列表
+    async fetchUserPosts(userId: number, page = 1, pageSize = 10) {
+      this.isLoading = true
+      this.error = null
+      
+      try {
+        const skip = (page - 1) * pageSize
+        const response = await apiClient.get(`/users/${userId}/posts`, {
+          params: { skip, limit: pageSize }
+        })
+        this.userPosts = response.data
+        return response.data
+      } catch (err: any) {
+        this.error = err.response?.data?.detail || '获取用户帖子失败'
+        throw err
+      } finally {
+        this.isLoading = false
+      }
+    },
+    
+    // 获取用户收藏列表
+    async fetchUserFavorites(userId: number) {
+      this.isLoading = true
+      this.error = null
+      
+      try {
+        const response = await apiClient.get(`/users/${userId}/favorites`)
+        this.favoritesList = response.data
+        return response.data
+      } catch (err: any) {
+        this.error = err.response?.data?.detail || '获取收藏列表失败'
+        throw err
+      } finally {
+        this.isLoading = false
+      }
+    },
+    
+    // 帖子投票
+    async votePost(postId: number, voteType: 'upvote' | 'downvote') {
+      try {
+        const response = await apiClient.post(`/posts/${postId}/vote`, {
+          vote_type: voteType
+        })
+        return response.data
+      } catch (err: any) {
+        this.error = err.response?.data?.detail || '投票失败'
+        throw err
       }
     },
     
@@ -143,14 +155,13 @@ export const usePostsStore = defineStore('posts', {
     // 取消收藏帖子
     async unfavoritePost(postId: number) {
       try {
-        const response = await apiClient.delete(`/posts/${postId}/favorite`)
-        
-        // 更新当前帖子的收藏状态
-        if (this.currentPost && this.currentPost.id === postId) {
-          this.currentPost.is_favorite = false
+        await apiClient.delete(`/posts/${postId}/favorite`)
+        // 从收藏列表中移除
+        if (this.favoritesList) {
+          this.favoritesList.posts = this.favoritesList.posts.filter(
+            post => post.id !== postId
+          )
         }
-        
-        return response.data
       } catch (err: any) {
         this.error = err.response?.data?.detail || '取消收藏失败'
         throw err

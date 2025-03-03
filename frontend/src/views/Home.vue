@@ -15,10 +15,13 @@
     <div v-else class="posts-container">
       <ul class="posts-list">
         <li v-for="post in posts" :key="post.id" class="post-item">
-          <h3>{{ post.title }}</h3>
+          <router-link :to="`/posts/${post.id}`" class="post-title">
+            {{ post.title }}
+          </router-link>
           <p class="post-meta">
-            <span>作者: {{ post.author_name }}</span>
-            <span>发布于: {{ formatDate(post.created_at) }}</span>
+            <span>分类：{{ post.category?.name || '未分类' }}</span>
+            <span>发布于：{{ formatDate(post.created_at) }}</span>
+            <span>点赞：{{ post.vote_count || 0 }}</span>
           </p>
         </li>
       </ul>
@@ -134,9 +137,17 @@ onMounted(fetchPosts)
   border-bottom: 1px solid #eee;
 }
 
-.post-item h3 {
-  margin: 0 0 10px;
+.post-title {
+  display: block;
+  font-size: 1.2em;
   color: #2c3e50;
+  text-decoration: none;
+  margin-bottom: 10px;
+  transition: color 0.3s;
+}
+
+.post-title:hover {
+  color: #3498db;
 }
 
 .post-meta {

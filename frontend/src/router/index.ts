@@ -11,6 +11,7 @@ import UserFavorites from '../views/UserFavorites.vue'
 import NotFound from '../views/NotFound.vue'
 import Register from '../views/Register.vue'
 import Login from '../views/Login.vue'
+import PostDetail from '../views/PostDetail.vue'
 
 // 定义路由
 const routes: Array<RouteRecordRaw> = [
@@ -52,6 +53,11 @@ const routes: Array<RouteRecordRaw> = [
     name: 'UserFavorites',
     component: UserFavorites,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/posts/:id',
+    name: 'PostDetail',
+    component: PostDetail
   },
   {
     path: '/:pathMatch(.*)*',
