@@ -34,7 +34,7 @@ class Post(PostBase):
     is_hidden: bool = False
     created_at: datetime
     updated_at: datetime
-    vote_count: int = 0  # 添加点赞计数
+    vote_count: Optional[int] = 0  # 修改为可选字段
     category: Optional[Category] = None
     tags: List[Tag] = []
 
@@ -52,7 +52,7 @@ class PublicPost(BaseModel):
     is_hidden: bool = False
     created_at: datetime
     updated_at: datetime
-    vote_count: int = 0  # 添加点赞计数
+    vote_count: Optional[int] = 0  # 修改为可选字段
     category: Optional[Category] = None
     
     class Config:
@@ -103,4 +103,13 @@ class FavoriteResponse(BaseModel):
 class PostFavoritesList(BaseModel):
     """用户收藏列表模型"""
     posts: List[Post]
-    total: int 
+    total: int
+
+class PostList(BaseModel):
+    """帖子列表响应模型"""
+    posts: List[Post]
+    total: int
+    page_size: int
+    
+    class Config:
+        from_attributes = True 

@@ -7,7 +7,6 @@
 from __future__ import annotations
 import logging
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.middleware import setup_middleware
 from .api.router import api_router
@@ -17,6 +16,7 @@ from .core.cache import RedisClient, cache_manager
 from jose import jwt  # 导入jwt模块
 from .middleware.error_handler import add_error_handler
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 
 # 配置日志
 logging.basicConfig(
@@ -83,14 +83,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         generate_unique_id_function=custom_generate_unique_id,  # 自定义操作ID生成
     )
-    
-    # 配置CORS
+
+    # 配置 CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=settings.CORS_ORIGINS,  # 使用配置中的允许源
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # 明确指定允许的方法
+        allow_headers=["*"],  # 允许所有头部
+        expose_headers=["X-Request-ID", "X-Process-Time"],  # 只暴露必要的头部
+        max_age=3600,
     )
     
     # 设置中间件

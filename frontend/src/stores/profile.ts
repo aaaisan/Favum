@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import apiClient from '../services/api'
-import { User, UserStats, UserUpdateRequest } from '../types'
+import type { User, UserStats, UserUpdateRequest } from '../types'
 
 export const useProfileStore = defineStore('profile', {
   state: () => ({

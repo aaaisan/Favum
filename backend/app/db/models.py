@@ -82,6 +82,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     role = Column(String(20), default=UserRole.USER)
     created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)  # 添加更新时间字段
     is_deleted = Column(Boolean, default=False)  # 添加软删除标记
     deleted_at = Column(DateTime, nullable=True)  # 记录删除时间
     

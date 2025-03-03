@@ -17,7 +17,6 @@ export interface Post {
 export interface PostList {
   posts: Post[];
   total: number;
-  page: number;
   page_size: number;
 }
 

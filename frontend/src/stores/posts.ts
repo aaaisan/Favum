@@ -34,7 +34,8 @@ export const usePostsStore = defineStore('posts', {
       this.error = null
       
       try {
-        const params: any = { page, page_size: pageSize }
+        const skip = (page - 1) * pageSize
+        const params: any = { skip, limit: pageSize }
         if (categoryId) params.category_id = categoryId
         
         const response = await apiClient.get('/posts', { params })

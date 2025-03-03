@@ -13,7 +13,7 @@ def get_post(db: Session, post_id: int):
 def get_posts(db: Session, skip: int = 0, limit: int = 100, include_hidden: bool = False):
     """获取帖子列表
     
-    默认不返回已隐藏的帖子
+    默认不返回已隐藏和已删除的帖子
     
     Args:
         db: 数据库会话
@@ -24,7 +24,7 @@ def get_posts(db: Session, skip: int = 0, limit: int = 100, include_hidden: bool
     Returns:
         List[Post]: 帖子列表
     """
-    query = db.query(Post)
+    query = db.query(Post).filter(Post.is_deleted == False)
     if not include_hidden:
         query = query.filter(Post.is_hidden == False)
     return query.offset(skip).limit(limit).all()
@@ -249,4 +249,19 @@ def get_post_votes(db: Session, post_id: int):
     post = get_post(db, post_id)
     if not post:
         raise HTTPException(status_code=404, detail="帖子不存在")
-    return post.vote_count 
+    return post.vote_count
+
+def get_posts_count(db: Session, include_hidden: bool = False):
+    """获取帖子总数
+    
+    Args:
+        db: 数据库会话
+        include_hidden: 是否包含隐藏的帖子
+        
+    Returns:
+        int: 帖子总数
+    """
+    query = db.query(Post).filter(Post.is_deleted == False)
+    if not include_hidden:
+        query = query.filter(Post.is_hidden == False)
+    return query.count() 

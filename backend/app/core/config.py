@@ -74,14 +74,28 @@ class Settings(BaseSettings):
     """JWT加密算法"""
     
     # CORS配置
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081"
+    ]
     """
     允许的CORS源
     可以是URL列表或逗号分隔的URL字符串
     """
 
-    CORS_ORIGINS: List[str] = ["*"]
-    """允许的CORS源，简化版本"""
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",  # Vite 默认端口
+        "http://127.0.0.1:5173"
+    ]
+    """允许的CORS源"""
     
     ALLOWED_HOSTS: List[str] = ["*"]
     """允许的主机名列表"""

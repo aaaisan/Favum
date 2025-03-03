@@ -103,8 +103,6 @@ class CaptchaValidator:
     @staticmethod
     def validate_and_delete(captcha_id: str, captcha_code: str) -> None:
         """验证验证码并删除"""
-        # 测试模式：允许任何验证码通过
-        return
         # 从Redis获取验证码
         stored_code = redis_client.get(f"captcha:{captcha_id}")
         if not stored_code:

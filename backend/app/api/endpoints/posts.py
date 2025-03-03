@@ -74,7 +74,7 @@ async def test_create_post(
     """
     return post_crud.create_post(db=db, post=post)
 
-@router.get("/", response_model=List[post_schema.Post])
+@router.get("/", response_model=post_schema.PostList)
 @public_endpoint(cache_ttl=60, custom_message="获取帖子列表失败")
 async def read_posts(
     skip: int = 0,
@@ -92,13 +92,23 @@ async def read_posts(
         db: 数据库会话实例
         
     Returns:
-        List[Post]: 帖子列表
+        PostList: 包含帖子列表和总数的响应
         
     Raises:
         HTTPException: 当数据库操作失败时抛出500错误
     """
+    # 获取帖子列表
     posts = post_crud.get_posts(db, skip=skip, limit=limit)
-    return posts
+    
+    # 获取帖子总数
+    total = post_crud.get_posts_count(db)
+    
+    # 返回包含列表和总数的响应
+    return {
+        "posts": posts,
+        "total": total,
+        "page_size": limit
+    }
 
 @router.get("/{post_id}", response_model=post_schema.Post)
 @public_endpoint(cache_ttl=60, custom_message="获取帖子详情失败")

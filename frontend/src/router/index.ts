@@ -10,6 +10,7 @@ import UserPosts from '../views/UserPosts.vue'
 import UserFavorites from '../views/UserFavorites.vue'
 import NotFound from '../views/NotFound.vue'
 import Register from '../views/Register.vue'
+import Login from '../views/Login.vue'
 
 // 定义路由
 const routes: Array<RouteRecordRaw> = [
@@ -17,6 +18,11 @@ const routes: Array<RouteRecordRaw> = [
     path: '/',
     name: 'Home',
     component: Home
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: Login
   },
   {
     path: '/register',

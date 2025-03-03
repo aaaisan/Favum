@@ -21,7 +21,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from starlette.middleware.cors import CORSMiddleware
 from starlette.types import ASGIApp
 import time
 
@@ -137,32 +136,22 @@ def setup_middleware(app: FastAPI) -> None:
     配置应用中间件
     
     为FastAPI应用添加所有必要的中间件，按照以下顺序：
-    1. 错误处理（最外层）
+    1. 错误处理
     2. 请求日志
     3. 性能监控
     4. 速率限制
     5. 可信主机
-    6. Gzip压缩（最内层）
+    6. Gzip压缩
     
     Args:
         app: FastAPI应用实例
         
     Notes:
-        - CORS中间件仅在配置了允许源时添加
         - 中间件顺序很重要，影响请求处理流程
         - 每个中间件都可以通过配置文件调整参数
     """
-    # 配置CORS
-    if settings.BACKEND_CORS_ORIGINS:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-    
     # 添加中间件（按照处理顺序排列）
+    app.add_middleware(ErrorHandlerMiddleware)  # 错误处理
     app.add_middleware(RequestLoggingMiddleware)  # 请求日志
     app.add_middleware(PerformanceMiddleware)  # 性能监控
     app.add_middleware(RateLimitMiddleware)  # 速率限制

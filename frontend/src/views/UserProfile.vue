@@ -204,7 +204,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserProfile } from '../composables/useUserProfile'
 import { formatDate, getInitials } from '../utils/format'
 import { formatRole, getRoleBadgeClass } from '../utils/roles'
-import type { User, UserStats } from '../types'
 
 const route = useRoute()
 const router = useRouter()
