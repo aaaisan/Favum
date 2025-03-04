@@ -15,7 +15,7 @@ class UserResponse(UserBase):
     created_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # 帖子相关模型
 class PostBase(BaseModel):
@@ -32,7 +32,7 @@ class PostResponse(PostBase):
     updated_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # 评论相关模型
 class CommentBase(BaseModel):
@@ -48,4 +48,4 @@ class CommentResponse(CommentBase):
     created_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True

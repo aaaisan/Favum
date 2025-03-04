@@ -3,14 +3,14 @@
     <h1>登录</h1>
     <form @submit.prevent="handleSubmit" class="login-form">
       <div class="form-group">
-        <label for="email">邮箱</label>
+        <label for="username">用户名</label>
         <input
-          id="email"
-          v-model="form.email"
-          type="email"
-          :class="{ error: errors.email }"
+          id="username"
+          v-model="form.username"
+          type="text"
+          :class="{ error: errors.username }"
         />
-        <span class="error-message" v-if="errors.email">{{ errors.email }}</span>
+        <span class="error-message" v-if="errors.username">{{ errors.username }}</span>
       </div>
 
       <div class="form-group">
@@ -22,6 +22,15 @@
           :class="{ error: errors.password }"
         />
         <span class="error-message" v-if="errors.password">{{ errors.password }}</span>
+      </div>
+
+      <div class="form-group">
+        <label>验证码</label>
+        <Captcha
+          v-model="form.captcha_code"
+          :error="errors.captcha_code"
+          @refresh="id => handleCaptchaRefresh(id)"
+        />
       </div>
 
       <div class="error-message" v-if="errorMessage">{{ errorMessage }}</div>
@@ -41,21 +50,47 @@
 import { useRouter } from 'vue-router'
 import { useLoginForm } from '../composables/useLoginForm'
 import { useAuthStore } from '../stores/auth'
+import Captcha from '../components/Captcha.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const { form, errors, isSubmitting, errorMessage, validate, resetForm } = useLoginForm()
+const { 
+  form, 
+  errors, 
+  isSubmitting, 
+  errorMessage, 
+  validate, 
+  resetForm,
+  handleCaptchaRefresh 
+} = useLoginForm()
 
 const handleSubmit = async () => {
-  if (!validate()) return
+  console.log('提交登录表单，验证码ID:', form.captcha_id)
+  console.log('提交登录表单，验证码内容:', form.captcha_code)
+  console.log('提交登录表单，完整数据:', JSON.stringify(form))
+  
+  if (!validate()) {
+    console.log('表单验证失败')
+    return
+  }
 
   try {
     isSubmitting.value = true
-    await authStore.login(form.email, form.password)
+    console.log('开始登录请求，数据:', JSON.stringify(form))
+    await authStore.login(form)
     resetForm()
     router.push('/')
   } catch (error: any) {
+    console.error('登录失败:', error)
+    if (error.response) {
+      console.error('响应状态:', error.response.status)
+      console.error('响应数据:', error.response.data)
+    }
     errorMessage.value = error.response?.data?.detail || '登录失败'
+    if (error.response?.status === 400) {
+      console.log('登录失败，刷新验证码')
+      handleCaptchaRefresh()
+    }
   }
 }
 </script>

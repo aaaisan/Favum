@@ -55,6 +55,15 @@
         ></textarea>
       </div>
 
+      <div class="form-group">
+        <label>验证码</label>
+        <Captcha
+          v-model="form.captcha_code"
+          :error="errors.captcha_code"
+          @refresh="id => handleCaptchaRefresh(id)"
+        />
+      </div>
+
       <div class="error-message" v-if="errorMessage">{{ errorMessage }}</div>
       <div class="success-message" v-if="successMessage">{{ successMessage }}</div>
 
@@ -73,6 +82,7 @@
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useRegisterForm } from '../composables/useRegisterForm'
+import Captcha from '../components/Captcha.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -83,26 +93,57 @@ const {
   successMessage,
   errorMessage,
   resetForm,
-  validate
+  validate,
+  handleCaptchaRefresh
 } = useRegisterForm()
 
 const handleSubmit = async () => {
-  if (!validate()) return
+  console.log('提交表单，验证码ID:', form.captcha_id)
+  
+  if (!validate()) {
+    console.log('表单验证失败')
+    return
+  }
 
   try {
     isSubmitting.value = true
-    await authStore.register(form.username, form.email, form.password)
+    
+    console.log('发送注册请求，数据:', JSON.stringify({
+      username: form.username,
+      email: form.email,
+      password: form.password,
+      bio: form.bio,
+      captcha_id: form.captcha_id,
+      captcha_code: form.captcha_code
+    }))
+    
+    await authStore.register(form)
     successMessage.value = '注册成功！正在跳转到登录页面...'
     resetForm()
     setTimeout(() => {
       router.push('/login')
     }, 2000)
   } catch (error: any) {
+    console.error('注册失败:', error)
+    
+    if (error.response) {
+      console.error('响应状态:', error.response.status)
+      console.error('响应数据:', error.response.data)
+    }
+    
     errorMessage.value = error.response?.data?.detail || '注册失败'
+    
+    if (error.response?.status === 400 || error.response?.status === 422) {
+      console.log('刷新验证码...')
+      handleCaptchaRefresh()
+    }
+    
     if (error.response?.data?.detail === '用户名已被使用') {
       errors.username = '该用户名已被注册'
     } else if (error.response?.data?.detail === '邮箱已被注册') {
       errors.email = '该邮箱已被注册'
+    } else if (error.response?.data?.detail?.includes('验证码')) {
+      errors.captcha_code = error.response.data.detail
     }
   } finally {
     isSubmitting.value = false

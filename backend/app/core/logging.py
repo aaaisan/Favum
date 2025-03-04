@@ -18,7 +18,6 @@
 使用方式：
     logger = get_logger(__name__)
     logger.bind(user_id=123, request_id="abc-123")
-    logger.info("用户登录成功")
     logger.error("数据库连接失败", exc_info=True)
 """
 
@@ -155,7 +154,7 @@ def setup_logging() -> None:
         - 日志文件位于logs目录
         - 主日志文件和错误日志文件都设置了大小限制和备份数量
         - 所有日志都使用JSON格式
-        - 日志级别从配置文件读取
+        - 只记录错误级别及以上的日志
     """
     # 创建日志目录
     log_dir = Path("logs")
@@ -170,7 +169,7 @@ def setup_logging() -> None:
     # 配置控制台处理器
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(json_formatter)
-    console_handler.setLevel(settings.LOG_LEVEL)
+    console_handler.setLevel(logging.ERROR)  # 只记录错误及以上级别
     
     # 配置文件处理器
     file_handler = logging.handlers.RotatingFileHandler(
@@ -180,7 +179,7 @@ def setup_logging() -> None:
         encoding="utf-8"
     )
     file_handler.setFormatter(json_formatter)
-    file_handler.setLevel(settings.LOG_LEVEL)
+    file_handler.setLevel(logging.ERROR)  # 只记录错误及以上级别
     
     # 配置错误日志处理器
     error_handler = logging.handlers.RotatingFileHandler(
@@ -194,22 +193,22 @@ def setup_logging() -> None:
     
     # 配置根日志记录器
     root_logger = logging.getLogger()
-    root_logger.setLevel(settings.LOG_LEVEL)
+    root_logger.setLevel(logging.ERROR)  # 设置根日志记录器级别为ERROR
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(error_handler)
     
     # 配置FastAPI日志记录器
     fastapi_logger = logging.getLogger("fastapi")
-    fastapi_logger.setLevel(settings.LOG_LEVEL)
+    fastapi_logger.setLevel(logging.ERROR)
     
     # 配置uvicorn访问日志记录器
     uvicorn_logger = logging.getLogger("uvicorn.access")
-    uvicorn_logger.setLevel(settings.LOG_LEVEL)
+    uvicorn_logger.setLevel(logging.ERROR)
     
     # 配置SQLAlchemy日志记录器
     sqlalchemy_logger = logging.getLogger("sqlalchemy.engine")
-    sqlalchemy_logger.setLevel(settings.LOG_LEVEL)
+    sqlalchemy_logger.setLevel(logging.ERROR)
 
 def get_logger(name: str) -> CustomLogger:
     """
@@ -223,7 +222,7 @@ def get_logger(name: str) -> CustomLogger:
         
     Example:
         logger = get_logger(__name__)
-        logger.info("这是一条信息日志")
+        logger.error("这是一条错误日志")
     """
     logger = logging.getLogger(name)
     if not isinstance(logger, CustomLogger):
@@ -235,5 +234,4 @@ def get_logger(name: str) -> CustomLogger:
 # 使用示例：
 # logger = get_logger(__name__)
 # logger.bind(user_id=123, request_id="abc-123")
-# logger.info("用户登录成功")
 # logger.error("数据库连接失败", exc_info=True) 

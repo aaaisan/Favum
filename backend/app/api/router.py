@@ -1,7 +1,18 @@
 from fastapi import APIRouter
 from .endpoints import users, posts, comments, auth, sections, categories, tags, captcha  # , tasks
+from ..core.config import settings
 
 api_router = APIRouter()
+
+# 添加API根路由
+@api_router.get("/")
+async def api_root():
+    """API根路径处理函数"""
+    return {
+        "message": "论坛API",
+        "version": settings.VERSION,
+        "status": "运行中"
+    }
 
 # 注册认证路由
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])

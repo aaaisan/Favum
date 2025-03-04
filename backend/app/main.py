@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # 配置日志
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,  # 只记录错误级别的日志
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
         # 初始化缓存管理器
         await cache_manager.initialize()
         
-        logger.info("应用初始化成功: Redis连接已建立")
+        logger.error("应用初始化成功: Redis连接已建立")
     except Exception as e:
         logger.critical(f"应用初始化失败: {str(e)}", 
                        extra={
@@ -53,9 +53,9 @@ async def lifespan(app: FastAPI):
     
     # 关闭Redis连接
     if hasattr(app.state, "redis") and app.state.redis:
-        logger.info("正在关闭Redis连接...")
+        logger.error("正在关闭Redis连接...")
         await app.state.redis.close()
-        logger.info("Redis连接已关闭")
+        logger.error("Redis连接已关闭")
 
 def create_app() -> FastAPI:
     """
@@ -84,16 +84,7 @@ def create_app() -> FastAPI:
         generate_unique_id_function=custom_generate_unique_id,  # 自定义操作ID生成
     )
 
-    # 配置 CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,  # 使用配置中的允许源
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # 明确指定允许的方法
-        allow_headers=["*"],  # 允许所有头部
-        expose_headers=["X-Request-ID", "X-Process-Time"],  # 只暴露必要的头部
-        max_age=3600,
-    )
+    # CORS 中间件已在 middleware.py 中配置
     
     # 设置中间件
     setup_middleware(app)

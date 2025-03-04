@@ -97,18 +97,34 @@ async def read_posts(
     Raises:
         HTTPException: 当数据库操作失败时抛出500错误
     """
-    # 获取帖子列表
-    posts = post_crud.get_posts(db, skip=skip, limit=limit)
-    
-    # 获取帖子总数
-    total = post_crud.get_posts_count(db)
-    
-    # 返回包含列表和总数的响应
-    return {
-        "posts": posts,
-        "total": total,
-        "page_size": limit
-    }
+    try:
+        # 记录请求信息
+        logger = logging.getLogger("posts_api")
+        logger.error(f"获取帖子列表: skip={skip}, limit={limit}")
+        
+        # 获取帖子列表
+        posts = post_crud.get_posts(db, skip=skip, limit=limit)
+        logger.error(f"获取到 {len(posts)} 条帖子")
+        
+        # 获取帖子总数
+        total = post_crud.get_posts_count(db)
+        logger.error(f"帖子总数: {total}")
+        
+        # 构建响应
+        response = {
+            "posts": posts,
+            "total": total,
+            "page_size": limit
+        }
+        
+        # 记录响应信息
+        logger.error(f"响应数据: posts={len(posts)}, total={total}, page_size={limit}")
+        
+        return response
+    except Exception as e:
+        logger = logging.getLogger("posts_api")
+        logger.error(f"获取帖子列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取帖子列表失败: {str(e)}")
 
 @router.get("/{post_id}", response_model=post_schema.Post)
 @public_endpoint(cache_ttl=60, custom_message="获取帖子详情失败")

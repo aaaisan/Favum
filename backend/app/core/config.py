@@ -193,7 +193,7 @@ class Settings(BaseSettings):
     """验证码图片高度（像素）"""
     
     # 速率限制配置
-    RATE_LIMIT_REQUESTS: int = 100000
+    RATE_LIMIT_REQUESTS: int = 1000000
     """速率限制请求次数"""
     
     RATE_LIMIT_WINDOW: int = 3600

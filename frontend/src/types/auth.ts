@@ -1,13 +1,16 @@
 import type { User } from './user'
 
 export interface LoginForm {
-  email: string
+  username: string
   password: string
+  captcha_id: string
+  captcha_code: string
 }
 
 export interface LoginFormErrors {
-  email: string
+  username: string
   password: string
+  captcha_code: string
 }
 
 export interface LoginResponse {
@@ -22,6 +25,8 @@ export interface RegisterForm {
   password: string
   confirmPassword: string
   bio: string
+  captcha_id: string
+  captcha_code: string
 }
 
 export interface RegisterFormErrors {
@@ -29,4 +34,5 @@ export interface RegisterFormErrors {
   email: string
   password: string
   confirmPassword: string
+  captcha_code: string
 } 

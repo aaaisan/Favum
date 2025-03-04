@@ -42,7 +42,7 @@ class User(UserBase):
     updated_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # 用户个人资料模型
 class UserProfile(User):
@@ -54,7 +54,7 @@ class UserProfile(User):
     badges: List[str] = []
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # 仅用于API响应的简化用户信息模型
 class UserInfo(BaseModel):
@@ -64,7 +64,7 @@ class UserInfo(BaseModel):
     role: str
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # 用户令牌模型
 class Token(BaseModel):

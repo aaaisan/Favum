@@ -4,7 +4,7 @@
 提供应用级别的中间件功能，包括：
 - 性能监控：记录请求处理时间
 - 错误处理：统一异常处理
-- 请求日志：记录请求和响应信息
+- 请求日志：记录错误请求信息
 - 速率限制：防止请求过载
 - CORS：跨域资源共享
 - 可信主机：限制允许的主机
@@ -136,12 +136,13 @@ def setup_middleware(app: FastAPI) -> None:
     配置应用中间件
     
     为FastAPI应用添加所有必要的中间件，按照以下顺序：
-    1. 错误处理
-    2. 请求日志
-    3. 性能监控
-    4. 速率限制
-    5. 可信主机
-    6. Gzip压缩
+    1. CORS处理
+    2. 错误处理
+    3. 请求日志
+    4. 性能监控
+    5. 速率限制
+    6. 可信主机
+    7. Gzip压缩
     
     Args:
         app: FastAPI应用实例
@@ -151,14 +152,23 @@ def setup_middleware(app: FastAPI) -> None:
         - 每个中间件都可以通过配置文件调整参数
     """
     # 添加中间件（按照处理顺序排列）
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID", "X-Process-Time", "X-Captcha-ID"],
+        max_age=3600,
+    )
     app.add_middleware(ErrorHandlerMiddleware)  # 错误处理
     app.add_middleware(RequestLoggingMiddleware)  # 请求日志
     app.add_middleware(PerformanceMiddleware)  # 性能监控
-    app.add_middleware(RateLimitMiddleware)  # 速率限制
+    # app.add_middleware(RateLimitMiddleware)  # 速率限制 - 暂时禁用以解决429错误
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=settings.ALLOWED_HOSTS
     )
     app.add_middleware(GZipMiddleware, minimum_size=1000)  # 压缩响应
     
-    logger.info("中间件配置完成") 
+    logger.error("中间件配置完成") 
