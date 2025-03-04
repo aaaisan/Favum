@@ -16,9 +16,16 @@ export interface Post {
   is_deleted: boolean;
   deleted_at: string | null;
   vote_count: number;
+  view_count?: number;
+  reply_count?: number;
+  like_count?: number;
+  is_liked?: boolean;
+  is_favorite?: boolean;
+  category_name?: string;
   author?: User;
   category?: Category;
   tags?: Tag[];
+  comments?: Comment[];
 }
 
 // 帖子列表响应接口
@@ -64,95 +71,73 @@ export interface PostVote {
 
 // 发帖表单类型
 export interface PostForm {
-  title: string
-  content: string
-  category_id: number
-  tags: string[]
-  captcha_id: string
-  captcha_code: string
+  title: string;
+  content: string;
+  category_id: number;
+  tags: string[];
+  captcha_id: string;
+  captcha_code: string;
 }
 
 // 发帖表单错误类型
 export interface PostFormErrors {
-  title: string
-  content: string
-  category_id: string
-  captcha_code: string
+  title: string;
+  content: string;
+  category_id: string;
+  captcha_code: string;
 }
 
 // 回复表单类型
 export interface ReplyForm {
-  content: string
-  post_id: number
-  parent_id?: number
-  captcha_id: string
-  captcha_code: string
+  content: string;
+  post_id: number;
+  parent_id?: number;
+  captcha_id: string;
+  captcha_code: string;
 }
 
 // 回复表单错误类型
 export interface ReplyFormErrors {
-  content: string
-  captcha_code: string
-}
-
-// 帖子类型
-export interface Post {
-  id: number
-  title: string
-  content: string
-  category_id: number
-  category_name: string
-  tags: string[]
-  author: User
-  created_at: string
-  updated_at: string
-  view_count: number
-  reply_count: number
-  like_count: number
-  is_liked: boolean
-  is_favorite: boolean
+  content: string;
+  captcha_code: string;
 }
 
 // 回复类型
 export interface Reply {
-  id: number
-  content: string
-  post_id: number
-  parent_id?: number
-  author: User
-  created_at: string
-  updated_at: string
-  like_count: number
-  is_liked: boolean
-  children?: Reply[]
-}
-
-// 分类类型
-export interface Category {
-  id: number
-  name: string
-  description: string
-  post_count: number
-}
-
-// 标签类型
-export interface Tag {
-  id: number
-  name: string
-  post_count: number
+  id: number;
+  content: string;
+  post_id: number;
+  parent_id?: number;
+  author: User;
+  created_at: string;
+  updated_at: string;
+  like_count: number;
+  is_liked: boolean;
+  children?: Reply[];
 }
 
 // 论坛分类类型
 export interface ForumCategory {
-  id: number
-  name: string
-  description: string
-  post_count: number
+  id: number;
+  name: string;
+  description: string;
+  post_count: number;
 }
 
 // 论坛标签类型
 export interface ForumTag {
-  id: number
-  name: string
-  post_count: number
+  id: number;
+  name: string;
+  post_count: number;
+}
+
+// 评论类型
+export interface Comment {
+  id: number;
+  content: string;
+  post_id: number;
+  user_id: number;
+  user?: User;
+  created_at: string;
+  updated_at: string;
 } 

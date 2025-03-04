@@ -13,6 +13,17 @@ import Register from '../views/Register.vue'
 import Login from '../views/Login.vue'
 import PostDetail from '../views/PostDetail.vue'
 
+// 导入仪表盘视图组件
+import Dashboard from '../views/Dashboard.vue'
+import DashboardPosts from '../views/DashboardPosts.vue'
+import DashboardUsers from '../views/DashboardUsers.vue'
+import DashboardCategories from '../views/DashboardCategories.vue'
+import DashboardTags from '../views/DashboardTags.vue'
+
+// 导入存储
+import { useAuthStore } from '../stores/auth'
+import { UserRole } from '../types/user'
+
 // 定义路由
 const routes: Array<RouteRecordRaw> = [
   {
@@ -59,6 +70,52 @@ const routes: Array<RouteRecordRaw> = [
     name: 'PostDetail',
     component: PostDetail
   },
+  // 仪表盘路由
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: Dashboard,
+    meta: { 
+      requiresAuth: true, 
+      roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MODERATOR]
+    }
+  },
+  {
+    path: '/dashboard/posts',
+    name: 'DashboardPosts',
+    component: DashboardPosts,
+    meta: { 
+      requiresAuth: true, 
+      roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MODERATOR]
+    }
+  },
+  {
+    path: '/dashboard/users',
+    name: 'DashboardUsers',
+    component: DashboardUsers,
+    meta: { 
+      requiresAuth: true, 
+      roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    }
+  },
+  {
+    path: '/dashboard/categories',
+    name: 'DashboardCategories',
+    component: DashboardCategories,
+    meta: { 
+      requiresAuth: true, 
+      roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    }
+  },
+  {
+    path: '/dashboard/tags',
+    name: 'DashboardTags',
+    component: DashboardTags,
+    meta: { 
+      requiresAuth: true, 
+      roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    }
+  },
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
@@ -70,6 +127,32 @@ const routes: Array<RouteRecordRaw> = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes
+})
+
+// 导航守卫
+router.beforeEach((to, from, next) => {
+  const authStore = useAuthStore()
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+  const requiresRole = to.matched.some(record => record.meta.roles && record.meta.roles.length > 0)
+  
+  // 检查是否需要认证
+  if (requiresAuth && !authStore.isAuthenticated) {
+    next('/login')
+    return
+  }
+  
+  // 检查是否需要特定角色
+  if (requiresRole) {
+    const allowedRoles = to.meta.roles as string[]
+    const userRole = authStore.user?.role
+    
+    if (!userRole || !allowedRoles.includes(userRole)) {
+      next('/')
+      return
+    }
+  }
+  
+  next()
 })
 
 // 导出路由器
