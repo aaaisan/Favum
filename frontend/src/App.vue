@@ -1,5 +1,14 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import Navbar from './components/Navbar.vue'
+import { useAuthStore } from './stores/auth'
+
+const authStore = useAuthStore()
+
+onMounted(() => {
+  console.log('[App] 组件挂载，确保Auth Store已初始化')
+  authStore.init()
+})
 </script>
 
 <template>

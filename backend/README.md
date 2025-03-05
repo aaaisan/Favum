@@ -1427,3 +1427,119 @@ function PostActions({ post, userToken }) {
    - 所有接口返回JSON格式的响应
    - 正常响应通常包含请求的数据结果
    - 错误响应通常包含`detail`字段，描述错误原因
+
+## Setup
+
+1. Install dependencies:
+   ```
+   npm install
+   ```
+
+2. Create a `.env` file in the root directory with the following variables:
+   ```
+   PORT=5000
+   MONGODB_URI=mongodb://localhost:27017/forum
+   JWT_SECRET=your_jwt_secret
+   ```
+
+3. Start the development server:
+   ```
+   npm run dev
+   ```
+
+## Database Seeding
+
+To populate your database with mock data extracted from the frontend components, run:
+
+```
+npm run seed
+```
+
+This will seed the database with:
+- 4 users with different roles
+- 7 categories
+- 15 tags
+- 5 sample posts with content
+- 6 comments
+- Post-tag relationships
+
+The seeding script checks for existing data to avoid duplicates, so you can run it multiple times safely.
+
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Login and get JWT token
+
+### Users
+- `GET /api/users` - Get all users (admin only)
+- `GET /api/users/:id` - Get user by ID
+- `GET /api/users/:id/posts` - Get posts by user ID
+- `PUT /api/users/:id` - Update user (authenticated user only)
+- `DELETE /api/users/:id` - Delete user (admin or self only)
+
+### Posts
+- `GET /api/posts` - Get all posts (with pagination)
+- `GET /api/posts/featured` - Get featured posts
+- `GET /api/posts/:id` - Get post by ID
+- `POST /api/posts` - Create new post (authenticated)
+- `PUT /api/posts/:id` - Update post (owner or admin only)
+- `DELETE /api/posts/:id` - Delete post (owner or admin only)
+
+### Categories
+- `GET /api/categories` - Get all categories
+- `GET /api/categories/:id` - Get category by ID
+- `GET /api/categories/:id/posts` - Get posts by category ID
+- `POST /api/categories` - Create new category (admin only)
+- `PUT /api/categories/:id` - Update category (admin only)
+- `DELETE /api/categories/:id` - Delete category (admin only)
+
+### Tags
+- `GET /api/tags` - Get all tags
+- `GET /api/tags/:id` - Get tag by ID
+- `GET /api/tags/:id/posts` - Get posts by tag ID
+- `POST /api/tags` - Create new tag (authenticated)
+- `PUT /api/tags/:id` - Update tag (admin only)
+- `DELETE /api/tags/:id` - Delete tag (admin only)
+
+### Comments
+- `GET /api/posts/:postId/comments` - Get comments for a post
+- `POST /api/posts/:postId/comments` - Add comment to post (authenticated)
+- `PUT /api/comments/:id` - Update comment (owner or admin only)
+- `DELETE /api/comments/:id` - Delete comment (owner or admin only)
+
+## 数据导入
+
+本项目包含导入前端模拟数据的功能，可以通过以下方式使用：
+
+### 通过命令行导入
+
+```bash
+# 在backend目录下执行
+python -m app.scripts.seed_forum_data
+
+# 若要清除现有数据再导入
+python -m app.scripts.seed_forum_data --clear
+```
+
+### 通过API导入
+
+系统提供了API端点用于导入数据（仅限管理员使用）：
+
+```
+POST /api/v1/seed/seed-forum-data
+    参数：clear_existing (boolean) - 是否清除现有数据
+
+GET /api/v1/seed/clear-forum-data
+    清除所有论坛数据
+```
+
+### 导入数据内容
+
+导入的数据包括：
+
+1. **用户**：管理员、技术分享者、设计师、后端开发者等角色
+2. **分类**：技术讨论、产品设计、职业发展、项目分享等
+3. **标签**：Python、JavaScript、Vue.js、React、FastAPI等
+4. **帖子**：关于技术、设计、职业发展的示例帖子
+5. **评论**：与帖子相关的用户讨论

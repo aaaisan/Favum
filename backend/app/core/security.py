@@ -86,13 +86,45 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         - 令牌中会包含过期时间(exp)声明
     """
     to_encode = data.copy()
+    
+    # 调试信息
+    print(f"[Security] 创建访问令牌, 原始数据: {to_encode}")
+    
+    # 确保token包含必要的字段
+    if "sub" not in to_encode:
+        print(f"[Security] 警告: token数据中缺少'sub'字段")
+    if "role" not in to_encode:
+        print(f"[Security] 警告: token数据中缺少'role'字段")
+        # 添加默认角色
+        to_encode["role"] = "user"
+    if "id" not in to_encode and "sub" in to_encode:
+        try:
+            # 尝试从sub推断id
+            to_encode["id"] = int(to_encode["sub"])
+            print(f"[Security] 从sub推断的id: {to_encode['id']}")
+        except:
+            print(f"[Security] 无法从sub推断id: {to_encode['sub']}")
+    
+    # 设置过期时间
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    print(f"[Security] 令牌将在 {expire.isoformat()} 过期")
+    
+    # 编码JWT
+    try:
+        encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        print(f"[Security] JWT令牌创建成功, 长度: {len(encoded_jwt)}")
+        # 验证令牌是否可以解码
+        decoded = jwt.decode(encoded_jwt, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        print(f"[Security] JWT令牌验证成功, 解码数据: {decoded}")
+        return encoded_jwt
+    except Exception as e:
+        print(f"[Security] 创建JWT令牌时出错: {str(e)}")
+        raise
 
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
@@ -118,21 +150,64 @@ async def get_current_user(
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="无效的认证凭据",
+        detail="凭证无效",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # 打印获取到的token前20个字符和长度，便于调试
+    token_length = len(token) if token else 0
+    print(f"[Security] 收到token长度: {token_length}")
+    if token_length > 0:
+        print(f"[Security] 收到token前20个字符: {token[:20]}...")
+    
     try:
+        # 解码JWT令牌
+        print(f"[Security] 尝试解码JWT，使用密钥: {settings.SECRET_KEY[:3]}...和算法: {settings.ALGORITHM}")
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        print(f"[Security] 解码JWT成功, payload: {payload}")
+        
+        # 提取用户标识
         username: str = payload.get("sub")
         if username is None:
+            print("[Security] JWT中没有'sub'字段")
             raise credentials_exception
-        token_data = auth_schema.TokenData(username=username)
-    except JWTError:
+            
+        # 获取用户角色
+        role = payload.get("role", "user")
+        print(f"[Security] 用户 {username} 的角色: {role}")
+        
+        # 检查令牌是否过期
+        exp = payload.get("exp")
+        if exp:
+            now = datetime.utcnow().timestamp()
+            print(f"[Security] 当前时间: {now}, 令牌过期时间: {exp}, 差值: {exp - now}秒")
+            if now > exp:
+                print(f"[Security] 令牌已过期: 当前时间 {now}, 过期时间 {exp}")
+                raise credentials_exception
+        
+        # 创建令牌数据
+        token_data = auth_schema.TokenData(
+            username=username,
+            role=role,
+            permissions=payload.get("permissions", [])
+        )
+        print(f"[Security] 创建TokenData成功: {token_data}")
+    except JWTError as e:
+        print(f"[Security] JWT解码错误: {str(e)}")
+        print(f"[Security] 失败的token: {token}")
+        raise credentials_exception
+    except Exception as e:
+        print(f"[Security] 未知错误: {str(e)}")
+        print(f"[Security] 失败的token: {token}")
         raise credentials_exception
     
+    # 检查用户是否存在
     user = user_crud.get_user_by_username(db, username=token_data.username)
     if user is None:
+        print(f"[Security] 用户不存在: {token_data.username}")
         raise credentials_exception
+    
+    print(f"[Security] 用户验证成功: {user.username}")
     return token_data
 
 async def get_current_active_user(

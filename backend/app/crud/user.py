@@ -14,8 +14,49 @@ def get_user_by_email(db: Session, email: str):
 def get_user_by_username(db: Session, username: str):
     return db.query(User).filter(User.username == username, User.is_deleted == False).first()
 
-def get_users(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
+def get_users(db: Session, skip: int = 0, limit: int = 100, sort: str = None, order: str = "asc"):
+    """
+    获取用户列表
+    
+    Args:
+        db: 数据库会话
+        skip: 跳过的记录数
+        limit: 返回的最大记录数
+        sort: 排序字段
+        order: 排序方向，asc或desc
+        
+    Returns:
+        List[User]: 用户对象列表
+    """
+    query = db.query(User).filter(User.is_deleted == False)
+    
+    # 添加排序
+    if sort:
+        # 确保sort是一个合法的字段名
+        if hasattr(User, sort):
+            # 获取排序字段
+            sort_field = getattr(User, sort)
+            
+            # 应用排序方向
+            if order.lower() == "desc":
+                query = query.order_by(sort_field.desc())
+            else:
+                query = query.order_by(sort_field.asc())
+        else:
+            # 如果字段名不合法，尝试转换常见的命名约定
+            # 例如：post_count 转为 post_count 或 postCount
+            snake_case = sort.lower()
+            camel_case = "".join(word.capitalize() if i > 0 else word for i, word in enumerate(sort.split("_")))
+            
+            if hasattr(User, snake_case):
+                sort_field = getattr(User, snake_case)
+            elif hasattr(User, camel_case):
+                sort_field = getattr(User, camel_case)
+            else:
+                # 默认排序
+                print(f"[WARN] 字段 {sort} 不存在，使用默认排序")
+    
+    return query.offset(skip).limit(limit).all()
 
 def create_user(db: Session, user: user_schema.UserCreate):
     hashed_password = get_password_hash(user.password)

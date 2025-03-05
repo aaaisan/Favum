@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from ...db.database import get_db
 from ...schemas import user as user_schema
 from ...schemas import post as post_schema
+from ...schemas import auth as auth_schema
 from ...crud import user as user_crud
 from ...crud import favorite as favorite_crud
 from ...dependencies import get_current_user
@@ -84,17 +85,23 @@ async def read_users(
     request: Request,
     skip: int = 0,
     limit: int = 100,
+    sort: Optional[str] = None,
+    order: Optional[str] = "asc",
+    current_user: auth_schema.TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """获取用户列表
     
-    获取系统中的用户列表，支持分页。
-    仅管理员可以访问此API端点。
+    获取系统中所有用户的列表，支持分页、排序和过滤。
+    需要登录才能访问。
     
     Args:
         request: FastAPI请求对象
-        skip: 分页偏移量，默认0
-        limit: 每页数量，默认100
+        skip: 跳过的记录数
+        limit: 返回的最大记录数
+        sort: 排序字段
+        order: 排序方向，asc或desc
+        current_user: 当前登录用户
         db: 数据库会话实例
         
     Returns:
@@ -104,7 +111,16 @@ async def read_users(
         HTTPException: 当权限不足或令牌无效时抛出相应错误
         SQLAlchemyError: 当数据库操作失败时抛出500错误
     """
-    users = user_crud.get_users(db, skip=skip, limit=limit)
+    print("\n[DEBUG] 收到users接口请求")
+    print(f"[DEBUG] 当前用户: {current_user.username}, 角色: {current_user.role}")
+    
+    # 输出所有请求头，以便调试
+    if request:
+        print("[DEBUG] 请求头信息:")
+        for header_name, header_value in request.headers.items():
+            print(f"  {header_name}: {header_value}")
+    
+    users = user_crud.get_users(db, skip=skip, limit=limit, sort=sort, order=order)
     return users
 
 @router.get("/{user_id}", response_model=user_schema.User)

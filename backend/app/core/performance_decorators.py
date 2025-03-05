@@ -293,3 +293,18 @@ def log_execution_time(
         return sync_wrapper
     
     return decorator 
+
+# 在配置类中添加slow_threshold_ms属性
+class PerformanceConfig:
+    """性能监控配置"""
+    
+    def __init__(self):
+        """初始化性能监控配置"""
+        self.enabled = True
+        self.log_level = logging.INFO
+        self.error_log_level = logging.ERROR
+        self.slow_threshold_ms = 500  # 添加慢查询阈值，默认500毫秒
+        self.include_args = False
+        self.include_result = False
+        self.max_args_length = 100
+        self.max_result_length = 100 

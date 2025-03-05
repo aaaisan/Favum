@@ -9,19 +9,143 @@
 """
 
 from functools import wraps
-from typing import Any, Callable, Type, Optional, List, Union, Dict
+from typing import Any, Callable, Type, Optional, List, Union, Dict, TypeVar, cast
 import time
 import asyncio
 import inspect
+import functools
+import contextlib
+import logging
 
 from fastapi import HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from .logging import get_logger
-from .context_managers import error_boundary
+from .exceptions import APIError
 from .decorator_config import get_config
+from .context_managers import error_boundary
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
+
+# 定义一个通用的返回类型
+T = TypeVar('T')
+
+@contextlib.contextmanager
+def api_error_boundary(
+    error_message: str = "操作处理失败",
+    status_code: int = HTTP_500_INTERNAL_SERVER_ERROR,
+    log_error: bool = True,
+    # 移除on_error参数，避免与Python 3.12的contextlib冲突
+):
+    """
+    错误边界上下文管理器
+    
+    提供统一的异常处理机制，将所有异常转换为APIError。
+    
+    Args:
+        error_message: 默认错误消息
+        status_code: 默认HTTP状态码
+        log_error: 是否记录错误日志
+        
+    Yields:
+        None
+        
+    Raises:
+        APIError: 转换后的API错误
+    """
+    try:
+        yield
+    except Exception as e:
+        if isinstance(e, APIError):
+            # 如果已经是APIError，直接重新抛出
+            raise e
+        elif isinstance(e, HTTPException):
+            # 如果是FastAPI的HTTPException，转换为APIError
+            raise APIError(
+                status_code=e.status_code,
+                detail=e.detail,
+                headers=e.headers
+            )
+        else:
+            # 其他异常转换为APIError
+            if log_error:
+                logger.exception(f"{error_message}: {str(e)}")
+            
+            raise APIError(
+                status_code=status_code,
+                detail=error_message
+            )
+
+def handle_errors(
+    error_message: str = "操作处理失败",
+    status_code: int = HTTP_500_INTERNAL_SERVER_ERROR,
+    log_error: bool = True
+) -> Callable:
+    """
+    错误处理装饰器
+    
+    为函数提供统一的异常处理机制，将所有异常转换为APIError。
+    
+    Args:
+        error_message: 默认错误消息
+        status_code: 默认HTTP状态码
+        log_error: 是否记录错误日志
+        
+    Returns:
+        Callable: 装饰后的函数
+        
+    Examples:
+        @handle_errors("获取用户信息失败")
+        def get_user(user_id: int) -> User:
+            ...
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            with api_error_boundary(
+                error_message=error_message,
+                status_code=status_code,
+                log_error=log_error
+            ):
+                return func(*args, **kwargs)
+        return cast(Callable[..., T], wrapper)
+    return decorator
+
+def handle_async_errors(
+    error_message: str = "操作处理失败",
+    status_code: int = HTTP_500_INTERNAL_SERVER_ERROR,
+    log_error: bool = True
+) -> Callable:
+    """
+    异步错误处理装饰器
+    
+    为异步函数提供统一的异常处理机制，将所有异常转换为APIError。
+    
+    Args:
+        error_message: 默认错误消息
+        status_code: 默认HTTP状态码
+        log_error: 是否记录错误日志
+        
+    Returns:
+        Callable: 装饰后的异步函数
+        
+    Examples:
+        @handle_async_errors("获取用户信息失败")
+        async def get_user(user_id: int) -> User:
+            ...
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
+            with api_error_boundary(
+                error_message=error_message,
+                status_code=status_code,
+                log_error=log_error
+            ):
+                return await func(*args, **kwargs)
+        return cast(Callable[..., T], wrapper)
+    return decorator
 
 def handle_exceptions(
     *exceptions: Type[Exception],
@@ -99,10 +223,10 @@ def handle_exceptions(
                 )
             
             # 使用错误处理上下文执行函数
-            with error_boundary(
-                *_exceptions,
-                default_value=None,
-                logger=logger
+            with api_error_boundary(
+                error_message=message if message is not None else "操作处理失败",
+                status_code=status_code if status_code is not None else HTTP_500_INTERNAL_SERVER_ERROR,
+                log_error=log_error if log_error is not None else True
             ):
                 return await func(*args, **kwargs)
         

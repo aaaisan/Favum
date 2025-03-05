@@ -10,6 +10,12 @@ interface PostState {
   error: string | null;
 }
 
+// 静态标志，用于记录API是否支持投票状态获取
+let voteStatusApiSupported = true
+
+// 静态禁用投票状态检查功能
+const DISABLE_VOTE_STATUS_CHECK = true
+
 export const usePostStore = defineStore('post', {
   state: (): PostState => ({
     currentPost: null,
@@ -81,7 +87,31 @@ export const usePostStore = defineStore('post', {
         if (response.data) {
           console.log('帖子数据:', JSON.stringify(response.data).substring(0, 200) + '...')
           this.currentPost = response.data
-          await this.fetchUserVote(numericPostId)
+          
+          // 完全跳过投票状态检查
+          if (DISABLE_VOTE_STATUS_CHECK) {
+            console.log('投票状态检查功能已禁用，跳过此步骤')
+            this.userVote = null
+            return response.data
+          }
+          
+          // 尝试获取用户投票状态，但不阻止主要功能
+          try {
+            // 检查用户是否已登录，以及API是否支持投票状态获取
+            const hasAuthToken = localStorage.getItem('token')
+            if (!hasAuthToken || !voteStatusApiSupported) {
+              const reason = !hasAuthToken ? '用户未登录' : 'API不支持投票状态获取'
+              console.log(`跳过获取投票状态: ${reason}`)
+              this.userVote = null
+              return response.data
+            }
+            
+            await this.fetchUserVote(numericPostId)
+          } catch (voteErr) {
+            console.warn('获取用户投票状态失败，但不影响帖子显示:', voteErr)
+            // 不设置错误，继续处理
+          }
+          
           console.log('状态更新完成，currentPost已设置，准备返回数据')
           return response.data
         } else {
@@ -145,11 +175,25 @@ export const usePostStore = defineStore('post', {
 
     async fetchUserVote(postId: number) {
       try {
-        const response = await apiClient.get(`/posts/${postId}/vote`)
+        // 改用 POST 请求，添加 action: 'check' 和 vote_type: null 参数表示只是检查状态
+        console.log(`检查用户对帖子 ${postId} 的投票状态`)
+        const response = await apiClient.post(`/posts/${postId}/vote`, { 
+          action: 'check', 
+          vote_type: null   // 添加vote_type参数，服务器可能需要这个字段
+        })
+        console.log('获取投票状态响应:', response.data)
         this.userVote = response.data.vote_type
       } catch (err: any) {
         if (err.response?.status !== 401) {
           console.error('获取投票状态失败:', err)
+          
+          // 如果是405或422错误，尝试跳过投票状态获取并记录API不支持
+          if (err.response?.status === 405 || err.response?.status === 422) {
+            console.warn(`API返回${err.response?.status}错误，将跳过投票状态检查`)
+            // 记录API不支持投票状态获取，后续请求将跳过
+            voteStatusApiSupported = false
+            // 不设置错误，只是跳过
+          }
         }
         this.userVote = null
       }

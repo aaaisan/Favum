@@ -110,6 +110,9 @@ async def login(
     validator = CaptchaValidator()
     validator.validate_and_delete(form_data.captcha_id, form_data.captcha_code)
     
+    # 打印登录尝试的信息
+    print(f"登录尝试: 用户名={form_data.username}, 验证码ID={form_data.captcha_id}")
+    
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -118,26 +121,26 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # 从角色获取权限
-    role_name = user.role.value if hasattr(user.role, 'value') else 'user'
+    # 获取用户角色和权限
+    role_name = user.role.value if hasattr(user.role, 'value') else str(user.role)
     role = getattr(Role, role_name.upper(), Role.USER)
     permissions = [p for p in get_role_permissions(role)]
     
-    # 创建访问令牌
+    # 生成访问令牌
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    # 增加更多用户信息到令牌
-    token_data = {
-        "sub": user.username,
-        "id": user.id,
-        "role": role_name,
-        "permissions": permissions
-    }
-    
     access_token = create_access_token(
-        data=token_data,
+        data={
+            "sub": user.username, 
+            "id": user.id, 
+            "role": role_name,
+            "permissions": permissions
+        },
         expires_delta=access_token_expires
     )
+    
+    # 打印生成的令牌信息
+    print(f"生成访问令牌: user_id={user.id}, username={user.username}, role={user.role}")
+    
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/test-token", response_model=auth_schema.TokenData)

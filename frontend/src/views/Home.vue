@@ -280,45 +280,8 @@ const fetchPosts = async () => {
     totalPages.value = Math.ceil(response.data.total / postsPerPage)
   } catch (error) {
     console.error('获取帖子列表失败:', error)
-    // 使用模拟数据
-    posts.value = [
-      {
-        id: 11,
-        title: '使用FastAPI构建高性能API',
-        author: '用户ID: 27',
-        category: '技术讨论',
-        excerpt: 'FastAPI是一个现代、快速（高性能）的Web框架，用于构建API，基于Python 3.6+的标准类型提示。它的主要特点是：速度非常快、快速编码、更少的错误...',
-        createdAt: new Date('2025-02-20T22:27:05'),
-        viewCount: 120,
-        commentCount: 8,
-        likeCount: 48,
-        tags: ['Python', 'FastAPI']
-      },
-      {
-        id: 12,
-        title: 'Vue.js 3组合式API使用指南',
-        author: '用户ID: 28',
-        category: '技术讨论',
-        excerpt: 'Vue.js 3引入了组合式API，提供了更灵活的逻辑重用和代码组织方式。本文将详细介绍如何使用Vue 3的组合式API，包括setup函数、响应式引用等...',
-        createdAt: new Date('2025-02-22T14:15:30'),
-        viewCount: 95,
-        commentCount: 12,
-        likeCount: 37,
-        tags: ['Vue.js', 'JavaScript', '前端']
-      },
-      {
-        id: 13,
-        title: '2023年前端面试常见问题及答案',
-        author: '用户ID: 29',
-        category: '求职讨论',
-        excerpt: '本文汇总了2023年前端开发面试中最常见的问题和推荐答案，包括JavaScript基础、框架使用、性能优化、工程化等方面的内容...',
-        createdAt: new Date('2025-02-25T09:45:12'),
-        viewCount: 210,
-        commentCount: 15,
-        likeCount: 62,
-        tags: ['面试', '前端', 'JavaScript']
-      }
-    ]
+    // 清空数据而不是使用模拟数据
+    posts.value = []
     totalPages.value = 1
   } finally {
     isLoading.value = false
@@ -337,14 +300,8 @@ const fetchCategories = async () => {
     }))
   } catch (error) {
     console.error('获取分类列表失败:', error)
-    // 使用模拟数据
-    popularCategories.value = [
-      { id: 9, name: '技术讨论', color: '#3498db', postCount: 42 },
-      { id: 10, name: '求职讨论', color: '#e74c3c', postCount: 28 },
-      { id: 11, name: '生活分享', color: '#2ecc71', postCount: 15 },
-      { id: 12, name: '问题求助', color: '#f39c12', postCount: 10 },
-      { id: 13, name: '新闻动态', color: '#9b59b6', postCount: 7 }
-    ]
+    // 清空数据而不是使用模拟数据
+    popularCategories.value = []
   }
 }
 
@@ -359,38 +316,23 @@ const fetchTags = async () => {
     }))
   } catch (error) {
     console.error('获取标签列表失败:', error)
-    // 使用模拟数据
-    popularTags.value = [
-      { id: 16, name: 'Python', count: 25 },
-      { id: 17, name: 'JavaScript', count: 42 },
-      { id: 18, name: '前端', count: 38 },
-      { id: 19, name: '后端', count: 30 },
-      { id: 20, name: 'FastAPI', count: 15 },
-      { id: 21, name: 'Vue.js', count: 28 },
-      { id: 22, name: 'React', count: 22 },
-      { id: 23, name: '数据库', count: 18 },
-      { id: 24, name: '面试', count: 35 },
-      { id: 25, name: '求职', count: 20 }
-    ]
+    // 清空数据而不是使用模拟数据
+    popularTags.value = []
   }
 }
 
 // 获取活跃用户
 const fetchActiveUsers = async () => {
+  // 检查是否有token（而不仅仅是isLoggedIn状态）
+  const token = localStorage.getItem('token')
+  if (!token) {
+    console.log('用户未登录，无法获取活跃用户数据')
+    activeUsers.value = []
+    return
+  }
+  
   try {
-    // 检查是否已登录
-    if (!isLoggedIn.value) {
-      // 使用模拟数据
-      activeUsers.value = [
-        { id: 1, name: '用户演示1', postCount: 42 },
-        { id: 2, name: '用户演示2', postCount: 38 },
-        { id: 3, name: '用户演示3', postCount: 27 },
-        { id: 4, name: '用户演示4', postCount: 15 },
-        { id: 5, name: '用户演示5', postCount: 9 }
-      ]
-      return
-    }
-    
+    console.log('尝试获取活跃用户数据...')
     // 已登录则请求API
     const response = await apiClient.get('/users', {
       params: {
@@ -399,21 +341,35 @@ const fetchActiveUsers = async () => {
         limit: 5
       }
     })
-    activeUsers.value = response.data.slice(0, 5).map((user: any) => ({
-      id: user.id,
-      name: user.username,
-      postCount: user.post_count || 0
-    }))
-  } catch (error) {
-    console.error('获取活跃用户失败:', error)
-    // 错误时也使用模拟数据
-    activeUsers.value = [
-      { id: 1, name: '用户演示1', postCount: 42 },
-      { id: 2, name: '用户演示2', postCount: 38 },
-      { id: 3, name: '用户演示3', postCount: 27 },
-      { id: 4, name: '用户演示4', postCount: 15 },
-      { id: 5, name: '用户演示5', postCount: 9 }
-    ]
+    
+    if (response.data && Array.isArray(response.data)) {
+      activeUsers.value = response.data.map(user => ({
+        ...user,
+        postsCount: user.posts_count || 0,
+        commentsCount: user.comments_count || 0
+      }))
+      console.log('成功获取活跃用户数据:', activeUsers.value.length)
+    } else {
+      console.warn('活跃用户数据格式不正确:', response.data)
+      activeUsers.value = []
+    }
+  } catch (error: any) {
+    console.error('获取活跃用户数据失败:', error)
+    
+    // 特殊处理401未授权错误
+    if (error.response && error.response.status === 401) {
+      console.log('Token无效或已过期，清除本地登录状态')
+      // 清除无效的token
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      // 重置状态
+      activeUsers.value = []
+      // 可选：重定向到登录页面
+      // router.push('/login')
+    } else {
+      // 其他错误
+      activeUsers.value = []
+    }
   }
 }
 
@@ -511,14 +467,19 @@ onMounted(() => {
   fetchActiveUsers()
 })
 
-// 测试功能
+// 测试功能 - 保留但不自动执行
 const testPostId = ref(11) // 默认值为已知存在的帖子ID
-const testPost = ref(null)
+const testPost = ref<any>(null) 
 const testLoading = ref(false)
-const testError = ref(null)
+const testError = ref<string | null>(null)
 
+// 修改测试函数，添加防止重复请求的逻辑
 const testFetchPost = async () => {
   if (!testPostId.value) return
+  if (testLoading.value) {
+    console.log('已有测试请求正在进行中，跳过')
+    return
+  }
   
   testLoading.value = true
   testError.value = null
@@ -529,7 +490,7 @@ const testFetchPost = async () => {
     const response = await apiClient.get(`/posts/${testPostId.value}`)
     console.log('测试获取帖子成功:', response.data)
     testPost.value = response.data
-  } catch (error) {
+  } catch (error: any) {
     console.error('测试获取帖子失败:', error)
     testError.value = error.message || '获取失败'
     
@@ -541,8 +502,13 @@ const testFetchPost = async () => {
   }
 }
 
-// 额外的测试函数
-const testDirectURL = async (type) => {
+// 额外的测试函数，增加防重复请求保护
+const testDirectURL = async (type: string) => {
+  if (testLoading.value) {
+    console.log('已有测试请求正在进行中，跳过')
+    return
+  }
+  
   testLoading.value = true
   testError.value = null
   testPost.value = null
@@ -562,7 +528,7 @@ const testDirectURL = async (type) => {
     const data = await response.json()
     console.log(`${type}路径请求成功:`, data)
     testPost.value = data
-  } catch (error) {
+  } catch (error: any) {
     console.error(`${type}路径请求失败:`, error)
     testError.value = `${type}路径请求失败: ${error.message}`
   } finally {
@@ -586,7 +552,7 @@ const checkServerStatus = async () => {
     const data = await response.json()
     console.log('服务器状态:', data)
     testError.value = `服务器正常: ${JSON.stringify(data)}`
-  } catch (error) {
+  } catch (error: any) {
     console.error('检查服务器状态失败:', error)
     testError.value = `检查服务器状态失败: ${error.message}`
   } finally {

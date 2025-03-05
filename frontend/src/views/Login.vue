@@ -10,16 +10,16 @@
         <div class="card-body">
           <form class="auth-form" @submit.prevent="handleLogin">
             <div class="form-group">
-              <label for="email">电子邮箱</label>
+              <label for="email">用户名</label>
               <input
                 id="email"
-                v-model="email"
-                type="email"
-                placeholder="请输入您的电子邮箱"
+                v-model="username"
+                type="text"
+                placeholder="请输入您的用户名"
                 required
-                autocomplete="email"
+                autocomplete="username"
               />
-              <div v-if="emailError" class="error-text">{{ emailError }}</div>
+              <div v-if="usernameError" class="error-text">{{ usernameError }}</div>
             </div>
             
             <div class="form-group">
@@ -49,9 +49,29 @@
               <div v-if="passwordError" class="error-text">{{ passwordError }}</div>
             </div>
             
+            <div class="form-group captcha-group">
+              <label for="captcha">验证码</label>
+              <div class="captcha-container">
+                <input 
+                  type="text" 
+                  id="captcha" 
+                  v-model="captchaCode" 
+                  placeholder="请输入验证码"
+                  required
+                >
+                <div class="captcha-image" @click="refreshCaptcha">
+                  <img v-if="captchaImage" :src="captchaImage" alt="验证码" />
+                  <div v-else class="captcha-placeholder">
+                    <span>加载中...</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="captchaError" class="error-text">{{ captchaError }}</div>
+            </div>
+            
             <div class="form-options">
               <label class="checkbox-label">
-                <input type="checkbox" v-model="rememberMe" />
+                <input type="checkbox" id="rememberMe" name="rememberMe" v-model="rememberMe" />
                 <span>记住我</span>
               </label>
             </div>
@@ -61,6 +81,10 @@
               <span v-else>登录</span>
             </button>
           </form>
+          
+          <div v-if="generalError" class="general-error">
+            {{ generalError }}
+          </div>
           
           <div class="divider">
             <span>或</span>
@@ -102,79 +126,291 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import apiClient from '../services/api'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 表单数据
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const rememberMe = ref(false)
 const showPassword = ref(false)
+const captchaId = ref('')
+const captchaCode = ref('')
 
 // 错误信息
-const emailError = ref('')
+const usernameError = ref('')
 const passwordError = ref('')
+const captchaError = ref('')
+const generalError = ref('')
 
 // 加载状态
 const isLoading = ref(false)
 
+// 验证码图片URL
+const captchaImage = ref('')
+
+// 获取验证码
+const getCaptcha = async () => {
+  isLoading.value = true;
+  captchaError.value = '';
+  captchaId.value = '';
+  captchaImage.value = '';
+  
+  console.log('开始获取验证码...');
+  
+  try {
+    // 使用当前时间戳防止缓存
+    const timestamp = new Date().getTime();
+    console.log('尝试请求验证码，URL:', `/captcha/generate?t=${timestamp}`);
+    
+    const response = await apiClient.get(`/captcha/generate?t=${timestamp}`, {
+      responseType: 'blob',
+      timeout: 10000, // 10秒超时
+      headers: {
+        'Accept': 'image/png',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    
+    console.log('验证码请求成功，状态码:', response.status);
+    
+    // 检查并记录所有响应头
+    console.log('验证码响应头:');
+    Object.keys(response.headers).forEach(key => {
+      console.log(`${key}: ${response.headers[key]}`);
+    });
+    
+    // 尝试多种可能的响应头名称（浏览器可能将头名称转为小写）
+    let id = response.headers['x-captcha-id'] || 
+             response.headers['X-Captcha-ID'] || 
+             response.headers['x-captcha-id'.toLowerCase()] ||
+             response.headers['X-CAPTCHA-ID'];
+    
+    if (!id) {
+      console.error('响应头中没有找到验证码ID');
+      throw new Error('验证码ID获取失败');
+    }
+    
+    console.log('成功获取验证码ID:', id);
+    captchaId.value = id;
+    
+    // 将Blob转换为base64
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64data = reader.result as string;
+      captchaImage.value = base64data;
+      console.log('验证码图片已设置，长度:', captchaImage.value.length);
+    };
+    reader.onerror = (error: any) => {
+      console.error('读取验证码图片失败:', error);
+      captchaError.value = '验证码图片加载失败';
+    };
+    reader.readAsDataURL(response.data);
+  } catch (error: any) {
+    console.error('获取验证码失败:', error);
+    captchaError.value = error.message || '获取验证码失败，请重试';
+    // 清空验证码ID和图片
+    captchaId.value = '';
+    captchaImage.value = '';
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+// 刷新验证码
+const refreshCaptcha = async () => {
+  console.log('手动刷新验证码');
+  captchaCode.value = ''; // 清空输入框
+  await getCaptcha();
+}
+
 // 登录处理
 const handleLogin = async () => {
   // 重置错误信息
-  emailError.value = ''
-  passwordError.value = ''
+  usernameError.value = '';
+  passwordError.value = '';
+  captchaError.value = '';
+  generalError.value = '';
   
   // 表单验证
-  let isValid = true
+  let isValid = true;
   
-  if (!email.value) {
-    emailError.value = '请输入电子邮箱'
-    isValid = false
-  } else if (!/\S+@\S+\.\S+/.test(email.value)) {
-    emailError.value = '请输入有效的电子邮箱'
-    isValid = false
+  if (!username.value) {
+    usernameError.value = '请输入用户名';
+    isValid = false;
   }
   
   if (!password.value) {
-    passwordError.value = '请输入密码'
-    isValid = false
+    passwordError.value = '请输入密码';
+    isValid = false;
   }
   
-  if (!isValid) return
+  if (!captchaCode.value) {
+    captchaError.value = '请输入验证码';
+    isValid = false;
+  }
+  
+  if (!captchaId.value) {
+    captchaError.value = '验证码ID无效，请刷新验证码';
+    await refreshCaptcha();
+    isValid = false;
+  }
+  
+  if (!isValid) return;
   
   // 设置加载状态
-  isLoading.value = true
+  isLoading.value = true;
   
   try {
-    // 模拟API请求
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    // 记录请求数据（不包含密码）
+    console.log('[Login] 登录请求数据:', {
+      username: username.value,
+      captcha_id: captchaId.value,
+      captcha_code: captchaCode.value,
+      remember: rememberMe.value
+    });
     
-    // 实际应用中这里会调用登录API
-    console.log('登录信息:', {
-      email: email.value,
-      password: '******',
-      rememberMe: rememberMe.value
-    })
+    // 使用authStore处理登录
+    console.log('[Login] 使用authStore处理登录...');
+    console.log('[Login] 传递参数: username:', username.value, ', captchaId:', captchaId.value, ', captchaCode:', captchaCode.value);
+    const loginResult = await authStore.login(
+      username.value, 
+      password.value, 
+      captchaId.value,  // 修正：这里应该传递验证码ID
+      captchaCode.value // 修正：这里应该传递验证码值
+    );
     
-    // 登录成功，跳转到首页
-    router.push('/')
-  } catch (error) {
-    // 处理登录错误
-    console.error('登录失败:', error)
+    console.log('[Login] 登录成功，结果:', loginResult);
     
-    // 显示一般错误消息
-    if (error instanceof Error) {
-      passwordError.value = error.message
+    // 检查localStorage中的token
+    const storedToken = localStorage.getItem('token');
+    console.log('[Login] 登录成功后检查localStorage中的token:', storedToken ? '存在' : '不存在');
+    if (storedToken) {
+      console.log('[Login] localStorage中的token长度:', storedToken.length);
+      console.log('[Login] localStorage中的token前20个字符:', storedToken.substring(0, 20));
+    }
+    
+    // 检查authStore中的认证状态
+    console.log('[Login] authStore.isAuthenticated:', authStore.isAuthenticated);
+    console.log('[Login] authStore.token存在:', !!authStore.token);
+    console.log('[Login] authStore.user存在:', !!authStore.user);
+    
+    // 强制刷新authStore状态
+    authStore.init();
+    console.log('[Login] 重新初始化后 authStore.isAuthenticated:', authStore.isAuthenticated);
+    
+    // 检查是否有返回路径
+    let returnPath = '/';
+    
+    try {
+      const savedPath = sessionStorage.getItem('returnPath');
+      
+      if (savedPath) {
+        returnPath = savedPath;
+        sessionStorage.removeItem('returnPath');
+        console.log('[Login] 准备重定向到:', returnPath);
+      }
+    } catch (e) {
+      console.error('[Login] 读取返回路径失败:', e);
+    }
+    
+    // 重定向到目标页面
+    console.log('[Login] 登录完成，重定向到:', returnPath);
+    router.push(returnPath);
+  } catch (error: any) {
+    console.error('[Login] 登录失败:', error);
+    
+    // 刷新验证码 - 只在登录失败时刷新
+    refreshCaptcha();
+    
+    // 特定处理验证码错误
+    if (error.response?.status === 400) {
+      const errorData = error.response.data;
+      console.log('[Login] 收到400错误:', errorData);
+      
+      // 检查错误数据格式
+      let errorMessage = '';
+      
+      if (errorData.error && errorData.error.message) {
+        // 新的错误格式
+        errorMessage = errorData.error.message;
+      } else if (errorData.detail) {
+        // 旧的错误格式
+        errorMessage = errorData.detail;
+      } else if (typeof errorData === 'string') {
+        // 直接字符串错误
+        errorMessage = errorData;
+      } else {
+        errorMessage = '请求参数错误';
+      }
+      
+      console.log('[Login] 错误消息:', errorMessage);
+      
+      // 处理验证码相关错误
+      if (errorMessage.includes('验证码')) {
+        captchaError.value = errorMessage;
+        console.log('[Login] 验证码错误:', errorMessage);
+      } else if (errorMessage.includes('用户名') || errorMessage.includes('不存在')) {
+        usernameError.value = errorMessage;
+        console.log('[Login] 用户名错误:', errorMessage);
+      } else if (errorMessage.includes('密码')) {
+        passwordError.value = errorMessage;
+        console.log('[Login] 密码错误:', errorMessage);
+      } else {
+        generalError.value = errorMessage;
+        console.log('[Login] 一般错误:', errorMessage);
+      }
+    } else if (error.response?.status === 401) {
+      passwordError.value = '用户名或密码错误';
+      console.log('[Login] 认证错误 (401)');
+    } else if (error.response?.status === 429) {
+      generalError.value = '请求过于频繁，请稍后再试';
+      console.log('[Login] 请求频率限制错误 (429)');
     } else {
-      passwordError.value = '登录失败，请检查您的凭据'
+      generalError.value = error.message || '登录失败，请稍后再试';
+      console.log('[Login] 其他错误:', error.message);
     }
   } finally {
-    // 重置加载状态
-    isLoading.value = false
+    isLoading.value = false;
   }
 }
+
+// 组件挂载时获取验证码
+onMounted(() => {
+  console.log('Login组件已挂载，获取首次验证码');
+  
+  // 测试localStorage
+  try {
+    console.log('[Login] 测试localStorage功能...');
+    localStorage.setItem('test_key', 'test_value');
+    const testValue = localStorage.getItem('test_key');
+    console.log('[Login] localStorage测试结果:', testValue === 'test_value' ? '成功' : '失败');
+    if (testValue !== 'test_value') {
+      console.error('[Login] localStorage测试失败：存储的值无法正确读取');
+    }
+    localStorage.removeItem('test_key');
+    const removedValue = localStorage.getItem('test_key');
+    console.log('[Login] localStorage移除测试:', removedValue === null ? '成功' : '失败');
+    
+    // 检查当前localStorage中是否存在token
+    const currentToken = localStorage.getItem('token');
+    console.log('[Login] 当前localStorage中token状态:', currentToken ? '存在' : '不存在');
+    if (currentToken) {
+      console.log('[Login] 当前token长度:', currentToken.length);
+    }
+  } catch (e) {
+    console.error('[Login] localStorage测试出错:', e);
+  }
+  
+  refreshCaptcha();
+  
+  // 不再使用定时器自动刷新验证码
+});
 </script>
 
 <style scoped>
@@ -518,5 +754,60 @@ const handleLogin = async () => {
   .card-title {
     font-size: 1.75rem;
   }
+}
+
+.general-error {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* 验证码相关样式 */
+.captcha-group {
+  margin-bottom: 1rem;
+}
+
+.captcha-container {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.captcha-container input {
+  flex: 1;
+}
+
+.captcha-image {
+  width: 130px;
+  height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  background-color: #f8fafc;
+}
+
+.captcha-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.captcha-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8fafc;
+  color: #64748b;
+  font-size: 0.85rem;
 }
 </style> 

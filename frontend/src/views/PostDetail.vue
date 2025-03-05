@@ -199,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed, ref, watchEffect } from 'vue'
+import { onMounted, computed, ref, watchEffect, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePostDetail } from '../composables/usePostDetail'
 import { formatDate } from '../utils/format'
@@ -210,14 +210,30 @@ console.log('PostDetail组件初始化, 路由参数:', route.params)
 
 // 确保 postId 正确解析为数字
 const postId = computed(() => {
-  console.log('计算postId，路由参数:', route.params)
+  console.log('计算postId，路由参数:', JSON.stringify(route.params))
   console.log('路由参数中的原始ID:', route.params.id, '类型:', typeof route.params.id)
   
-  // 确保是字符串再转数字，避免[object Object]的问题
-  const idStr = String(route.params.id)
-  const id = Number(idStr)
+  // 防止路由参数是对象的情况
+  let idStr: any = route.params.id
+  if (typeof idStr === 'object') {
+    console.error('警告: 路由ID参数是一个对象:', JSON.stringify(idStr))
+    if (idStr && typeof idStr === 'object' && 'id' in idStr) {
+      console.log('从对象中提取id属性')
+      idStr = idStr.id
+    } else {
+      console.error('尝试将对象转换为字符串')
+      idStr = String(idStr)
+    }
+  }
   
-  console.log('转换后的帖子ID:', id, '类型:', typeof id, '原始值:', route.params.id)
+  // 确保转换为字符串
+  const idAsString = String(idStr)
+  console.log('转换为字符串后的ID:', idAsString)
+  
+  // 转换为数字
+  const id = Number(idAsString)
+  console.log('转换后的帖子ID:', id, '类型:', typeof id)
+  
   if (isNaN(id) || id <= 0) {
     // 如果ID无效，重定向到首页
     console.error('无效的帖子ID，重定向到首页')
@@ -272,33 +288,31 @@ const reportPost = () => {
 const submitComment = async () => {
   if (!commentText.value.trim()) return
   
+  // 首先检查用户是否登录
+  const token = localStorage.getItem('token')
+  if (!token) {
+    console.log('用户未登录，需要先登录才能评论')
+    
+    // 存储当前状态，以便登录后返回
+    try {
+      sessionStorage.setItem('returnPath', router.currentRoute.value.fullPath)
+      sessionStorage.setItem('pendingAction', 'comment')
+      sessionStorage.setItem('pendingComment', commentText.value)
+    } catch (e) {
+      console.error('保存评论状态失败:', e)
+    }
+    
+    // 导航到登录页
+    router.push('/login')
+    return
+  }
+  
   // 使用我们的composable函数中的addComment方法
   const success = await addComment(commentText.value)
   
   // 如果评论发表成功，清空输入框
   if (success) {
     commentText.value = ''
-  }
-}
-
-// 手动获取帖子数据的函数
-const manualFetchPost = async () => {
-  console.log('手动获取帖子数据，ID:', postId.value)
-  if (postId.value <= 0) {
-    console.error('无效的帖子ID，不进行获取')
-    return
-  }
-  
-  try {
-    console.log('开始手动获取帖子，当前状态 - isLoading:', isLoading.value)
-    await fetchPost()
-    console.log('手动获取帖子完成，结果:', post.value ? '成功' : '失败')
-    
-    if (!post.value && !errorMessage.value) {
-      console.warn('获取成功但没有数据，可能是服务器返回了空数据')
-    }
-  } catch (error) {
-    console.error('手动获取帖子出错:', error)
   }
 }
 
@@ -311,34 +325,48 @@ onMounted(() => {
   console.log('post数据:', post.value)
   console.log('------------------------------------------')
   
-  // 手动调用一次获取数据
-  manualFetchPost()
+  // 设置定时器检查加载状态 - 改为只检查一次，不重复触发请求
+  let checkInterval: number | null = null;
   
-  // 设置定时器检查加载状态
-  const checkInterval = setInterval(() => {
-    console.log('定时检查 - isLoading:', isLoading.value, 'errorMessage:', errorMessage.value, 'post:', post.value ? '有数据' : '无数据')
-    if (!isLoading.value || errorMessage.value || post.value) {
-      clearInterval(checkInterval)
-      console.log('停止定时检查，状态已确定')
-    }
-  }, 1000)
-  
-  // 仍然保留超时检查
-  setTimeout(() => {
-    if (isLoading.value) {
-      console.warn('获取帖子超时，可能存在网络问题')
-      console.warn('当前状态 - isLoading:', isLoading.value, 'errorMessage:', errorMessage.value)
-      
-      // 如果超时，尝试再次获取
-      manualFetchPost()
-    } else if (errorMessage.value) {
-      console.error('获取帖子出错:', errorMessage.value)
-    } else if (!post.value) {
-      console.warn('获取帖子成功但数据为空')
-    }
+  // 只在开发环境中启用状态监控，减少不必要的请求和日志
+  if (process.env.NODE_ENV === 'development') {
+    checkInterval = window.setInterval(() => {
+      console.log('定时检查 - isLoading:', isLoading.value, 'errorMessage:', errorMessage.value, 'post:', post.value ? '有数据' : '无数据')
+      if (!isLoading.value || errorMessage.value || post.value) {
+        if (checkInterval !== null) {
+          clearInterval(checkInterval)
+          checkInterval = null
+          console.log('停止定时检查，状态已确定')
+        }
+      }
+    }, 1000)
     
-    clearInterval(checkInterval)
-  }, 5000)
+    // 设置超时检查，确保不会无限等待
+    const timeoutCheck = window.setTimeout(() => {
+      if (isLoading.value) {
+        console.warn('获取帖子超时，可能存在网络问题')
+        console.warn('当前状态 - isLoading:', isLoading.value, 'errorMessage:', errorMessage.value)
+      } else if (errorMessage.value) {
+        console.error('获取帖子出错:', errorMessage.value)
+      } else if (!post.value) {
+        console.warn('获取帖子成功但数据为空')
+      }
+      
+      if (checkInterval !== null) {
+        clearInterval(checkInterval)
+        checkInterval = null
+      }
+    }, 5000)
+    
+    // 确保在组件卸载时清除定时器，防止内存泄漏
+    onUnmounted(() => {
+      if (checkInterval !== null) {
+        clearInterval(checkInterval)
+        checkInterval = null
+      }
+      clearTimeout(timeoutCheck)
+    })
+  }
 })
 
 // 添加路由参数变化监听
