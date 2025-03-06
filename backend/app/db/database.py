@@ -1,12 +1,14 @@
 from contextlib import contextmanager
 from typing import Generator
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..core.config import settings
 from ..core.logging import get_logger
+
+# 导入从models/base.py中的Base
+from .models.base import Base
 
 logger = get_logger(__name__)
 
@@ -23,9 +25,6 @@ engine = create_engine(
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# 创建基本模型类
-Base = declarative_base()
 
 def get_db() -> Generator[Session, None, None]:
     """获取数据库会话"""
@@ -65,4 +64,7 @@ def init_db() -> None:
     - 创建所有表
     - 创建初始数据（如果需要）
     """
+    # 这里导入所有模型，确保它们被注册到Base的metadata中
+    from .models import User, Post, Comment, Category, Tag, Section, SectionModerator, PostVote, PostFavorite
+    
     Base.metadata.create_all(bind=engine)

@@ -27,7 +27,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 from ...db.models import SectionModerator
 import logging
-from ...dependencies import get_current_user
+from ...dependencies import get_current_user, require_user, check_post_ownership
 from ...crud import favorite as favorite_crud
 
 router = APIRouter()

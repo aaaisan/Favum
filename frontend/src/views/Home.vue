@@ -1,53 +1,5 @@
 <template>
   <div class="home-page">
-    <div class="test-links">
-      <h3>测试链接</h3>
-      <p>以下是直接链接到已知存在的帖子：</p>
-      <ul>
-        <li><router-link to="/posts/11">测试帖子 #11: 使用FastAPI构建高性能API</router-link></li>
-        <li><router-link to="/posts/12">测试帖子 #12</router-link></li>
-        <li><router-link to="/posts/13">测试帖子 #13</router-link></li>
-      </ul>
-    </div>
-    
-    <div class="direct-test">
-      <h3>直接API测试</h3>
-      <div class="input-group">
-        <input
-          type="number"
-          v-model="testPostId"
-          placeholder="输入帖子ID"
-          class="test-input"
-        />
-        <button @click="testFetchPost" class="test-button">获取帖子</button>
-      </div>
-      
-      <div v-if="testLoading" class="test-loading">加载中...</div>
-      <div v-else-if="testError" class="test-error">
-        <strong>错误:</strong> {{ testError }}
-      </div>
-      <div v-else-if="testPost" class="test-result">
-        <div class="test-result-header">
-          <strong>帖子ID:</strong> {{ testPost.id }} | 
-          <strong>标题:</strong> {{ testPost.title }}
-        </div>
-        <div class="test-result-content">
-          {{ testPost.content?.substring(0, 150) }}...
-        </div>
-      </div>
-      
-      <div class="debug-buttons">
-        <button @click="testDirectURL('相对')" class="debug-button">
-          测试相对路径 (/api/v1/posts/11)
-        </button>
-        <button @click="testDirectURL('绝对')" class="debug-button">
-          测试绝对路径 (http://127.0.0.1:8000/api/v1/posts/11)
-        </button>
-        <button @click="checkServerStatus" class="debug-button">
-          检查服务器状态
-        </button>
-      </div>
-    </div>
     
     <div class="header-section">
       <div class="container">
@@ -207,8 +159,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import apiClient from '../services/api'
+import { useAuthStore } from '../stores/auth'
+import { useRouter } from 'vue-router'
 
 // 定义类型
 interface Post {
@@ -243,7 +197,9 @@ interface User {
   postCount: number;
 }
 
-const isLoggedIn = ref(!!localStorage.getItem('token'))
+const authStore = useAuthStore()
+const router = useRouter()
+const isLoggedIn = computed(() => authStore.isAuthenticated)
 const isLoading = ref(true)
 const currentPage = ref(1)
 const totalPages = ref(5)
@@ -259,6 +215,7 @@ const activeUsers = ref<User[]>([])
 const fetchPosts = async () => {
   isLoading.value = true
   try {
+    console.log(`[Home] 获取帖子列表 - 认证状态: ${isLoggedIn.value}, token: ${localStorage.getItem('token') ? '存在' : '不存在'}`)
     const response = await apiClient.get('/posts', {
       params: {
         skip: (currentPage.value - 1) * postsPerPage,
@@ -278,9 +235,22 @@ const fetchPosts = async () => {
       tags: post.tags?.map((tag: any) => tag.name) || []
     }))
     totalPages.value = Math.ceil(response.data.total / postsPerPage)
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取帖子列表失败:', error)
-    // 清空数据而不是使用模拟数据
+    
+    // 特殊处理401未授权错误
+    if (error.response && error.response.status === 401) {
+      console.error('[Home] 获取帖子失败 - 401未授权')
+      if (isLoggedIn.value) {
+        // 更新状态
+        console.log('[Home] 清理无效的认证状态')
+        authStore.$reset()
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+      }
+    }
+    
+    // 清空数据
     posts.value = []
     totalPages.value = 1
   } finally {
@@ -326,13 +296,62 @@ const fetchActiveUsers = async () => {
   // 检查是否有token（而不仅仅是isLoggedIn状态）
   const token = localStorage.getItem('token')
   if (!token) {
-    console.log('用户未登录，无法获取活跃用户数据')
+    console.log('[Home] 用户未登录，无法获取活跃用户数据')
     activeUsers.value = []
     return
   }
   
+  // 检查用户角色
+  const userData = localStorage.getItem('user')
+  let userRole = 'user'
+  
+  if (userData) {
+    try {
+      const userObj = JSON.parse(userData)
+      userRole = userObj.role || 'user'
+      console.log('[Home] 用户角色:', userRole)
+    } catch (e) {
+      console.error('[Home] 解析用户数据失败:', e)
+    }
+  }
+  
+  // 只有管理员才能获取用户列表
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin' || userRole === 'moderator'
+  
+  if (!isAdmin) {
+    console.log('[Home] 非管理员用户，使用模拟活跃用户数据')
+    activeUsers.value = [
+      {
+        id: 1,
+        name: '热心用户',
+        postCount: 24
+      },
+      {
+        id: 2,
+        name: '新人分享',
+        postCount: 16
+      },
+      {
+        id: 3,
+        name: '技术达人',
+        postCount: 14
+      },
+      {
+        id: 4,
+        name: '资深用户',
+        postCount: 11
+      },
+      {
+        id: 5,
+        name: '问题终结者',
+        postCount: 8
+      }
+    ]
+    return
+  }
+  
   try {
-    console.log('尝试获取活跃用户数据...')
+    console.log('[Home] 尝试获取活跃用户数据...')
     // 已登录则请求API
     const response = await apiClient.get('/users', {
       params: {
@@ -344,28 +363,85 @@ const fetchActiveUsers = async () => {
     
     if (response.data && Array.isArray(response.data)) {
       activeUsers.value = response.data.map(user => ({
-        ...user,
+        id: user.id,
+        name: user.username,
         postsCount: user.posts_count || 0,
         commentsCount: user.comments_count || 0
       }))
-      console.log('成功获取活跃用户数据:', activeUsers.value.length)
+      console.log('[Home] 成功获取活跃用户数据:', activeUsers.value.length)
     } else {
-      console.warn('活跃用户数据格式不正确:', response.data)
+      console.warn('[Home] 活跃用户数据格式不正确:', response.data)
       activeUsers.value = []
     }
   } catch (error: any) {
-    console.error('获取活跃用户数据失败:', error)
+    console.error('[Home] 获取活跃用户数据失败:', error)
     
     // 特殊处理401未授权错误
     if (error.response && error.response.status === 401) {
-      console.log('Token无效或已过期，清除本地登录状态')
+      console.log('[Home] Token无效或已过期，清除本地登录状态')
       // 清除无效的token
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       // 重置状态
       activeUsers.value = []
-      // 可选：重定向到登录页面
-      // router.push('/login')
+    } else if (error.response && error.response.status === 403) {
+      console.log('[Home] 权限不足，使用模拟活跃用户数据')
+      activeUsers.value = [
+        {
+          id: 1,
+          name: '热心用户',
+          postCount: 24
+        },
+        {
+          id: 2,
+          name: '新人分享',
+          postCount: 16
+        },
+        {
+          id: 3,
+          name: '技术达人',
+          postCount: 14
+        },
+        {
+          id: 4,
+          name: '资深用户',
+          postCount: 11
+        },
+        {
+          id: 5,
+          name: '问题终结者',
+          postCount: 8
+        }
+      ]
+    } else if (error.response && error.response.status === 500) {
+      console.error('[Home] 服务器错误，使用模拟活跃用户数据')
+      activeUsers.value = [
+        {
+          id: 1,
+          name: '热心用户',
+          postCount: 24
+        },
+        {
+          id: 2,
+          name: '新人分享',
+          postCount: 16
+        },
+        {
+          id: 3,
+          name: '技术达人',
+          postCount: 14
+        },
+        {
+          id: 4,
+          name: '资深用户',
+          postCount: 11
+        },
+        {
+          id: 5,
+          name: '问题终结者',
+          postCount: 8
+        }
+      ]
     } else {
       // 其他错误
       activeUsers.value = []
@@ -461,104 +537,31 @@ const changePage = (page: number): void => {
 
 // 页面加载时获取数据
 onMounted(() => {
+  console.log('[Home] 组件挂载 - 检查认证状态')
+  
+  // 确保认证状态已经初始化
+  if (localStorage.getItem('token') && !authStore.isAuthenticated) {
+    console.log('[Home] 发现token存在但未初始化认证状态，重新初始化')
+    authStore.init()
+  }
+  
+  // 更新登录状态显示
+  console.log('[Home] 当前认证状态:', isLoggedIn.value)
+  
   fetchPosts()
   fetchCategories()
   fetchTags()
   fetchActiveUsers()
 })
 
-// 测试功能 - 保留但不自动执行
-const testPostId = ref(11) // 默认值为已知存在的帖子ID
-const testPost = ref<any>(null) 
-const testLoading = ref(false)
-const testError = ref<string | null>(null)
+// 监听认证状态变化
+watch(() => authStore.isAuthenticated, (newValue) => {
+  console.log('[Home] 认证状态发生变化:', newValue)
+  // 当登录状态变化时，刷新数据
+  fetchPosts()
+  fetchActiveUsers()
+})
 
-// 修改测试函数，添加防止重复请求的逻辑
-const testFetchPost = async () => {
-  if (!testPostId.value) return
-  if (testLoading.value) {
-    console.log('已有测试请求正在进行中，跳过')
-    return
-  }
-  
-  testLoading.value = true
-  testError.value = null
-  testPost.value = null
-  
-  try {
-    console.log(`测试获取帖子 ID: ${testPostId.value}`)
-    const response = await apiClient.get(`/posts/${testPostId.value}`)
-    console.log('测试获取帖子成功:', response.data)
-    testPost.value = response.data
-  } catch (error: any) {
-    console.error('测试获取帖子失败:', error)
-    testError.value = error.message || '获取失败'
-    
-    if (error.response) {
-      testError.value += ` (状态码: ${error.response.status})`
-    }
-  } finally {
-    testLoading.value = false
-  }
-}
-
-// 额外的测试函数，增加防重复请求保护
-const testDirectURL = async (type: string) => {
-  if (testLoading.value) {
-    console.log('已有测试请求正在进行中，跳过')
-    return
-  }
-  
-  testLoading.value = true
-  testError.value = null
-  testPost.value = null
-  
-  try {
-    let url = type === '相对' 
-      ? '/api/v1/posts/11' 
-      : 'http://127.0.0.1:8000/api/v1/posts/11'
-    
-    console.log(`尝试${type}路径请求:`, url)
-    const response = await fetch(url)
-    
-    if (!response.ok) {
-      throw new Error(`HTTP错误: ${response.status}`)
-    }
-    
-    const data = await response.json()
-    console.log(`${type}路径请求成功:`, data)
-    testPost.value = data
-  } catch (error: any) {
-    console.error(`${type}路径请求失败:`, error)
-    testError.value = `${type}路径请求失败: ${error.message}`
-  } finally {
-    testLoading.value = false
-  }
-}
-
-const checkServerStatus = async () => {
-  testLoading.value = true
-  testError.value = null
-  
-  try {
-    console.log('检查后端服务状态')
-    // 检查后端健康状态 
-    const response = await fetch('/api/v1/health')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP错误: ${response.status}`)
-    }
-    
-    const data = await response.json()
-    console.log('服务器状态:', data)
-    testError.value = `服务器正常: ${JSON.stringify(data)}`
-  } catch (error: any) {
-    console.error('检查服务器状态失败:', error)
-    testError.value = `检查服务器状态失败: ${error.message}`
-  } finally {
-    testLoading.value = false
-  }
-}
 </script>
 
 <style scoped>

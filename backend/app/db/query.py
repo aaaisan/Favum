@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.expression import select
 from sqlalchemy import and_, or_
 
+# 更新导入路径，改用models包
 from .models import Base, User
 from ..core.exceptions import NotFoundError
 
@@ -146,18 +147,19 @@ class UserQuery:
         return posts
 
 class BoardQuery:
-    """版块查询优化器"""
+    """版块查询助手类"""
     
     @staticmethod
     def get_board_posts(
-        db: Session, 
-        board_id: int, 
+        db: Session,
+        board_id: int,  # 保留参数名称以保持API兼容性
         skip: int = 0,
-        limit: int = 20,
-        include_user: bool = True
+        limit: int = 10,
+        include_user: bool = False,
+        include_section: bool = False
     ) -> List[Any]:
         """
-        获取指定版块的所有帖子
+        获取版块下的所有帖子
         
         Args:
             db: 数据库会话
@@ -165,6 +167,7 @@ class BoardQuery:
             skip: 跳过的记录数
             limit: 返回的最大记录数
             include_user: 是否包含用户信息
+            include_section: 是否包含版块信息
             
         Returns:
             List[Any]: 帖子列表
@@ -173,23 +176,25 @@ class BoardQuery:
             NotFoundError: 当版块不存在时抛出
         """
         # 导入必要的模型，避免循环导入
-        from .models import Post, Board
+        from .models import Post, Section
         
         # 验证版块是否存在
-        board = QueryOptimizer.get_by_id(
+        section = QueryOptimizer.get_by_id(
             db, 
-            Board, 
+            Section, 
             board_id,
             error_detail=f"ID为{board_id}的版块不存在"
         )
         
         # 准备过滤条件
-        filters = [Post.board_id == board_id]
+        filters = [Post.section_id == board_id]
         
         # 准备连接选项
         options = []
         if include_user:
             options.append(joinedload(Post.user))
+        if include_section:
+            options.append(joinedload(Post.section))
         
         # 查询帖子
         posts = QueryOptimizer.get_multi(

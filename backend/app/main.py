@@ -14,7 +14,7 @@ from .db.database import init_db
 from .core.logging import setup_logging, get_logger
 from .core.cache import RedisClient, cache_manager
 from jose import jwt  # 导入jwt模块
-from .middleware.error_handler import add_error_handler
+from .middlewares import add_error_handler
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 

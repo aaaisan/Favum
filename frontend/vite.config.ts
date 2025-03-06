@@ -40,11 +40,11 @@ export default defineConfig({
               console.log(`[Vite Proxy] 代理请求不包含认证头`);
             }
             
+            // 添加Origin头，确保CORS正确处理
+            proxyReq.setHeader('Origin', 'http://localhost:8080');
+            
             // 添加X-Requested-With头以标识AJAX请求
             proxyReq.setHeader('X-Requested-With', 'XMLHttpRequest');
-            
-            // 添加自定义头，方便调试
-            proxyReq.setHeader('X-Proxy-Debug', 'vite-proxy');
           });
           
           // 记录代理响应
@@ -55,6 +55,10 @@ export default defineConfig({
             if (proxyRes.statusCode === 401) {
               console.error(`[Vite Proxy] 收到401未授权响应，请求可能缺少有效的认证信息`);
             }
+            
+            // 检查CORS头
+            const corsOrigin = proxyRes.headers['access-control-allow-origin'];
+            console.log(`[Vite Proxy] CORS Origin头: ${corsOrigin || '无'}`);
           });
         }
       }

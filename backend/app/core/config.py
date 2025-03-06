@@ -104,8 +104,27 @@ class Settings(BaseSettings):
     """
 
     # 开发环境中允许所有源
-    CORS_ORIGINS: List[str] = ["*"]
-    """允许的CORS源，开发环境中允许所有源"""
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:5173",  # Vite 默认端口
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",  # React 默认端口
+        "http://127.0.0.1:3000", 
+        "http://localhost:5000",  # Flask 默认端口
+        "http://127.0.0.1:5000",
+        "http://localhost:4200",  # Angular 默认端口
+        "http://127.0.0.1:4200",
+        "http://localhost:9000",  # 常见开发端口
+        "http://127.0.0.1:9000",
+        "http://localhost:5174",  # Vite 可能的替代端口
+        "http://127.0.0.1:5174",
+        "http://localhost:4000",  # 常见开发端口
+        "http://127.0.0.1:4000",
+        "http://localhost:4173",  # Vite 预览模式端口
+        "http://127.0.0.1:4173"
+    ]
+    """允许的CORS源，使用具体的源列表而非通配符，以支持凭证请求"""
     
     ALLOWED_HOSTS: List[str] = ["*"]
     """允许的主机名列表"""

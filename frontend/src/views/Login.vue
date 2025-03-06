@@ -301,8 +301,23 @@ const handleLogin = async () => {
     console.log('[Login] authStore.user存在:', !!authStore.user);
     
     // 强制刷新authStore状态
-    authStore.init();
+    await authStore.init();
     console.log('[Login] 重新初始化后 authStore.isAuthenticated:', authStore.isAuthenticated);
+    
+    // 确保认证状态正确设置后再跳转
+    if (!authStore.isAuthenticated) {
+      console.warn('[Login] 登录后认证状态仍为false，尝试修复...');
+      // 手动设置认证信息
+      if (storedToken) {
+        authStore.token = storedToken;
+        console.log('[Login] 手动设置认证token');
+        // 再次初始化以解析用户信息
+        await authStore.init();
+      }
+    }
+    
+    // 再次确认认证状态
+    console.log('[Login] 最终认证状态:', authStore.isAuthenticated);
     
     // 检查是否有返回路径
     let returnPath = '/';
@@ -319,9 +334,11 @@ const handleLogin = async () => {
       console.error('[Login] 读取返回路径失败:', e);
     }
     
-    // 重定向到目标页面
+    // 重定向到目标页面，添加延迟确保状态已更新
     console.log('[Login] 登录完成，重定向到:', returnPath);
-    router.push(returnPath);
+    setTimeout(() => {
+      router.push(returnPath);
+    }, 100);
   } catch (error: any) {
     console.error('[Login] 登录失败:', error);
     

@@ -16,10 +16,13 @@ const apiClient: AxiosInstance = axios.create({
   timeout: 15000, // 增加超时时间
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest' // 确保所有请求都带有这个头
   },
-  // 不跟随重定向
-  maxRedirects: 0
+  // 禁用自动重定向处理，我们将自己处理重定向
+  maxRedirects: 0,
+  // 默认发送凭证
+  withCredentials: true
 })
 
 // 添加请求拦截器
@@ -31,15 +34,8 @@ apiClient.interceptors.request.use(
     // 获取token并添加到请求头 - 每次请求都重新从localStorage获取，避免使用过期引用
     let token = null;
     
-    // 测试localStorage功能
     try {
-      // 先测试localStorage是否正常工作
-      localStorage.setItem('test-key', 'test-value');
-      const testValue = localStorage.getItem('test-key');
-      console.log(`[API Client] localStorage测试: ${testValue === 'test-value' ? '正常' : '异常'}`);
-      localStorage.removeItem('test-key');
-      
-      // 现在尝试获取真正的token
+      // 获取token
       token = localStorage.getItem('token');
       console.log(`[API Client] 当前token状态: ${token ? '存在' : '不存在'}${token ? '，长度:' + token.length : ''}`);
     } catch (e) {
@@ -47,34 +43,11 @@ apiClient.interceptors.request.use(
     }
     
     if (token && config.headers) {
-      // 设置Authorization头，使用小写以确保兼容性
-      config.headers['authorization'] = `Bearer ${token}`;
-      // 同时设置大写版本以增加兼容性
+      // 设置Authorization头（现在只设置一次，避免重复）
       config.headers['Authorization'] = `Bearer ${token}`;
       console.log(`[API Client] 已添加Authorization头: Bearer ${token.substring(0, 15)}...`);
-      
-      // 添加X-Requested-With头，帮助服务器识别这是一个AJAX请求
-      config.headers['X-Requested-With'] = 'XMLHttpRequest';
-      
-      // 确保携带凭证
-      config.withCredentials = true;
-      
-      // 打印所有请求头以便调试
-      console.log(`[API Client] 完整请求头:`, JSON.stringify(config.headers));
     } else if (!token) {
       console.warn(`[API Client] 没有token，请求将不包含Authorization头`);
-      // 尝试重新获取一次
-      try {
-        const manualToken = localStorage.getItem('token');
-        console.log(`[API Client] 第二次尝试获取token: ${manualToken ? '存在' : '不存在'}`);
-      } catch (e) {
-        console.error(`[API Client] 第二次获取token失败:`, e);
-      }
-      
-      // 仍然添加X-Requested-With头以标识AJAX请求
-      if (config.headers) {
-        config.headers['X-Requested-With'] = 'XMLHttpRequest';
-      }
     }
     
     // 确保Content-Type正确
@@ -116,83 +89,134 @@ apiClient.interceptors.request.use(
   }
 )
 
-// 添加响应拦截器
+// 添加响应拦截器专门处理重定向
 apiClient.interceptors.response.use(
-  (response) => {
-    // 对响应数据做点什么
-    console.log(`[API Client] 响应成功 (${response.status}): ${response.config.method?.toUpperCase()} ${response.config.url}`)
+  async (response) => {
+    // 处理响应数据
+    console.log(`[API Client] 收到响应: ${response.status} ${response.config.url}`)
     
-    // 清除进行中的请求标记
-    const requestId = response.config.url || ''
-    pendingRequests.delete(requestId)
-    
-    // 成功响应也清除失败计数
-    failedRequests.delete(requestId)
-    
-    return response
-  },
-  (error: AxiosError) => {
-    // 对响应错误做点什么
-    if (error.response) {
-      console.error(`[API Client] 响应错误 (${error.response.status}):`, error.response.data)
+    // 如果是重定向响应，我们自己处理重定向，保留认证头
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.location;
+      console.log(`[API Client] 收到重定向响应: ${response.status} -> ${location || '未指定目标'}`)
       
-      // 如果是401错误（未授权），可能是token过期或无效
-      if (error.response.status === 401) {
-        console.warn('[API Client] 收到401未授权响应')
+      if (location) {
+        // 创建一个新的请求配置，保留原始请求的所有头和配置
+        const redirectConfig = { ...response.config };
         
-        // 获取当前路径
-        const currentPath = window.location.pathname
-        const isLoginPage = currentPath === '/login'
+        // 检查认证头
+        const hasAuthHeader = redirectConfig.headers && 
+                            (redirectConfig.headers['Authorization'] || 
+                             redirectConfig.headers['authorization']);
+                             
+        console.log(`[API Client] 重定向请求${hasAuthHeader ? '包含' : '不包含'}认证头`);
         
-        // 清除本地存储的身份验证数据
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
-        console.log('[API Client] 已清除本地存储的身份验证数据')
+        // 如果没有认证头但有token，强制添加
+        if (!hasAuthHeader) {
+          const token = localStorage.getItem('token');
+          if (token && redirectConfig.headers) {
+            console.log(`[API Client] 重定向请求添加认证头`);
+            redirectConfig.headers['Authorization'] = `Bearer ${token}`;
+          }
+        }
         
-        // 仅在非登录页发生401错误时重定向到登录页
-        if (!isLoginPage) {
-          console.log('[API Client] 未授权，保存当前路径并重定向到登录页')
-          // 保存当前路径
-          sessionStorage.setItem('returnPath', currentPath)
-          
-          // 重定向到登录页面
-          window.location.href = '/login'
+        // 设置新的URL
+        if (location.startsWith('http')) {
+          // 绝对URL
+          redirectConfig.url = location;
+        } else if (location.startsWith('/')) {
+          // 相对于根的URL
+          redirectConfig.url = location.replace(/^\/api\/v1/, ''); // 移除前缀避免重复
         } else {
-          console.log('[API Client] 在登录页收到401错误，不需要重定向')
+          // 相对URL
+          const originalUrl = redirectConfig.url || '';
+          const base = originalUrl.split('/').slice(0, -1).join('/');
+          redirectConfig.url = `${base}/${location}`;
+        }
+        
+        console.log(`[API Client] 手动处理重定向到: ${redirectConfig.url}`);
+        console.log(`[API Client] 重定向请求头:`, JSON.stringify(redirectConfig.headers));
+        
+        // 确保重定向请求不会再次被自动重定向处理
+        redirectConfig.maxRedirects = 0;
+        
+        try {
+          // 发起新请求，保留原有配置包括认证头
+          const redirectResponse = await apiClient(redirectConfig);
+          console.log(`[API Client] 重定向请求成功, 状态码: ${redirectResponse.status}`);
+          return redirectResponse;
+        } catch (error) {
+          console.error(`[API Client] 重定向请求失败:`, error);
+          throw error;
+        }
+      }
+    }
+    
+    return response;
+  },
+  (error) => {
+    // 处理响应错误
+    if (error.response) {
+      // 服务器返回了错误状态码
+      console.error(`[API Client] 响应错误: ${error.response.status} ${error.config?.url}`)
+      
+      // 如果是重定向错误，尝试手动处理
+      if (error.response.status >= 300 && error.response.status < 400) {
+        const location = error.response.headers?.location;
+        console.log(`[API Client] 重定向错误: ${error.response.status} -> ${location || '未指定目标'}`)
+        
+        // 如果有重定向地址，尝试手动重定向
+        if (location) {
+          console.log(`[API Client] 尝试处理重定向错误...`);
+          
+          // 创建一个Promise，延迟后发起新请求
+          return new Promise(resolve => {
+            setTimeout(() => {
+              // 获取原始配置
+              const redirectConfig = { ...error.config };
+              
+              // 强制添加认证头
+              const token = localStorage.getItem('token');
+              if (token && redirectConfig.headers) {
+                redirectConfig.headers['Authorization'] = `Bearer ${token}`;
+                console.log(`[API Client] 重定向错误处理 - 添加认证头`);
+              }
+              
+              // 设置新URL
+              if (location.startsWith('http')) {
+                redirectConfig.url = location;
+              } else if (location.startsWith('/')) {
+                redirectConfig.url = location.replace(/^\/api\/v1/, '');
+              }
+              
+              console.log(`[API Client] 重定向错误处理 - 发起新请求: ${redirectConfig.url}`);
+              
+              // 发起新请求
+              resolve(apiClient(redirectConfig));
+            }, 100);
+          });
+        }
+      }
+      
+      // 如果是401错误，可能是token无效，清除token
+      if (error.response.status === 401) {
+        console.error(`[API Client] 认证失败: ${error.response.data?.detail || error.response.data?.error?.message || '未知错误'}`)
+        
+        try {
+          localStorage.removeItem('token')
+          console.log(`[API Client] 已清除token`)
+        } catch (e) {
+          console.error(`[API Client] 清除token失败: ${e}`)
         }
       }
     } else if (error.request) {
-      // 请求已经发出，但没有收到响应
-      console.error('[API Client] 请求未收到响应:', error.request)
+      // 请求已发送但没有收到响应
+      console.error(`[API Client] 无响应错误: ${error.message}`)
     } else {
-      // 在设置请求时触发的错误
-      console.error('[API Client] 请求配置错误:', error.message)
+      // 请求配置出错
+      console.error(`[API Client] 请求错误: ${error.message}`)
     }
     
-    // 获取请求ID
-    const requestId = error.config?.url || ''
-    
-    // 清除进行中的请求标记
-    pendingRequests.delete(requestId)
-    
-    // 处理请求失败计数
-    if (error.response && (error.response.status === 404 || error.response.status === 401)) {
-      const currentCount = failedRequests.get(requestId) || 0
-      failedRequests.set(requestId, currentCount + 1)
-      
-      if (currentCount + 1 >= MAX_RETRY_COUNT) {
-        console.warn(`[API Client] 请求 ${requestId} 已达到最大失败次数 (${MAX_RETRY_COUNT})，不再重试`)
-      }
-    }
-    
-    if (error.code === 'ERR_NETWORK') {
-      console.error('[API Client] 网络错误，请检查后端服务是否正在运行:', error.message)
-    } else if (error.message === '重复的请求已被取消' || error.message === '请求失败次数过多，已停止重试') {
-      // 这是我们自己取消的请求，不需要记录错误
-      console.log('[API Client]', error.message)
-    } else {
-      console.error('[API Client] 请求失败:', error.message)
-    }
     return Promise.reject(error)
   }
 )

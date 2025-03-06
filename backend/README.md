@@ -1543,3 +1543,151 @@ GET /api/v1/seed/clear-forum-data
 3. **标签**：Python、JavaScript、Vue.js、React、FastAPI等
 4. **帖子**：关于技术、设计、职业发展的示例帖子
 5. **评论**：与帖子相关的用户讨论
+
+## API速率限制功能
+
+论坛系统实现了多层次的API速率限制功能，以防止API滥用并确保系统稳定性。开发者可以根据不同场景选择适合的限流方法。所有限流实现都基于Redis，支持分布式部署场景。
+
+### 限流方法概述
+
+系统提供三种限流实现方式：
+
+1. **全局中间件限流** - 应用于所有API请求
+2. **端点装饰器限流** - 针对特定API端点的精细控制
+3. **依赖函数限流** - 可在路由处理函数内动态应用
+
+### 1. 全局中间件限流
+
+适用于为所有API请求提供基础保护的场景。
+
+#### 配置方法
+
+在 `main.py` 中启用中间件：
+
+```python
+from app.middlewares import RateLimitMiddleware
+
+# 在应用启动时添加中间件
+app.add_middleware(RateLimitMiddleware)
+```
+
+中间件配置在 `core/config.py` 中：
+
+```python
+# 限流配置
+RATE_LIMIT_ENABLED = True
+RATE_LIMIT_REQUESTS = 60  # 默认每个IP每分钟60个请求
+RATE_LIMIT_WINDOW = 60  # 时间窗口（秒）
+```
+
+#### 特点
+
+- 全局生效，无需修改各个端点
+- 支持在配置中快速调整限流参数
+- 提供IP级别的默认保护
+- 可配置豁免特定路径（如文档、健康检查等）
+
+### 2. 端点装饰器限流
+
+适用于需要对特定API端点进行精细控制的场景，尤其是敏感或资源密集型操作。
+
+#### 使用方法
+
+直接在路由函数上应用装饰器：
+
+```python
+from fastapi import APIRouter, Request
+from app.core.decorators import endpoint_rate_limit
+
+router = APIRouter()
+
+@router.post("/sensitive-operation")
+@endpoint_rate_limit(limit=10, window=60)  # 每分钟最多10次请求
+async def sensitive_endpoint(request: Request):
+    """需要特殊限流的敏感操作"""
+    return {"message": "操作成功"}
+```
+
+#### 特点
+
+- 针对特定端点定制限流规则
+- 可基于用户ID或IP进行限流
+- 支持自定义键生成函数，实现复杂限流逻辑
+- 自动记录限流触发的详细日志
+
+### 3. 依赖函数限流
+
+适用于需要在请求处理过程中动态决定限流策略的场景。
+
+#### 使用方法
+
+在路由函数中注入依赖项：
+
+```python
+from fastapi import APIRouter, Depends, Request
+from app.dependencies import rate_limit
+
+router = APIRouter()
+
+@router.get("/dynamic-limited-endpoint/{resource_id}")
+async def dynamic_endpoint(
+    resource_id: int,
+    request: Request,
+    # 使用速率限制依赖，每30秒最多5个请求
+    _: bool = Depends(rate_limit(limit=5, window=30))
+):
+    """使用依赖注入方式限流的端点"""
+    return {"resource_id": resource_id}
+```
+
+对于仅基于IP的简化限流：
+
+```python
+@router.get("/ip-limited-endpoint")
+async def ip_endpoint(
+    request: Request,
+    _: bool = Depends(ip_rate_limit(limit=20, window=60))
+):
+    """仅基于IP限流的端点"""
+    return {"message": "Hello"}
+```
+
+#### 特点
+
+- 可以根据请求参数动态调整限流规则
+- 易于在现有端点上添加限流功能
+- 可与其他依赖项组合使用
+- 支持更细粒度的控制，如特定资源或操作的限流
+
+### 限流触发响应
+
+当请求超过限制时，API将返回：
+
+- HTTP状态码：`429 Too Many Requests`
+- 响应体：`{"detail": "请求太频繁，请稍后再试"}`
+
+### 最佳实践
+
+1. **分层限流策略**：
+   - 使用全局中间件提供基础保护
+   - 对敏感端点使用更严格的端点装饰器限流
+   - 需要特殊逻辑的场景使用依赖函数限流
+
+2. **合理设置限制**：
+   - 读取操作可以设置较宽松的限制
+   - 写入、删除等操作应设置较严格的限制
+   - 账户操作（如登录、注册）需要特别严格的限制
+
+3. **监控与调整**：
+   - 定期检查限流日志，了解API使用模式
+   - 根据实际使用情况调整限流参数
+   - 对频繁触发限流的IP或用户进行分析
+
+4. **用户体验考虑**：
+   - 在前端实现退避算法，避免频繁重试
+   - 向用户提供清晰的限流提示
+   - 考虑为高级用户或特定场景提供更高的限制
+
+### 实现细节
+
+所有限流方法都使用 `core/cache.py` 中的 `RateLimiter` 类，确保统一的限流行为和性能。该实现基于Redis的计数器和过期时间机制，支持分布式环境下的准确限流。

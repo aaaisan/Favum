@@ -7,7 +7,7 @@ from ...schemas import post as post_schema
 from ...schemas import auth as auth_schema
 from ...crud import user as user_crud
 from ...crud import favorite as favorite_crud
-from ...dependencies import get_current_user
+from ...dependencies import get_current_user, require_user, require_admin
 from ...core.endpoint_utils import (
     admin_endpoint,
     moderator_endpoint,

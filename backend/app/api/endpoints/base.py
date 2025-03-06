@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional, Type
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends, status
 from pydantic import BaseModel
 import logging
 
@@ -8,7 +8,8 @@ from ...core.decorators import (
     rate_limit,
     cache,
     validate_token,
-    log_execution_time
+    log_execution_time,
+    endpoint_rate_limit
 )
 from ...core.base_service import BaseService
 from sqlalchemy.exc import SQLAlchemyError
@@ -159,4 +160,22 @@ class BaseEndpoint:
         async def count(request: Request) -> Dict[str, int]:
             """获取记录总数"""
             count = await self.service.count()
-            return {"count": count} 
+            return {"count": count}
+
+router = APIRouter()
+
+@router.get("/example")
+@endpoint_rate_limit(limit=30, window=60)  # 每分钟最多30个请求
+async def example_endpoint(request: Request):
+    """
+    示例端点，演示特定端点的限流功能
+    
+    此端点使用endpoint_rate_limit装饰器限制请求频率为每分钟30次。
+    
+    Args:
+        request: FastAPI请求对象
+        
+    Returns:
+        dict: 示例响应
+    """
+    return {"message": "这是一个示例端点，已应用速率限制"} 
