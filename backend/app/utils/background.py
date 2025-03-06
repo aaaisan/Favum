@@ -12,12 +12,8 @@ import time
 from contextlib import contextmanager
 
 from ..core.logging import get_logger
-from ..core.decorators import (
-    handle_exceptions, 
-    log_execution_time, 
-    retry,
-    log_exception
-)
+from ..core.decorators.error import handle_exceptions, retry
+from ..core.decorators.logging import log_execution_time, log_exception
 from ..core.profiling import Profiler
 
 logger = get_logger(__name__)

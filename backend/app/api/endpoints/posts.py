@@ -7,16 +7,10 @@ from ...db.database import get_db
 from ...schemas import post as post_schema
 from ...crud import post as post_crud
 from ...core.auth import get_current_active_user
-from ...core.decorators import (
-    handle_exceptions,
-    rate_limit,
-    cache,
-    validate_token,
-    log_execution_time,
-    require_permissions,
-    require_roles,
-    owner_required
-)
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import validate_token, require_permissions, require_roles, owner_required
+from ...core.decorators.performance import rate_limit, cache
+from ...core.decorators.logging import log_execution_time
 from ...core.endpoint_utils import (
     admin_endpoint,
     moderator_endpoint,

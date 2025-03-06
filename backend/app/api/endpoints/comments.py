@@ -4,17 +4,12 @@ from typing import List
 from ...db.database import get_db
 from ...schemas import comment as comment_schema
 from ...crud import comment as comment_crud
-from ...core.decorators import (
-    handle_exceptions,
-    rate_limit,
-    cache,
-    validate_token,
-    log_execution_time,
-    require_permissions,
-    require_roles,
-    owner_required
-)
-from ...core.permissions import Permission, Role
+from ...dependencies import get_current_user
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import validate_token, require_permissions, require_roles, owner_required
+from ...core.decorators.performance import rate_limit, cache
+from ...core.decorators.logging import log_execution_time
+from ...core.enums import Permission, Role
 from sqlalchemy.exc import SQLAlchemyError
 import logging
 from fastapi.responses import JSONResponse

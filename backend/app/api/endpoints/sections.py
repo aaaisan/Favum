@@ -9,13 +9,17 @@ from ...schemas import post as post_schema
 from ...crud import section as section_crud
 from ...core.auth import get_current_active_user
 from ...db.query import BoardQuery
-from ...core.decorators import (
-    cache, 
-    log_execution_time, 
-    validate_token, 
-    require_roles, 
-    handle_exceptions
-)
+# from ...core.decorators import (
+#     cache, 
+#     log_execution_time, 
+#     validate_token, 
+#     require_roles, 
+#     handle_exceptions
+# )
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import validate_token, require_roles
+from ...core.decorators.performance import cache
+from ...core.decorators.logging import log_execution_time
 
 router = APIRouter()
 permissions = PermissionChecker()

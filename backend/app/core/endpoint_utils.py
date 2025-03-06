@@ -16,7 +16,7 @@ from functools import wraps
 
 from fastapi import HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
-from ..core.permissions import Role, Permission
+from ..core.enums import Role, Permission
 from ..core.decorators import (
     handle_exceptions,
     rate_limit,

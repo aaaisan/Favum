@@ -4,7 +4,8 @@ from datetime import datetime
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...core.decorators import handle_exceptions, log_execution_time, retry
+from ...core.decorators.error import handle_exceptions, retry
+from ...core.decorators.logging import log_execution_time
 from ..database import Base, get_db
 from sqlalchemy.exc import SQLAlchemyError
 

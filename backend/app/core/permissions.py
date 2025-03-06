@@ -5,42 +5,7 @@ from collections import deque
 from ..db.models import UserRole, Post, User, Section
 from ..db.database import get_db
 from .auth import get_current_active_user
-from enum import Enum
-from .cache_decorators import memo
-
-class Role(str, Enum):
-    """系统角色定义"""
-    GUEST = "guest"
-    USER = "user"
-    MODERATOR = "moderator"
-    ADMIN = "admin"
-    SUPER_ADMIN = "super_admin"
-    
-    def __str__(self) -> str:
-        return self.value
-
-class Permission(str, Enum):
-    """系统权限定义"""
-    # 帖子相关权限
-    CREATE_POST = "create_post"
-    EDIT_POST = "edit_post"
-    DELETE_POST = "delete_post"
-    HIDE_POST = "hide_post"
-    
-    # 评论相关权限
-    CREATE_COMMENT = "create_comment"
-    EDIT_COMMENT = "edit_comment"
-    DELETE_COMMENT = "delete_comment"
-    
-    # 用户相关权限
-    EDIT_PROFILE = "edit_profile"
-    VIEW_USERS = "view_users"
-    
-    # 管理权限
-    MANAGE_USERS = "manage_users"
-    MANAGE_CONTENT = "manage_content"
-    MANAGE_SECTIONS = "manage_sections"
-    MANAGE_SYSTEM = "manage_system"
+from .enums import Role, Permission
 
 # 统一角色配置：包含权限和继承关系
 ROLE_CONFIG = {
@@ -105,7 +70,6 @@ def safe_enum_parse(enum_class, value, default=None):
     except (ValueError, KeyError):
         return default
 
-@memo(maxsize=32)
 def get_role_permissions(role: Role) -> Set[Permission]:
     """
     获取角色所有权限（包含继承的权限）
@@ -118,25 +82,32 @@ def get_role_permissions(role: Role) -> Set[Permission]:
     Returns:
         角色拥有的所有权限集合
     """
-    # 使用BFS代替递归，更高效处理大型层次结构
-    result = set(ROLE_PERMISSIONS.get(role, []))
+    # 在函数内部导入避免循环引用
+    from .decorators.cache import memo
     
-    # 使用队列进行广度优先遍历
-    queue = deque(ROLE_HIERARCHY.get(role, []))
-    processed = {role}
+    # 定义内部函数并使用缓存
+    @memo
+    def _get_permissions(r: Role) -> Set[Permission]:
+        # 使用BFS代替递归，更高效处理大型层次结构
+        result = set(ROLE_PERMISSIONS.get(r, []))
+        
+        # 使用队列进行广度优先遍历
+        queue = deque(ROLE_HIERARCHY.get(r, []))
+        processed = {r}
+        
+        while queue:
+            current_role = queue.popleft()
+            if current_role in processed:
+                continue
+                
+            processed.add(current_role)
+            result.update(ROLE_PERMISSIONS.get(current_role, []))
+            queue.extend(r for r in ROLE_HIERARCHY.get(current_role, []) if r not in processed)
+                
+        return result
     
-    while queue:
-        current_role = queue.popleft()
-        if current_role in processed:
-            continue
-            
-        processed.add(current_role)
-        result.update(ROLE_PERMISSIONS.get(current_role, []))
-        queue.extend(r for r in ROLE_HIERARCHY.get(current_role, []) if r not in processed)
-            
-    return result
+    return _get_permissions(role)
 
-@memo(maxsize=100)
 def has_permission(user_role: str, permission: Permission) -> bool:
     """
     检查角色是否拥有指定权限
@@ -150,14 +121,21 @@ def has_permission(user_role: str, permission: Permission) -> bool:
     Returns:
         是否拥有权限
     """
-    role = safe_enum_parse(Role, user_role)
-    if role is None:
-        return False
-        
-    role_permissions = get_role_permissions(role)
-    return permission in role_permissions
+    # 在函数内部导入避免循环引用
+    from .decorators.cache import memo
+    
+    # 定义内部函数并使用缓存
+    @memo
+    def _check_permission(role_name: str, perm: Permission) -> bool:
+        role = safe_enum_parse(Role, role_name)
+        if role is None:
+            return False
+            
+        role_permissions = get_role_permissions(role)
+        return perm in role_permissions
+    
+    return _check_permission(user_role, permission)
 
-@memo(maxsize=100)
 def get_user_permissions(user_role: str) -> List[str]:
     """
     获取用户所有权限列表
@@ -170,11 +148,19 @@ def get_user_permissions(user_role: str) -> List[str]:
     Returns:
         权限列表
     """
-    role = safe_enum_parse(Role, user_role)
-    if role is None:
-        return []
-        
-    return [p.value for p in get_role_permissions(role)]
+    # 在函数内部导入避免循环引用
+    from .decorators.cache import memo
+    
+    # 定义内部函数并使用缓存
+    @memo
+    def _get_permissions(role_name: str) -> List[str]:
+        role = safe_enum_parse(Role, role_name)
+        if role is None:
+            return []
+            
+        return [p.value for p in get_role_permissions(role)]
+    
+    return _get_permissions(user_role)
 
 def check_resource_permission(
     user: User,
