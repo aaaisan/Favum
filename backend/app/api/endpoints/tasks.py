@@ -5,15 +5,10 @@ import logging
 
 from ...core.auth import get_current_active_user
 from ...core.permissions import Permission, Role
-from ...core.decorators import (
-    handle_exceptions,
-    rate_limit,
-    cache,
-    validate_token,
-    log_execution_time,
-    require_permissions,
-    require_roles
-)
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import validate_token, require_permissions, require_roles
+from ...core.decorators.performance import rate_limit, cache
+from ...core.decorators.logging import log_execution_time
 
 from ...db.models.task import Task
 from ...utils.tasks import TaskManager
@@ -54,9 +49,12 @@ async def get_task_status(request: Request, task_id: str):
     return task_info
 
 @router.get("/info/{task_id}")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取任务详情失败", include_details=True)
+@validate_token
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def get_task_info(
-    task_id: str,
-    _: dict = Depends(get_current_active_user)
+    request: Request,
+    task_id: str
 ):
     """获取任务详细信息"""
     info = TaskManager.get_task_info(task_id)
@@ -65,26 +63,35 @@ async def get_task_info(
     return info
 
 @router.get("/active", response_model=List[dict])
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取活动任务失败", include_details=True)
+@validate_token
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def get_active_tasks(
-    _: dict = Depends(get_current_active_user)
+    request: Request
 ):
     """获取所有活动任务"""
     return TaskManager.get_active_tasks()
 
 @router.post("/revoke/{task_id}")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="取消任务失败", include_details=True)
+@validate_token
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def revoke_task(
+    request: Request,
     task_id: str,
-    terminate: bool = False,
-    _: dict = Depends(get_current_active_user)
+    terminate: bool = False
 ):
     """取消任务"""
     TaskManager.revoke_task(task_id, terminate)
     return {"detail": "任务已取消"}
 
 @router.post("/retry/{task_id}")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="重试任务失败", include_details=True)
+@validate_token
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def retry_task(
-    task_id: str,
-    _: dict = Depends(get_current_active_user)
+    request: Request,
+    task_id: str
 ):
     """重试任务"""
     TaskManager.retry_task(task_id)

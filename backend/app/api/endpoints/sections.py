@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List
+import logging
 from ...core.permissions import check_admin, PermissionChecker, Role
 from ...db.database import get_db
 from ...schemas.section import SectionCreate, Section, SectionUpdate
@@ -9,26 +10,23 @@ from ...schemas import post as post_schema
 from ...crud import section as section_crud
 from ...core.auth import get_current_active_user
 from ...db.query import BoardQuery
-# from ...core.decorators import (
-#     cache, 
-#     log_execution_time, 
-#     validate_token, 
-#     require_roles, 
-#     handle_exceptions
-# )
 from ...core.decorators.error import handle_exceptions
 from ...core.decorators.auth import validate_token, require_roles
-from ...core.decorators.performance import cache
+from ...core.decorators.performance import cache, rate_limit
 from ...core.decorators.logging import log_execution_time
 
 router = APIRouter()
 permissions = PermissionChecker()
 
 @router.post("/", response_model=Section)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="创建版块失败", include_details=True)
+@validate_token
+@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def create_section(
+    request: Request,
     section: SectionCreate,
-    db: Session = Depends(get_db),
-    _: dict = Depends(check_admin)
+    db: Session = Depends(get_db)
 ):
     """创建新版块
     
@@ -49,7 +47,11 @@ async def create_section(
     return section_crud.create_section(db=db, section=section)
 
 @router.get("/", response_model=List[Section])
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取版块列表失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=300, include_query_params=True)
 async def read_sections(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
@@ -70,11 +72,15 @@ async def read_sections(
     return section_crud.get_sections(db, skip=skip, limit=limit)
 
 @router.put("/{section_id}", response_model=Section)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="更新版块失败", include_details=True)
+@validate_token
+@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def update_section(
+    request: Request,
     section_id: int,
     section: SectionUpdate,
-    db: Session = Depends(get_db),
-    _: dict = Depends(check_admin)
+    db: Session = Depends(get_db)
 ):
     """更新版块信息
     
@@ -99,11 +105,15 @@ async def update_section(
     return section_crud.update_section(db=db, section_id=section_id, section=section)
 
 @router.post("/{section_id}/moderators/{user_id}")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="添加版主失败", include_details=True)
+@validate_token
+@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def add_moderator(
+    request: Request,
     section_id: int,
     user_id: int,
-    db: Session = Depends(get_db),
-    _: dict = Depends(check_admin)
+    db: Session = Depends(get_db)
 ):
     """添加版主
     
@@ -125,10 +135,10 @@ async def add_moderator(
     return section_crud.add_moderator(db=db, section_id=section_id, user_id=user_id)
 
 @router.delete("/{section_id}/moderators/{user_id}")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="移除版主失败")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="移除版主失败", include_details=True)
 @validate_token
 @require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以移除版主
-@log_execution_time
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def remove_moderator(
     request: Request,
     section_id: int,
@@ -140,9 +150,11 @@ async def remove_moderator(
     return result
 
 @router.get("/{section_id}/posts", response_model=List[post_schema.Post])
-@cache(expire=300)  # 缓存5分钟
-@log_execution_time
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取版块帖子失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=300, include_query_params=True)  # 缓存5分钟
 async def get_section_posts(
+    request: Request,
     section_id: int,
     skip: int = 0,
     limit: int = 20,
@@ -184,10 +196,10 @@ async def get_section_posts(
     return posts
 
 @router.delete("/{section_id}")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="删除版块失败")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="删除版块失败", include_details=True)
 @validate_token
 @require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以删除
-@log_execution_time
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def delete_section(
     request: Request,
     section_id: int,
@@ -198,10 +210,10 @@ async def delete_section(
     return result
 
 @router.post("/{section_id}/restore")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复版块失败")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复版块失败", include_details=True)
 @validate_token
 @require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以恢复
-@log_execution_time
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def restore_section(
     request: Request,
     section_id: int,
@@ -232,10 +244,10 @@ async def restore_section(
     return result
 
 @router.post("/{section_id}/moderators/{user_id}/restore")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复版主失败")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复版主失败", include_details=True)
 @validate_token
 @require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以恢复版主
-@log_execution_time
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def restore_moderator(
     request: Request,
     section_id: int,

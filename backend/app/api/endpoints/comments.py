@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy.exc import SQLAlchemyError
+import logging
+from fastapi.responses import JSONResponse
+
 from ...db.database import get_db
 from ...schemas import comment as comment_schema
 from ...crud import comment as comment_crud
@@ -9,10 +13,7 @@ from ...core.decorators.error import handle_exceptions
 from ...core.decorators.auth import validate_token, require_permissions, require_roles, owner_required
 from ...core.decorators.performance import rate_limit, cache
 from ...core.decorators.logging import log_execution_time
-from ...core.enums import Permission, Role
-from sqlalchemy.exc import SQLAlchemyError
-import logging
-from fastapi.responses import JSONResponse
+from ...core.permissions import Permission, Role
 
 router = APIRouter()
 
@@ -299,7 +300,8 @@ async def restore_comment(
     return result
 
 @router.post("/guest-notice")
-async def guest_comment_notice():
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def guest_comment_notice(request: Request):
     """游客评论提示
     
     当未登录用户尝试评论时，返回提示信息要求注册或登录。

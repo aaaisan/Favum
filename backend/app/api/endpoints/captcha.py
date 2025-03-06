@@ -1,14 +1,22 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 import uuid
+import logging
+from sqlalchemy.exc import SQLAlchemyError
 from ...utils.captcha import CaptchaGenerator
 from ...core.redis import redis_client
 from ...core.config import settings
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.performance import rate_limit, cache
+from ...core.decorators.logging import log_execution_time
 
 router = APIRouter()
 
 @router.get("/generate")
-async def generate_captcha():
+@handle_exceptions(SQLAlchemyError, status_code=500, message="生成验证码失败", include_details=True)
+@rate_limit(limit=30, window=60)  # 限制每分钟最多30次请求
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def generate_captcha(request: Request):
     """生成验证码
     
     生成一个新的图片验证码。
@@ -51,7 +59,10 @@ async def generate_captcha():
     )
 
 @router.post("/verify/{captcha_id}")
-async def verify_captcha(captcha_id: str, code: str):
+@handle_exceptions(SQLAlchemyError, status_code=500, message="验证码验证失败", include_details=True)
+@rate_limit(limit=30, window=60)  # 限制每分钟最多30次请求
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def verify_captcha(request: Request, captcha_id: str, code: str):
     """验证验证码
     
     验证用户输入的验证码是否正确。
@@ -88,4 +99,4 @@ async def verify_captcha(captcha_id: str, code: str):
     if code.upper() != stored_code.upper():
         raise HTTPException(status_code=400, detail="验证码错误")
     
-    return {"detail": "验证成功"} 
+    return {"message": "验证码正确"} 

@@ -2,6 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy.exc import SQLAlchemyError
+import logging
+from datetime import datetime
+
 from ...core.permissions import Permission, Role
 from ...db.database import get_db
 from ...schemas import post as post_schema
@@ -17,10 +21,7 @@ from ...core.endpoint_utils import (
     public_endpoint,
     owner_endpoint
 )
-from sqlalchemy.exc import SQLAlchemyError
-from datetime import datetime
 from ...db.models import SectionModerator
-import logging
 from ...dependencies import get_current_user, require_user, check_post_ownership
 from ...crud import favorite as favorite_crud
 
@@ -58,7 +59,10 @@ async def create_post(
     return post_crud.create_post(db=db, post=post)
 
 @router.post("/test", response_model=post_schema.Post)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="测试创建帖子失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def test_create_post(
+    request: Request,
     post: post_schema.PostCreate,
     db: Session = Depends(get_db)
 ):
@@ -71,6 +75,7 @@ async def test_create_post(
 @router.get("/", response_model=post_schema.PostList)
 @public_endpoint(cache_ttl=60, custom_message="获取帖子列表失败")
 async def read_posts(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
@@ -123,6 +128,7 @@ async def read_posts(
 @router.get("/{post_id}", response_model=post_schema.Post)
 @public_endpoint(cache_ttl=60, custom_message="获取帖子详情失败")
 async def read_post(
+    request: Request,
     post_id: int,
     db: Session = Depends(get_db)
 ):
@@ -370,6 +376,7 @@ async def vote_post(
 @router.get("/{post_id}/votes", response_model=int)
 @public_endpoint(cache_ttl=10, custom_message="获取点赞数失败")
 async def get_post_votes(
+    request: Request,
     post_id: int,
     db: Session = Depends(get_db)
 ):

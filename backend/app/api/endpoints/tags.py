@@ -2,24 +2,27 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List
+import logging
 from ...core.permissions import check_admin, Role
 from ...db.database import get_db
 from ...schemas import tag as tag_schema
 from ...crud import tag as tag_crud
-from ...core.decorators import (
-    handle_exceptions, 
-    validate_token, 
-    require_roles, 
-    log_execution_time
-)
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import validate_token, require_roles
+from ...core.decorators.performance import rate_limit, cache
+from ...core.decorators.logging import log_execution_time
 
 router = APIRouter()
 
 @router.post("/", response_model=tag_schema.Tag)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="创建标签失败", include_details=True)
+@validate_token
+@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def create_tag(
+    request: Request,
     tag: tag_schema.TagCreate,
-    db: Session = Depends(get_db),
-    _: dict = Depends(check_admin)
+    db: Session = Depends(get_db)
 ):
     """创建新标签
     
@@ -43,7 +46,11 @@ async def create_tag(
     return tag_crud.create_tag(db=db, tag=tag)
 
 @router.get("/", response_model=List[tag_schema.Tag])
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取标签列表失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=300, include_query_params=True)
 async def read_tags(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
@@ -64,7 +71,11 @@ async def read_tags(
     return tag_crud.get_tags(db, skip=skip, limit=limit)
 
 @router.get("/popular", response_model=List[tag_schema.Tag])
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取热门标签失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=300, include_query_params=True)
 async def read_popular_tags(
+    request: Request,
     limit: int = 10,
     db: Session = Depends(get_db)
 ):
@@ -83,7 +94,11 @@ async def read_popular_tags(
     return tag_crud.get_popular_tags(db=db, limit=limit)
 
 @router.get("/recent", response_model=List[tag_schema.Tag])
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取最近标签失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=300, include_query_params=True)
 async def read_recent_tags(
+    request: Request,
     limit: int = 10,
     db: Session = Depends(get_db)
 ):
@@ -102,7 +117,11 @@ async def read_recent_tags(
     return tag_crud.get_recent_tags(db=db, limit=limit)
 
 @router.get("/{tag_id}", response_model=tag_schema.Tag)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="获取标签详情失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=300, include_query_params=True)
 async def read_tag(
+    request: Request,
     tag_id: int,
     db: Session = Depends(get_db)
 ):
@@ -127,11 +146,15 @@ async def read_tag(
     return db_tag
 
 @router.put("/{tag_id}", response_model=tag_schema.Tag)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="更新标签失败", include_details=True)
+@validate_token
+@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def update_tag(
+    request: Request,
     tag_id: int,
     tag: tag_schema.TagUpdate,
-    db: Session = Depends(get_db),
-    _: dict = Depends(check_admin)
+    db: Session = Depends(get_db)
 ):
     """更新标签信息
     
@@ -153,20 +176,20 @@ async def update_tag(
     return tag_crud.update_tag(db=db, tag_id=tag_id, tag=tag)
 
 @router.delete("/{tag_id}")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="删除标签失败")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="删除标签失败", include_details=True)
 @validate_token
 @require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以删除
-@log_execution_time
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def delete_tag(request: Request, tag_id: int, db: Session = Depends(get_db)):
     """删除标签"""
     result = tag_crud.delete_tag(db=db, tag_id=tag_id)
     return result
 
 @router.post("/{tag_id}/restore")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复标签失败")
+@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复标签失败", include_details=True)
 @validate_token
 @require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以恢复
-@log_execution_time
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def restore_tag(request: Request, tag_id: int, db: Session = Depends(get_db)):
     """恢复已删除的标签
     
@@ -193,10 +216,14 @@ async def restore_tag(request: Request, tag_id: int, db: Session = Depends(get_d
     return result
 
 @router.post("/{tag_id}/update-stats", response_model=tag_schema.Tag)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="更新标签统计信息失败", include_details=True)
+@validate_token
+@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def update_tag_statistics(
+    request: Request,
     tag_id: int,
-    db: Session = Depends(get_db),
-    _: dict = Depends(check_admin)
+    db: Session = Depends(get_db)
 ):
     """更新标签统计信息
     

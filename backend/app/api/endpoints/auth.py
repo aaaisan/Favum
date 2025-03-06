@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta
 from typing import Annotated
+import logging
 
 from ...core.permissions import get_role_permissions, Role
 from ...core.security import (
@@ -10,6 +12,10 @@ from ...core.security import (
     get_current_active_user,
     get_password_hash,
 )
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import validate_token
+from ...core.decorators.performance import rate_limit, cache
+from ...core.decorators.logging import log_execution_time
 from ...core.config import settings
 from ...db.database import get_db
 from ...db.models import User
@@ -20,21 +26,31 @@ from ...schemas import auth as auth_schema
 router = APIRouter()
 
 @router.get("/check-username/{username}")
-async def check_username(username: str, db: Session = Depends(get_db)):
+@handle_exceptions(SQLAlchemyError, status_code=500, message="检查用户名失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=60, include_query_params=True)
+async def check_username(request: Request, username: str, db: Session = Depends(get_db)):
     """检查用户名是否可用"""
     if user_crud.get_user_by_username(db, username):
         raise HTTPException(status_code=400, detail="用户名已被使用")
     return {"message": "用户名可用"}
 
 @router.get("/check-email/{email}")
-async def check_email(email: str, db: Session = Depends(get_db)):
+@handle_exceptions(SQLAlchemyError, status_code=500, message="检查邮箱失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@cache(expire=60, include_query_params=True)
+async def check_email(request: Request, email: str, db: Session = Depends(get_db)):
     """检查邮箱是否可用"""
     if user_crud.get_user_by_email(db, email):
         raise HTTPException(status_code=400, detail="邮箱已被使用")
     return {"message": "邮箱可用"}
 
 @router.post("/register", response_model=auth_schema.Token)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="用户注册失败", include_details=True)
+@rate_limit(limit=5, window=60)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def register(
+    request: Request,
     user: auth_schema.UserRegister,
     db: Session = Depends(get_db)
 ):
@@ -101,7 +117,11 @@ async def register(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/login", response_model=auth_schema.Token)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="用户登录失败", include_details=True)
+@rate_limit(limit=10, window=60)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def login(
+    request: Request,
     form_data: auth_schema.Login,
     db: Session = Depends(get_db)
 ):
@@ -144,6 +164,11 @@ async def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/test-token", response_model=auth_schema.TokenData)
-async def test_token(current_user: Annotated[auth_schema.TokenData, Depends(get_current_active_user)]):
+@validate_token
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def test_token(
+    request: Request,
+    current_user: Annotated[auth_schema.TokenData, Depends(get_current_active_user)]
+):
     """测试令牌有效性"""
     return current_user

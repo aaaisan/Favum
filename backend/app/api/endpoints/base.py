@@ -2,17 +2,14 @@ from typing import Any, Dict, List, Optional, Type
 from fastapi import APIRouter, Request, HTTPException, Depends, status
 from pydantic import BaseModel
 import logging
-
-from ...core.decorators import (
-    handle_exceptions,
-    rate_limit,
-    cache,
-    validate_token,
-    log_execution_time,
-    endpoint_rate_limit
-)
-from ...core.base_service import BaseService
 from sqlalchemy.exc import SQLAlchemyError
+
+# 修改导入方式，从各个子模块导入
+from ...core.decorators.error import handle_exceptions
+from ...core.decorators.performance import rate_limit, cache, endpoint_rate_limit
+from ...core.decorators.auth import validate_token, require_roles, require_permissions
+from ...core.decorators.logging import log_execution_time
+from ...core.base_service import BaseService
 
 class BaseEndpoint:
     """基础API端点"""
@@ -148,19 +145,7 @@ class BaseEndpoint:
     
     def register_custom_endpoints(self) -> None:
         """注册自定义端点，子类可重写此方法添加额外端点"""
-        
-        @self.router.get(
-            f"{self.prefix}/count",
-            tags=self.tags
-        )
-        @handle_exceptions(SQLAlchemyError, status_code=500, message="获取数量失败", include_details=True)
-        @validate_token
-        @cache(expire=60, include_query_params=True)
-        @log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-        async def count(request: Request) -> Dict[str, int]:
-            """获取记录总数"""
-            count = await self.service.count()
-            return {"count": count}
+        pass
 
 router = APIRouter()
 
@@ -178,4 +163,4 @@ async def example_endpoint(request: Request):
     Returns:
         dict: 示例响应
     """
-    return {"message": "这是一个示例端点，已应用速率限制"} 
+    return {"message": "这是一个示例API端点"} 
