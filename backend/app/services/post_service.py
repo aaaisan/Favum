@@ -305,24 +305,24 @@ class PostService(BaseService):
         return await self.repository.get_user_vote(post_id, user_id)
     
     async def get_vote_count(self, post_id: int) -> int:
-        """获取帖子的投票计数
+        """获取帖子的投票数量
         
         Args:
             post_id: 帖子ID
             
         Returns:
-            int: 投票计数
+            int: 帖子的净投票数（点赞数减去踩数）
             
         Raises:
-            BusinessException: 当帖子不存在时
+            BusinessException: 当帖子不存在时抛出
         """
         # 检查帖子是否存在
-        post = await self.get(post_id)
+        post = await self.repository.get(post_id)
         if not post:
             raise BusinessException(
-                status_code=404,
-                error_code="POST_NOT_FOUND",
-                message="帖子不存在"
+                message="帖子不存在",
+                error_code="POST_NOT_FOUND", 
+                status_code=404
             )
-            
+              
         return await self.repository.get_vote_count(post_id) 
