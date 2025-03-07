@@ -1,21 +1,16 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-import uuid
 import logging
 from sqlalchemy.exc import SQLAlchemyError
-from ...utils.captcha import CaptchaGenerator
-from ...core.redis import redis_client
-from ...core.config import settings
-from ...core.decorators.error import handle_exceptions
-from ...core.decorators.performance import rate_limit, cache
-from ...core.decorators.logging import log_execution_time
+
+from ...utils.api_decorators import public_endpoint
+from ...core.exceptions import BusinessException
+from ...services.captcha_service import CaptchaService
 
 router = APIRouter()
 
 @router.get("/generate")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="生成验证码失败", include_details=True)
-@rate_limit(limit=30, window=60)  # 限制每分钟最多30次请求
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(custom_message="生成验证码失败")
 async def generate_captcha(request: Request):
     """生成验证码
     
@@ -26,7 +21,7 @@ async def generate_captcha(request: Request):
     3. 将验证码存储到Redis并设置过期时间
     4. 返回验证码图片和ID
     
-    此接口对所有用户开放。
+    此接口对所有用户开放，并有速率限制防止滥用。
     
     Returns:
         Response: 包含以下内容：
@@ -34,34 +29,27 @@ async def generate_captcha(request: Request):
             - media_type: "image/png"
             - headers: 包含验证码ID的头部信息
             
-    Note:
-        验证码将在settings.CAPTCHA_EXPIRE_MINUTES分钟后过期
+    Notes:
+        - 验证码将在一定时间后过期
+        - 每分钟最多可以请求30次验证码
     """
-    # 生成验证码
-    generator = CaptchaGenerator()
-    text, image_bytes = generator.generate()
-    
-    # 生成唯一标识符
-    captcha_id = str(uuid.uuid4())
-    
-    # 将验证码存储到Redis，设置过期时间（转换为秒）
-    redis_client.setex(
-        f"captcha:{captcha_id}",
-        settings.CAPTCHA_EXPIRE_MINUTES * 60,
-        text
-    )
-    
-    # 返回验证码图片和ID
-    return Response(
-        content=image_bytes,
-        media_type="image/png",
-        headers={"X-Captcha-ID": captcha_id}
-    )
+    try:
+        captcha_service = CaptchaService()
+        captcha_id, image_bytes = await captcha_service.generate_captcha()
+        
+        return Response(
+            content=image_bytes,
+            media_type="image/png",
+            headers={"X-Captcha-ID": captcha_id}
+        )
+    except BusinessException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.message
+        )
 
 @router.post("/verify/{captcha_id}")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="验证码验证失败", include_details=True)
-@rate_limit(limit=30, window=60)  # 限制每分钟最多30次请求
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(custom_message="验证码验证失败")
 async def verify_captcha(request: Request, captcha_id: str, code: str):
     """验证验证码
     
@@ -71,7 +59,7 @@ async def verify_captcha(request: Request, captcha_id: str, code: str):
     2. 验证码验证后立即删除，防止重复使用
     3. 不区分大小写进行验证
     
-    此接口对所有用户开放。
+    此接口对所有用户开放，并有速率限制防止暴力尝试。
     
     Args:
         captcha_id: 验证码ID，从生成接口的响应头中获取
@@ -83,20 +71,17 @@ async def verify_captcha(request: Request, captcha_id: str, code: str):
     Raises:
         HTTPException: 当验证码过期、不存在或错误时抛出400错误
         
-    Note:
-        验证成功后验证码将被删除，无法重复使用
+    Notes:
+        - 验证成功后验证码将被删除，无法重复使用
+        - 每分钟最多可以验证30次
     """
-    # 从Redis获取验证码
-    stored_code = redis_client.get(f"captcha:{captcha_id}")
-    
-    if not stored_code:
-        raise HTTPException(status_code=400, detail="验证码已过期或不存在")
-    
-    # 验证后删除验证码
-    redis_client.delete(f"captcha:{captcha_id}")
-    
-    # 不区分大小写验证
-    if code.upper() != stored_code.upper():
-        raise HTTPException(status_code=400, detail="验证码错误")
-    
-    return {"message": "验证码正确"} 
+    try:
+        captcha_service = CaptchaService()
+        await captcha_service.verify_captcha(captcha_id, code)
+        
+        return {"message": "验证码正确"}
+    except BusinessException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.message
+        ) 

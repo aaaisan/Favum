@@ -1,15 +1,16 @@
 from datetime import datetime, timedelta
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Union, Dict, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt # type: ignore
 from passlib.context import CryptContext # type: ignore
 from sqlalchemy.orm import Session
+from types import SimpleNamespace
 
 from .config import settings
 from ..db.database import get_db
-from ..crud import user as user_crud
 from ..schemas import auth as auth_schema
+from ..db.repositories.user_repository import UserRepository
 
 """
 安全相关功能模块
@@ -49,26 +50,30 @@ def get_password_hash(password: str) -> str:
     """
     return pwd_context.hash(password)
 
-def authenticate_user(db: Session, username: str, password: str):
+async def authenticate_user(username: str, password: str) -> Union[Dict[str, Any], bool]:
     """
     验证用户凭据
     
-    检查用户名和密码是否匹配，用于用户登录认证。
-    
     Args:
-        db: 数据库会话
         username: 用户名
         password: 明文密码
         
     Returns:
-        Union[User, bool]: 如果验证成功则返回用户对象，否则返回False
+        Union[Dict[str, Any], bool]: 如果验证成功则返回用户字典，否则返回False
     """
-    user = user_crud.get_user_by_username(db, username=username)
+    user_repository = UserRepository()
+    user = await user_repository.get_by_username(username=username)
     if not user:
         return False
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(password, user["hashed_password"]):
         return False
-    return user
+    
+    # 创建一个类似于User对象的字典，以保持与现有代码的兼容性
+    user_obj = SimpleNamespace()
+    for key, value in user.items():
+        setattr(user_obj, key, value)
+    
+    return user_obj
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -202,7 +207,7 @@ async def get_current_user(
         raise credentials_exception
     
     # 检查用户是否存在
-    user = user_crud.get_user_by_username(db, username=token_data.username)
+    user = await user_repository.get_by_username(username=token_data.username)
     if user is None:
         print(f"[Security] 用户不存在: {token_data.username}")
         raise credentials_exception

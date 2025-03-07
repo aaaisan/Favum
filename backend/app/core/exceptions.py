@@ -470,4 +470,7 @@ class ServiceUnavailableError(BusinessError):
             message=message or "服务暂时不可用，请稍后再试",
             status_code=503,
             details=details
-        ) 
+        )
+
+# 为了兼容性，将BusinessException定义为BusinessError的别名
+BusinessException = BusinessError 

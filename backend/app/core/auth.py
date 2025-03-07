@@ -6,8 +6,8 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from .config import settings
 from ..db.database import get_db
-from ..crud import user as user_crud
-from ..schemas.token import TokenData
+from ..schemas import auth as auth_schema
+from ..db.repositories.user_repository import UserRepository
 
 # OAuth2密码流认证方案，指定token获取URL
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
@@ -58,32 +58,23 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(
-    db: Session = Depends(get_db),
-    token: str = Depends(oauth2_scheme)
-) -> Optional[dict]:
+async def get_current_user(token: str = Depends(oauth2_scheme)):
     """获取当前用户
     
-    从请求中的JWT令牌获取当前认证用户。
+    从JWT令牌中解析用户信息，并验证用户是否存在。
     
     Args:
-        db: 数据库会话实例
-        token: JWT令牌字符串（通过依赖注入获取）
+        token: JWT令牌
         
     Returns:
-        Optional[dict]: 用户信息字典，如果认证失败则返回None
+        User: 当前用户对象
         
     Raises:
-        HTTPException: 当令牌无效、过期或用户不存在时抛出401错误
-        
-    Note:
-        - 使用settings中配置的密钥和算法验证令牌
-        - 从令牌的sub字段获取用户名
-        - 验证用户在数据库中是否存在
+        HTTPException: 当令牌无效或用户不存在时抛出401错误
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="无法验证凭据",
+        detail="无效的凭证",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -91,11 +82,12 @@ async def get_current_user(
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
-        token_data = TokenData(username=username)
+        token_data = auth_schema.TokenData(username=username)
     except JWTError:
         raise credentials_exception
     
-    user = user_crud.get_user_by_email(db, email=token_data.username)
+    user_repository = UserRepository()
+    user = await user_repository.get_by_username(username=token_data.username)
     if user is None:
         raise credentials_exception
     return user

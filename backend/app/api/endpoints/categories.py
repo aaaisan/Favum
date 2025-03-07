@@ -5,26 +5,22 @@ from typing import List, Optional
 from ...core.permissions import Role
 from ...core.decorators.error import handle_exceptions
 from ...core.decorators.auth import validate_token, require_roles
-from ...core.decorators.performance import cache
 from ...core.decorators.logging import log_execution_time
-from ...core.endpoint_utils import admin_endpoint, public_endpoint
+from ...utils.api_decorators import admin_endpoint, public_endpoint
 from ...db.database import get_db
 from ...schemas import category as category_schema
-from ...crud import category as category_crud
+from ...services.category_service import CategoryService
+from ...core.exceptions import BusinessException
 import logging
 from fastapi import status
 
 router = APIRouter()
 
 @router.post("/", response_model=category_schema.Category)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="创建分类失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，用时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="创建分类失败")
 async def create_category(
     request: Request,
-    category: category_schema.CategoryCreate,
-    db: Session = Depends(get_db)
+    category: category_schema.CategoryCreate
 ):
     """创建新分类
     
@@ -34,31 +30,33 @@ async def create_category(
     Args:
         request: FastAPI请求对象
         category: 分类创建模型，包含分类信息
-        db: 数据库会话实例
         
     Returns:
         Category: 创建成功的分类信息
         
     Raises:
-        HTTPException: 当权限不足时抛出403错误
+        HTTPException: 当权限不足或创建失败时抛出相应错误
     """
-    db_category = category_crud.get_category_by_name(db, name=category.name)
-    if db_category:
+    try:
+        # 使用Service架构
+        category_service = CategoryService()
+        
+        # 创建分类
+        result = await category_service.create_category(category.model_dump())
+        return result
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="分类名称已存在"
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
         )
-    return category_crud.create_category(db=db, category=category)
 
 @router.get("/", response_model=List[category_schema.Category])
-@handle_exceptions(SQLAlchemyError, status_code=500, message="获取分类列表失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，用时 {execution_time:.3f}秒")
-@cache(expire=300, include_query_params=True)
+@public_endpoint(cache_ttl=300, custom_message="获取分类列表失败")
 async def read_categories(
     request: Request,
     skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
+    limit: int = 100
 ):
     """获取分类列表
     
@@ -69,22 +67,29 @@ async def read_categories(
         request: FastAPI请求对象
         skip: 分页偏移量，默认0
         limit: 每页数量，默认100
-        db: 数据库会话实例
         
     Returns:
         List[Category]: 分类列表
     """
-    categories = category_crud.get_categories(db, skip=skip, limit=limit)
-    return categories
+    try:
+        # 使用Service架构
+        category_service = CategoryService()
+        
+        # 获取分类列表
+        categories, _ = await category_service.get_categories(skip=skip, limit=limit)
+        return categories
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.get("/{category_id}", response_model=category_schema.Category)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="获取分类详情失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，用时 {execution_time:.3f}秒")
-@cache(expire=300, include_query_params=True)
+@public_endpoint(cache_ttl=300, custom_message="获取分类详情失败")
 async def read_category(
     request: Request,
-    category_id: int,
-    db: Session = Depends(get_db)
+    category_id: int
 ):
     """获取分类详情
     
@@ -94,7 +99,6 @@ async def read_category(
     Args:
         request: FastAPI请求对象
         category_id: 分类ID
-        db: 数据库会话实例
         
     Returns:
         Category: 分类详细信息
@@ -102,21 +106,26 @@ async def read_category(
     Raises:
         HTTPException: 当分类不存在时抛出404错误
     """
-    category = category_crud.get_category(db, category_id=category_id)
-    if category is None:
-        raise HTTPException(status_code=404, detail="分类不存在")
-    return category
+    try:
+        # 使用Service架构
+        category_service = CategoryService()
+        
+        # 获取分类详情
+        category = await category_service.get_category_detail(category_id)
+        return category
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.put("/{category_id}", response_model=category_schema.Category)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="更新分类失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，用时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="更新分类失败")
 async def update_category(
     request: Request,
     category_id: int,
-    category: category_schema.CategoryUpdate,
-    db: Session = Depends(get_db)
+    category: category_schema.CategoryUpdate
 ):
     """更新分类信息
     
@@ -127,7 +136,6 @@ async def update_category(
         request: FastAPI请求对象
         category_id: 分类ID
         category: 分类更新模型，包含要更新的信息
-        db: 数据库会话实例
         
     Returns:
         Category: 更新后的分类信息
@@ -135,20 +143,28 @@ async def update_category(
     Raises:
         HTTPException: 当分类不存在时抛出404错误，当权限不足时抛出403错误
     """
-    db_category = category_crud.get_category(db, category_id=category_id)
-    if db_category is None:
-        raise HTTPException(status_code=404, detail="分类不存在")
-    return category_crud.update_category(db=db, category_id=category_id, category=category)
+    try:
+        # 使用Service架构
+        category_service = CategoryService()
+        
+        # 更新分类
+        updated_category = await category_service.update_category(
+            category_id=category_id,
+            data=category.model_dump(exclude_unset=True)
+        )
+        return updated_category
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.delete("/{category_id}")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="删除分类失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，用时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="删除分类失败")
 async def delete_category(
     request: Request,
-    category_id: int,
-    db: Session = Depends(get_db)
+    category_id: int
 ):
     """删除分类
     
@@ -158,27 +174,32 @@ async def delete_category(
     Args:
         request: FastAPI请求对象
         category_id: 要删除的分类ID
-        db: 数据库会话实例
         
     Returns:
         dict: 包含成功消息的响应
         
     Raises:
         HTTPException: 当分类不存在或权限不足时抛出相应错误
-        SQLAlchemyError: 当数据库操作失败时抛出500错误
     """
-    result = category_crud.delete_category(db=db, category_id=category_id)
-    return result
+    try:
+        # 使用Service架构
+        category_service = CategoryService()
+        
+        # 删除分类
+        result = await category_service.delete_category(category_id)
+        return result
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.post("/{category_id}/restore")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复分类失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，用时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="恢复分类失败")
 async def restore_category(
     request: Request,
-    category_id: int,
-    db: Session = Depends(get_db)
+    category_id: int
 ):
     """恢复已删除的分类
     
@@ -192,28 +213,33 @@ async def restore_category(
     Args:
         request: FastAPI请求对象
         category_id: 要恢复的分类ID
-        db: 数据库会话实例
         
     Returns:
         dict: 包含成功消息的响应
         
     Raises:
         HTTPException: 当分类不存在、未被删除或权限不足时抛出相应错误
-        SQLAlchemyError: 当数据库操作失败时抛出500错误
     """
-    result = category_crud.restore_category(db=db, category_id=category_id)
-    return result
+    try:
+        # 使用Service架构
+        category_service = CategoryService()
+        
+        # 恢复分类
+        result = await category_service.restore_category(category_id)
+        return result
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.post("/reorder")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="重新排序分类失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，用时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="重新排序分类失败")
 async def reorder_categories(
     request: Request,
     category_ids: List[int],
-    parent_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    parent_id: Optional[int] = None
 ):
     """重新排序分类
     
@@ -225,7 +251,6 @@ async def reorder_categories(
         request: FastAPI请求对象
         category_ids: 分类ID列表，按照期望的顺序排列
         parent_id: 父分类ID，如果要移动到顶级分类则为None
-        db: 数据库会话实例
         
     Returns:
         dict: 包含更新后的分类顺序信息
@@ -233,4 +258,16 @@ async def reorder_categories(
     Raises:
         HTTPException: 当分类不存在时抛出404错误，当权限不足时抛出403错误
     """
-    return category_crud.reorder_categories(db=db, parent_id=parent_id, category_ids=category_ids) 
+    try:
+        # 使用Service架构
+        category_service = CategoryService()
+        
+        # 重新排序分类
+        result = await category_service.reorder_categories(parent_id, category_ids)
+        return result
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        ) 

@@ -22,6 +22,7 @@ python-multipart==0.0.6
 # 缓存与消息队列
 redis>=5.0.1
 celery>=5.3.6
+msgpack>=1.1.0
 
 # 日志
 structlog>=24.1.0

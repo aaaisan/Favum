@@ -167,26 +167,33 @@ class CaptchaGenerator:
         return text, image_bytes
 
 class CaptchaValidator:
+    """验证码验证器
+    
+    提供验证码验证功能，可作为依赖项使用。
+    此类已被弃用，请使用CaptchaService中的方法代替。
+    """
+    
+    def __init__(self):
+        """初始化验证码验证器"""
+        from ..services.captcha_service import CaptchaService
+        self.captcha_service = CaptchaService()
+    
     @staticmethod
     def validate_and_delete(captcha_id: str, captcha_code: str) -> None:
-        """验证验证码并删除"""
-        # 从Redis获取验证码
-        stored_code = redis_client.get(f"captcha:{captcha_id}")
-        if not stored_code:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="验证码已过期或不存在"
-            )
+        """验证验证码并删除
         
-        # 验证后删除验证码
-        redis_client.delete(f"captcha:{captcha_id}")
+        此方法仍保留用于向后兼容，但推荐直接使用CaptchaService中的方法。
         
-        # 验证码不区分大小写
-        if captcha_code.upper() != stored_code.upper():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="验证码错误"
-            )
+        Args:
+            captcha_id: 验证码ID
+            captcha_code: 用户输入的验证码
+            
+        Raises:
+            HTTPException: 当验证码无效或过期时抛出
+        """
+        from ..services.captcha_service import CaptchaService
+        service = CaptchaService()
+        service.validate_and_delete(captcha_id, captcha_code)
     
     async def __call__(self, captcha_id: str, captcha_code: str) -> str:
         """
@@ -203,5 +210,4 @@ class CaptchaValidator:
             HTTPException: 验证码无效或过期时抛出异常
         """
         self.validate_and_delete(captcha_id, captcha_code)
-        return captcha_code 
         return captcha_code 

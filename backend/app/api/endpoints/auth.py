@@ -19,9 +19,10 @@ from ...core.decorators.logging import log_execution_time
 from ...core.config import settings
 from ...db.database import get_db
 from ...db.models import User
-from ...crud import user as user_crud
 from ...utils.captcha import CaptchaValidator
 from ...schemas import auth as auth_schema
+from ...services.user_service import UserService
+from ...db.repositories.user_repository import UserRepository
 
 router = APIRouter()
 
@@ -29,9 +30,10 @@ router = APIRouter()
 @handle_exceptions(SQLAlchemyError, status_code=500, message="检查用户名失败", include_details=True)
 @log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 @cache(expire=60, include_query_params=True)
-async def check_username(request: Request, username: str, db: Session = Depends(get_db)):
+async def check_username(request: Request, username: str):
     """检查用户名是否可用"""
-    if user_crud.get_user_by_username(db, username):
+    user_repository = UserRepository()
+    if await user_repository.get_by_username(username):
         raise HTTPException(status_code=400, detail="用户名已被使用")
     return {"message": "用户名可用"}
 
@@ -39,9 +41,10 @@ async def check_username(request: Request, username: str, db: Session = Depends(
 @handle_exceptions(SQLAlchemyError, status_code=500, message="检查邮箱失败", include_details=True)
 @log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 @cache(expire=60, include_query_params=True)
-async def check_email(request: Request, email: str, db: Session = Depends(get_db)):
+async def check_email(request: Request, email: str):
     """检查邮箱是否可用"""
-    if user_crud.get_user_by_email(db, email):
+    user_repository = UserRepository()
+    if await user_repository.get_by_email(email):
         raise HTTPException(status_code=400, detail="邮箱已被使用")
     return {"message": "邮箱可用"}
 
@@ -51,8 +54,7 @@ async def check_email(request: Request, email: str, db: Session = Depends(get_db
 @log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def register(
     request: Request,
-    user: auth_schema.UserRegister,
-    db: Session = Depends(get_db)
+    user: auth_schema.UserRegister
 ):
     """注册新用户
     
@@ -65,7 +67,6 @@ async def register(
     
     Args:
         user: 用户注册信息
-        db: 数据库会话实例
         
     Returns:
         Token: 包含访问令牌和令牌类型的响应
@@ -74,14 +75,15 @@ async def register(
         HTTPException: 当用户名或邮箱已被使用时抛出400错误
     """
     # 检查用户名是否已存在
-    if user_crud.get_user_by_username(db, user.username):
+    user_repository = UserRepository()
+    if await user_repository.get_by_username(user.username):
         raise HTTPException(
             status_code=400,
             detail="用户名已被使用"
         )
     
     # 检查邮箱是否已存在
-    if user_crud.get_user_by_email(db, user.email):
+    if await user_repository.get_by_email(user.email):
         raise HTTPException(
             status_code=400,
             detail="邮箱已被使用"
@@ -92,10 +94,15 @@ async def register(
     validator.validate_and_delete(user.captcha_id, user.captcha_code)
     
     # 创建新用户
-    db_user = user_crud.create_user(db, user)
+    user_service = UserService()
+    user_data = user.model_dump()
+    db_user = await user_service.create_user(user_data)
     
     # 从角色获取权限
-    role_name = db_user.role.value if hasattr(db_user.role, 'value') else 'user'
+    role_name = db_user["role"] if isinstance(db_user, dict) else db_user.role
+    if hasattr(role_name, 'value'):
+        role_name = role_name.value
+    
     role = getattr(Role, role_name.upper(), Role.USER)
     permissions = [p for p in get_role_permissions(role)]
     
@@ -103,9 +110,12 @@ async def register(
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     # 增加更多用户信息到令牌
+    user_id = db_user["id"] if isinstance(db_user, dict) else db_user.id
+    username = db_user["username"] if isinstance(db_user, dict) else db_user.username
+    
     token_data = {
-        "sub": db_user.username,
-        "id": db_user.id,
+        "sub": username,
+        "id": user_id,
         "role": role_name,
         "permissions": permissions
     }
@@ -122,8 +132,7 @@ async def register(
 @log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
 async def login(
     request: Request,
-    form_data: auth_schema.Login,
-    db: Session = Depends(get_db)
+    form_data: auth_schema.Login
 ):
     """用户登录"""
     # 验证验证码
@@ -133,7 +142,7 @@ async def login(
     # 打印登录尝试的信息
     print(f"登录尝试: 用户名={form_data.username}, 验证码ID={form_data.captcha_id}")
     
-    user = authenticate_user(db, form_data.username, form_data.password)
+    user = await authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

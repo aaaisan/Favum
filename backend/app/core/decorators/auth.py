@@ -12,7 +12,8 @@ from fastapi import Request, HTTPException, status
 from functools import wraps
 from typing import List, Callable, TypeVar, Any
 import inspect
-from ..auth import decode_token
+# 移除直接导入，改为函数内导入
+# from ..auth import decode_token
 from ...core.exceptions import BusinessError
 from ...core.logging import get_logger
 from ...core.permissions import Permission, Role
@@ -23,19 +24,16 @@ T = TypeVar('T')
 
 def validate_token(func: Callable[..., T]) -> Callable[..., T]:
     """
-    验证JWT令牌装饰器
+    验证JWT令牌的装饰器
     
-    检查请求中的Authorization头，验证JWT令牌的有效性。
-    令牌信息会被放入request.state.user中，供后续使用。
+    检查请求中的Authorization头部是否包含有效的JWT令牌。
+    如果令牌无效或已过期，则返回401未授权错误。
     
     Args:
-        func: 要装饰的函数
+        func: 被装饰的函数
         
     Returns:
-        Callable: 装饰后的函数
-        
-    Raises:
-        HTTPException: 当令牌无效或未提供时抛出401错误
+        装饰后的函数
     """
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -45,54 +43,36 @@ def validate_token(func: Callable[..., T]) -> Callable[..., T]:
             if isinstance(arg, Request):
                 request = arg
                 break
-                
-        if not request:
-            # 尝试从kwargs中查找
-            request = kwargs.get('request')
+        
+        if not request and 'request' in kwargs:
+            request = kwargs['request']
             
         if not request:
-            logger.error(f"无法在 {func.__name__} 中找到Request对象")
+            raise ValueError("请求对象未找到，无法验证令牌")
+        
+        # 获取token
+        authorization = request.headers.get('Authorization')
+        if not authorization or not authorization.startswith('Bearer '):
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="服务器配置错误：无法访问请求对象"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="缺少有效的身份验证令牌",
+                headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # 获取并验证令牌
-        authorization = request.headers.get("Authorization")
-        if not authorization:
+        token = authorization.split(' ')[1]
+        
+        # 验证token
+        from ..auth import decode_token  # 延迟导入以避免循环引用
+        token_data = decode_token(token)
+        if not token_data:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="未提供认证Token",
-                headers={"WWW-Authenticate": "Bearer"}
+                detail="令牌无效或已过期",
+                headers={"WWW-Authenticate": "Bearer"},
             )
-            
-        try:
-            scheme, token = authorization.split()
-            if scheme.lower() != "bearer":
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="认证方案无效",
-                    headers={"WWW-Authenticate": "Bearer"}
-                )
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="认证头格式错误",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-            
-        # 解码令牌
-        payload = decode_token(token)
-        if not payload:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="无效的令牌或令牌已过期",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-            
+        
         # 将用户信息存储在request.state中
-        request.state.user = payload
-        request.state.token = token
+        request.state.user = token_data
         
         return await func(*args, **kwargs)
     

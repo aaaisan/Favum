@@ -14,7 +14,8 @@ from contextlib import contextmanager
 from ..core.logging import get_logger
 from ..core.decorators.error import handle_exceptions, retry
 from ..core.decorators.logging import log_execution_time, log_exception
-from ..core.profiling import Profiler
+# 注释掉不存在的模块导入
+# from ..core.profiling import Profiler
 
 logger = get_logger(__name__)
 

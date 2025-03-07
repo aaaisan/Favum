@@ -1,28 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, status
+from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from typing import List
 import logging
-from ...core.permissions import check_admin, Role
-from ...db.database import get_db
+from ...core.permissions import Role
 from ...schemas import tag as tag_schema
-from ...crud import tag as tag_crud
-from ...core.decorators.error import handle_exceptions
-from ...core.decorators.auth import validate_token, require_roles
-from ...core.decorators.performance import rate_limit, cache
-from ...core.decorators.logging import log_execution_time
+from ...schemas import post as post_schema
+from ...services.tag_service import TagService
+from ...core.exceptions import BusinessException
+from ...utils.api_decorators import public_endpoint, admin_endpoint
 
 router = APIRouter()
 
 @router.post("/", response_model=tag_schema.Tag)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="创建标签失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="创建标签失败")
 async def create_tag(
     request: Request,
-    tag: tag_schema.TagCreate,
-    db: Session = Depends(get_db)
+    tag: tag_schema.TagCreate
 ):
     """创建新标签
     
@@ -30,9 +23,8 @@ async def create_tag(
     仅管理员可以执行此操作。
     
     Args:
+        request: FastAPI请求对象
         tag: 标签创建模型，包含标签信息
-        db: 数据库会话实例
-        _: 管理员权限检查依赖
         
     Returns:
         Tag: 创建成功的标签信息
@@ -40,20 +32,26 @@ async def create_tag(
     Raises:
         HTTPException: 当标签已存在时抛出400错误，当权限不足时抛出403错误
     """
-    db_tag = tag_crud.get_tag_by_name(db, name=tag.name)
-    if db_tag:
-        raise HTTPException(status_code=400, detail="标签已存在")
-    return tag_crud.create_tag(db=db, tag=tag)
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 创建标签
+        result = await tag_service.create_tag(tag.model_dump())
+        return result
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.get("/", response_model=List[tag_schema.Tag])
-@handle_exceptions(SQLAlchemyError, status_code=500, message="获取标签列表失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-@cache(expire=300, include_query_params=True)
+@public_endpoint(cache_ttl=300, custom_message="获取标签列表失败")
 async def read_tags(
     request: Request,
     skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
+    limit: int = 100
 ):
     """获取标签列表
     
@@ -61,23 +59,32 @@ async def read_tags(
     此接口对所有用户开放。
     
     Args:
+        request: FastAPI请求对象
         skip: 分页偏移量，默认0
         limit: 每页数量，默认100
-        db: 数据库会话实例
         
     Returns:
         List[Tag]: 标签列表
     """
-    return tag_crud.get_tags(db, skip=skip, limit=limit)
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 获取标签列表
+        tags, _ = await tag_service.get_tags(skip=skip, limit=limit)
+        return tags
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.get("/popular", response_model=List[tag_schema.Tag])
-@handle_exceptions(SQLAlchemyError, status_code=500, message="获取热门标签失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-@cache(expire=300, include_query_params=True)
+@public_endpoint(cache_ttl=300, custom_message="获取热门标签失败")
 async def read_popular_tags(
     request: Request,
-    limit: int = 10,
-    db: Session = Depends(get_db)
+    limit: int = 10
 ):
     """获取热门标签
     
@@ -85,22 +92,31 @@ async def read_popular_tags(
     此接口对所有用户开放。
     
     Args:
+        request: FastAPI请求对象
         limit: 返回的标签数量，默认10
-        db: 数据库会话实例
         
     Returns:
         List[Tag]: 热门标签列表，按使用次数降序排序
     """
-    return tag_crud.get_popular_tags(db=db, limit=limit)
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 获取热门标签
+        popular_tags = await tag_service.get_popular_tags(limit=limit)
+        return popular_tags
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.get("/recent", response_model=List[tag_schema.Tag])
-@handle_exceptions(SQLAlchemyError, status_code=500, message="获取最近标签失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-@cache(expire=300, include_query_params=True)
+@public_endpoint(cache_ttl=300, custom_message="获取最近标签失败")
 async def read_recent_tags(
     request: Request,
-    limit: int = 10,
-    db: Session = Depends(get_db)
+    limit: int = 10
 ):
     """获取最近标签
     
@@ -108,22 +124,31 @@ async def read_recent_tags(
     此接口对所有用户开放。
     
     Args:
+        request: FastAPI请求对象
         limit: 返回的标签数量，默认10
-        db: 数据库会话实例
         
     Returns:
         List[Tag]: 最近使用的标签列表，按最后使用时间降序排序
     """
-    return tag_crud.get_recent_tags(db=db, limit=limit)
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 获取最近标签
+        recent_tags = await tag_service.get_recent_tags(limit=limit)
+        return recent_tags
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.get("/{tag_id}", response_model=tag_schema.Tag)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="获取标签详情失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-@cache(expire=300, include_query_params=True)
+@public_endpoint(cache_ttl=300, custom_message="获取标签详情失败")
 async def read_tag(
     request: Request,
-    tag_id: int,
-    db: Session = Depends(get_db)
+    tag_id: int
 ):
     """获取标签详情
     
@@ -131,8 +156,8 @@ async def read_tag(
     此接口对所有用户开放。
     
     Args:
+        request: FastAPI请求对象
         tag_id: 标签ID
-        db: 数据库会话实例
         
     Returns:
         Tag: 标签详细信息
@@ -140,21 +165,26 @@ async def read_tag(
     Raises:
         HTTPException: 当标签不存在时抛出404错误
     """
-    db_tag = tag_crud.get_tag(db, tag_id=tag_id)
-    if db_tag is None:
-        raise HTTPException(status_code=404, detail="标签不存在")
-    return db_tag
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 获取标签详情
+        tag = await tag_service.get_tag_detail(tag_id)
+        return tag
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.put("/{tag_id}", response_model=tag_schema.Tag)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="更新标签失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="更新标签失败")
 async def update_tag(
     request: Request,
     tag_id: int,
-    tag: tag_schema.TagUpdate,
-    db: Session = Depends(get_db)
+    tag: tag_schema.TagUpdate
 ):
     """更新标签信息
     
@@ -162,10 +192,9 @@ async def update_tag(
     仅管理员可以执行此操作。
     
     Args:
+        request: FastAPI请求对象
         tag_id: 标签ID
         tag: 标签更新模型，包含要更新的信息
-        db: 数据库会话实例
-        _: 管理员权限检查依赖
         
     Returns:
         Tag: 更新后的标签信息
@@ -173,24 +202,64 @@ async def update_tag(
     Raises:
         HTTPException: 当标签不存在时抛出404错误，当权限不足时抛出403错误
     """
-    return tag_crud.update_tag(db=db, tag_id=tag_id, tag=tag)
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 更新标签
+        updated_tag = await tag_service.update_tag(
+            tag_id=tag_id,
+            data=tag.model_dump(exclude_unset=True)
+        )
+        return updated_tag
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.delete("/{tag_id}")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="删除标签失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以删除
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-async def delete_tag(request: Request, tag_id: int, db: Session = Depends(get_db)):
-    """删除标签"""
-    result = tag_crud.delete_tag(db=db, tag_id=tag_id)
-    return result
+@admin_endpoint(custom_message="删除标签失败")
+async def delete_tag(
+    request: Request,
+    tag_id: int
+):
+    """删除标签
+    
+    删除指定的标签（软删除）。
+    仅管理员可以执行此操作。
+    
+    Args:
+        request: FastAPI请求对象
+        tag_id: 要删除的标签ID
+        
+    Returns:
+        dict: 包含成功消息的响应
+        
+    Raises:
+        HTTPException: 当标签不存在或权限不足时抛出相应错误
+    """
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 删除标签
+        result = await tag_service.delete_tag(tag_id)
+        return result
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.post("/{tag_id}/restore")
-@handle_exceptions(SQLAlchemyError, status_code=500, message="恢复标签失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])  # 只有管理员可以恢复
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-async def restore_tag(request: Request, tag_id: int, db: Session = Depends(get_db)):
+@admin_endpoint(custom_message="恢复标签失败")
+async def restore_tag(
+    request: Request,
+    tag_id: int
+):
     """恢复已删除的标签
     
     恢复指定的已删除标签。
@@ -203,27 +272,32 @@ async def restore_tag(request: Request, tag_id: int, db: Session = Depends(get_d
     Args:
         request: FastAPI请求对象
         tag_id: 要恢复的标签ID
-        db: 数据库会话实例
         
     Returns:
         dict: 包含成功消息的响应
         
     Raises:
         HTTPException: 当标签不存在、未被删除或权限不足时抛出相应错误
-        SQLAlchemyError: 当数据库操作失败时抛出500错误
     """
-    result = tag_crud.restore_tag(db=db, tag_id=tag_id)
-    return result
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 恢复标签
+        result = await tag_service.restore_tag(tag_id)
+        return result
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
 
 @router.post("/{tag_id}/update-stats", response_model=tag_schema.Tag)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="更新标签统计信息失败", include_details=True)
-@validate_token
-@require_roles([Role.ADMIN, Role.SUPER_ADMIN])
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@admin_endpoint(custom_message="更新标签统计信息失败")
 async def update_tag_statistics(
     request: Request,
-    tag_id: int,
-    db: Session = Depends(get_db)
+    tag_id: int
 ):
     """更新标签统计信息
     
@@ -236,9 +310,8 @@ async def update_tag_statistics(
     仅管理员可以执行此操作。
     
     Args:
+        request: FastAPI请求对象
         tag_id: 标签ID
-        db: 数据库会话实例
-        _: 管理员权限检查依赖
         
     Returns:
         Tag: 更新后的标签信息，包含最新统计数据
@@ -246,4 +319,102 @@ async def update_tag_statistics(
     Raises:
         HTTPException: 当标签不存在时抛出404错误，当权限不足时抛出403错误
     """
-    return tag_crud.update_tag_stats(db=db, tag_id=tag_id) 
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 更新标签统计信息
+        updated_tag = await tag_service.update_tag_stats(tag_id)
+        return updated_tag
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
+
+@router.get("/{tag_id}/posts", response_model=List[post_schema.Post])
+@public_endpoint(cache_ttl=300, custom_message="获取标签帖子失败")
+async def get_tag_posts(
+    request: Request,
+    tag_id: int,
+    skip: int = 0,
+    limit: int = 20
+):
+    """获取标签的所有帖子
+    
+    获取带有指定标签的所有帖子，支持分页。
+    此接口对所有用户开放，结果将被缓存5分钟。
+    
+    Args:
+        request: FastAPI请求对象
+        tag_id: 标签ID
+        skip: 跳过的记录数，用于分页
+        limit: 每页记录数，默认20条
+        
+    Returns:
+        List[Dict]: 帖子列表
+        
+    Raises:
+        HTTPException: 当标签不存在时抛出404错误
+    """
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 获取标签帖子
+        posts, _ = await tag_service.get_posts_by_tag(
+            tag_id=tag_id,
+            skip=skip,
+            limit=limit
+        )
+        return posts
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
+
+@router.get("/search")
+@public_endpoint(cache_ttl=300, custom_message="搜索标签失败")
+async def search_tags(
+    request: Request,
+    q: str,
+    skip: int = 0,
+    limit: int = 20
+):
+    """搜索标签
+    
+    根据关键词搜索标签，支持分页。
+    此接口对所有用户开放，结果将被缓存5分钟。
+    
+    Args:
+        request: FastAPI请求对象
+        q: 搜索关键词
+        skip: 跳过的记录数，用于分页
+        limit: 每页记录数，默认20条
+        
+    Returns:
+        List[Tag]: 标签列表
+        
+    Raises:
+        HTTPException: 当搜索失败时抛出相应错误
+    """
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 搜索标签
+        tags, _ = await tag_service.search_tags(
+            query=q,
+            skip=skip,
+            limit=limit
+        )
+        return tags
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        ) 

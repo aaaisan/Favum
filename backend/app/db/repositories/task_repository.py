@@ -38,10 +38,52 @@ class TaskRepository:
         task = result.scalar_one_or_none()
         return task.to_dict() if task else None
     
+    @handle_exceptions(SQLAlchemyError, status_code=500, message="更新任务失败")
+    @log_execution_time
+    async def update_task(self, name: str, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """更新任务
+        
+        Args:
+            name: 任务名称
+            task_data: 要更新的任务数据
+            
+        Returns:
+            Dict[str, Any]: 更新后的任务详情
+        """
+        # 从task_data中移除name字段，因为它是主键
+        update_data = {k: v for k, v in task_data.items() if k != "name"}
+        # 添加updated_at字段
+        update_data["updated_at"] = datetime.now()
+        
+        # 执行更新
+        await self.db.execute(
+            update(Task)
+            .where(
+                (Task.name == name) & 
+                (Task.is_deleted == False)
+            )
+            .values(**update_data)
+        )
+        await self.db.commit()
+        
+        # 获取更新后的任务
+        result = await self.db.execute(
+            select(Task).where(Task.name == name)
+        )
+        task = result.scalar_one()
+        return task.to_dict()
+    
     @handle_exceptions(SQLAlchemyError, status_code=500, message="删除任务失败")
     @log_execution_time
-    async def delete_task(self, name: str) -> None:
-        """软删除任务"""
+    async def delete_task(self, name: str) -> Dict[str, Any]:
+        """软删除任务
+        
+        Args:
+            name: 任务名称
+            
+        Returns:
+            Dict[str, Any]: 删除后的任务状态
+        """
         # 检查任务是否存在且未删除
         result = await self.db.execute(
             select(Task).where(
@@ -59,6 +101,16 @@ class TaskRepository:
                 .values(is_deleted=True, deleted_at=datetime.now())
             )
             await self.db.commit()
+            
+            # 获取更新后的任务状态
+            result = await self.db.execute(
+                select(Task).where(Task.name == name)
+            )
+            task = result.scalar_one()
+            return task.to_dict()
+        
+        # 如果任务不存在，返回空字典
+        return {}
     
     @handle_exceptions(SQLAlchemyError, status_code=500, message="删除任务失败")
     @log_execution_time

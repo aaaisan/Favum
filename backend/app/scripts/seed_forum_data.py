@@ -23,7 +23,12 @@ try:
     from backend.app.db.session import get_db
     from backend.app.db.base import Base
     from backend.app.core.security import get_password_hash
-    from backend.app import crud
+    # 使用Service架构代替CRUD
+    from backend.app.services.user_service import UserService
+    from backend.app.services.category_service import CategoryService
+    from backend.app.services.tag_service import TagService
+    from backend.app.services.post_service import PostService
+    from backend.app.services.comment_service import CommentService
     from backend.app.schemas import (
         UserCreate, 
         CategoryCreate, 
@@ -39,7 +44,12 @@ except ImportError as e:
         from app.db.session import get_db
         from app.db.base import Base
         from app.core.security import get_password_hash
-        from app import crud
+        # 使用Service架构代替CRUD
+        from app.services.user_service import UserService
+        from app.services.category_service import CategoryService
+        from app.services.tag_service import TagService
+        from app.services.post_service import PostService
+        from app.services.comment_service import CommentService
         from app.schemas import (
             UserCreate, 
             CategoryCreate, 
@@ -274,13 +284,20 @@ async def seed_forum_data(db, clear_existing=False):
         await db.execute("DELETE FROM users")
         await db.commit()
     
+    # 创建服务实例
+    user_service = UserService()
+    category_service = CategoryService()
+    tag_service = TagService()
+    post_service = PostService()
+    comment_service = CommentService()
+    
     # 添加用户
     user_db_objects = {}
     for user_data in USERS:
         print(f"添加用户: {user_data['username']}")
         
         # 检查用户是否已存在
-        existing_user = await crud.user.get_by_email(db, email=user_data["email"])
+        existing_user = await user_service.get_user_by_email(user_data["email"])
         if existing_user:
             print(f"用户 {user_data['username']} 已存在，跳过")
             user_db_objects[user_data["email"]] = existing_user
@@ -295,7 +312,7 @@ async def seed_forum_data(db, clear_existing=False):
             role=user_data.get("role", "user")
         )
         
-        created_user = await crud.user.create(db, obj_in=user_in)
+        created_user = await user_service.create_user(user_in.model_dump())
         user_db_objects[user_data["email"]] = created_user
     
     # 添加分类
@@ -304,7 +321,7 @@ async def seed_forum_data(db, clear_existing=False):
         print(f"添加分类: {cat_data['name']}")
         
         # 检查分类是否已存在
-        existing_category = await crud.category.get_by_name(db, name=cat_data["name"])
+        existing_category = await category_service.get_category_by_name(cat_data["name"])
         if existing_category:
             print(f"分类 {cat_data['name']} 已存在，跳过")
             category_db_objects[cat_data["name"]] = existing_category
@@ -317,7 +334,7 @@ async def seed_forum_data(db, clear_existing=False):
             color=cat_data.get("color", "#3b82f6")
         )
         
-        created_category = await crud.category.create(db, obj_in=category_in)
+        created_category = await category_service.create_category(category_in.model_dump())
         category_db_objects[cat_data["name"]] = created_category
     
     # 添加标签
@@ -326,16 +343,19 @@ async def seed_forum_data(db, clear_existing=False):
         print(f"添加标签: {tag_data['name']}")
         
         # 检查标签是否已存在
-        existing_tag = await crud.tag.get_by_name(db, name=tag_data["name"])
+        existing_tag = await tag_service.get_tag_by_name(tag_data["name"])
         if existing_tag:
             print(f"标签 {tag_data['name']} 已存在，跳过")
             tag_db_objects[tag_data["name"]] = existing_tag
             continue
         
         # 创建标签
-        tag_in = TagCreate(name=tag_data["name"])
+        tag_in = TagCreate(
+            name=tag_data["name"],
+            description=tag_data.get("description", "")
+        )
         
-        created_tag = await crud.tag.create(db, obj_in=tag_in)
+        created_tag = await tag_service.create_tag(tag_in.model_dump())
         tag_db_objects[tag_data["name"]] = created_tag
     
     # 添加帖子
@@ -344,108 +364,77 @@ async def seed_forum_data(db, clear_existing=False):
         print(f"添加帖子: {post_data['title']}")
         
         # 检查帖子是否已存在
-        existing_post = await crud.post.get_by_title(db, title=post_data["title"])
+        existing_post = await post_service.get_post_by_title(post_data["title"])
         if existing_post:
-            print(f"帖子 '{post_data['title']}' 已存在，跳过")
+            print(f"帖子 {post_data['title']} 已存在，跳过")
             post_db_objects[post_data["title"]] = existing_post
             continue
         
-        # 获取用户ID
-        user = user_db_objects.get(post_data["user_email"])
-        if not user:
-            print(f"找不到用户 {post_data['user_email']}，跳过帖子")
+        # 获取作者信息
+        author_email = post_data["user_email"]
+        author = user_db_objects.get(author_email)
+        if not author:
+            print(f"作者 {author_email} 未找到，跳过帖子创建")
             continue
-        
-        # 获取分类ID
-        category = category_db_objects.get(post_data["category_name"])
+            
+        # 获取分类信息
+        category_name = post_data["category_name"]
+        category = category_db_objects.get(category_name)
         if not category:
-            print(f"找不到分类 {post_data['category_name']}，跳过帖子")
+            print(f"分类 {category_name} 未找到，跳过帖子创建")
             continue
-        
-        # 获取标签ID
+            
+        # 获取标签信息
+        tag_names = post_data["tag_names"]
         tag_ids = []
-        for tag_name in post_data["tag_names"]:
+        for tag_name in tag_names:
             tag = tag_db_objects.get(tag_name)
             if tag:
-                tag_ids.append(tag.id)
+                tag_ids.append(tag["id"])
             else:
-                print(f"找不到标签 {tag_name}，跳过")
-        
-        # 随机创建时间
-        now = datetime.now()
-        created_at = get_random_date(now - timedelta(days=30), now)
+                print(f"标签 {tag_name} 未找到，将被忽略")
         
         # 创建帖子
-        post_in = PostCreate(
-            title=post_data["title"],
-            content=post_data["content"],
-            user_id=user.id,
-            category_id=category.id,
-            tag_ids=tag_ids,
-            view_count=post_data.get("view_count", 0),
-            vote_count=post_data.get("vote_count", 0)
-        )
+        post_in = {
+            "title": post_data["title"],
+            "content": post_data["content"],
+            "user_id": author["id"],
+            "category_id": category["id"],
+            "tags": tag_ids,
+            "is_pinned": False,
+            "visibility": "public"
+        }
         
-        created_post = await crud.post.create_with_tags(db, obj_in=post_in)
+        created_post = await post_service.create_post(post_in, author["id"])
         post_db_objects[post_data["title"]] = created_post
-        
-        # 设置创建时间（可能需要直接更新数据库）
-        await db.execute(
-            f"UPDATE posts SET created_at = '{created_at}', updated_at = '{created_at}' WHERE id = {created_post.id}"
-        )
-        await db.commit()
-        
-        # 更新帖子浏览量和投票数
-        if post_data.get("view_count", 0) > 0 or post_data.get("vote_count", 0) > 0:
-            await db.execute(
-                f"UPDATE posts SET view_count = {post_data.get('view_count', 0)}, "
-                f"vote_count = {post_data.get('vote_count', 0)} WHERE id = {created_post.id}"
-            )
-            await db.commit()
     
     # 添加评论
     for comment_data in COMMENTS:
-        print(f"添加评论: '{comment_data['content'][:30]}...'")
+        print(f"添加评论到帖子: {comment_data['post_title']}")
         
-        # 获取用户
-        user = user_db_objects.get(comment_data["user_email"])
-        if not user:
-            print(f"找不到用户 {comment_data['user_email']}，跳过评论")
-            continue
-        
-        # 获取帖子
-        post = post_db_objects.get(comment_data["post_title"])
+        # 获取帖子信息
+        post_title = comment_data["post_title"]
+        post = post_db_objects.get(post_title)
         if not post:
-            print(f"找不到帖子 '{comment_data['post_title']}'，跳过评论")
+            print(f"帖子 {post_title} 未找到，跳过评论创建")
             continue
-        
-        # 随机创建时间（晚于帖子创建时间）
-        post_created_time = await db.execute(f"SELECT created_at FROM posts WHERE id = {post.id}")
-        post_created = (await post_created_time.first())[0]
-        created_at = get_random_date(post_created, datetime.now())
-        
+            
+        # 获取作者信息
+        author_email = comment_data["user_email"]
+        author = user_db_objects.get(author_email)
+        if not author:
+            print(f"作者 {author_email} 未找到，跳过评论创建")
+            continue
+            
         # 创建评论
-        comment_in = CommentCreate(
-            content=comment_data["content"],
-            user_id=user.id,
-            post_id=post.id,
-            parent_id=None
-        )
+        comment_in = {
+            "content": comment_data["content"],
+            "post_id": post["id"],
+            "user_id": author["id"]
+        }
         
-        created_comment = await crud.comment.create(db, obj_in=comment_in)
-        
-        # 设置创建时间和点赞数
-        await db.execute(
-            f"UPDATE comments SET created_at = '{created_at}', updated_at = '{created_at}', "
-            f"likes = {comment_data.get('likes', 0)} WHERE id = {created_comment.id}"
-        )
-        await db.commit()
-        
-        # 更新帖子的评论计数
-        await db.execute(
-            f"UPDATE posts SET comment_count = comment_count + 1 WHERE id = {post.id}"
-        )
-        await db.commit()
+        await comment_service.create_comment(comment_in, author["id"])
+        print(f"已添加评论到帖子: {post_title}")
     
     print("论坛数据导入完成")
 

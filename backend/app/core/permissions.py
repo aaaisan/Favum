@@ -1,11 +1,17 @@
 from fastapi import HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import Optional, Dict, List, Set, Any, Tuple
+from typing import Optional, Dict, List, Set, Any, Tuple, TYPE_CHECKING, ForwardRef, Callable
 from collections import deque
 from ..db.models import UserRole, Post, User, Section
 from ..db.database import get_db
-from .auth import get_current_active_user
+# from .auth import get_current_active_user  # 不直接导入
 from .enums import Role, Permission
+from sqlalchemy.sql import select
+
+# 处理循环导入
+def get_current_active_user():
+    from .auth import get_current_active_user as _get_current_active_user
+    return _get_current_active_user
 
 # 统一角色配置：包含权限和继承关系
 ROLE_CONFIG = {
@@ -227,214 +233,208 @@ def check_resource_permission(
     return False, resource
 
 class PermissionChecker:
-    """权限检查器类
-    
-    提供各种权限检查方法，用于验证用户对特定资源的访问权限
-    """
+    """权限检查器"""
     
     def __init__(self, db: Session = Depends(get_db)):
-        """初始化权限检查器
-        
-        Args:
-            db: 数据库会话实例
-        """
+        """初始化权限检查器"""
         self.db = db
-
+    
     def _is_role(self, user: User, roles: List[Role]) -> bool:
-        """检查用户是否具有指定角色之一
+        """检查用户是否具有指定角色之一"""
+        if not user:
+            return False
         
-        Args:
-            user: 用户对象
-            roles: 角色列表
+        user_role = user.role
+        if not user_role:
+            return False
             
-        Returns:
-            是否匹配角色
-        """
-        user_role = safe_enum_parse(Role, user.role)
-        return user_role in roles
-
-    async def is_admin(self, user: User = Depends(get_current_active_user)) -> bool:
+        return user_role in [role.value for role in roles]
+    
+    async def is_admin(self, user: User = Depends(get_current_active_user())) -> bool:
         """检查用户是否为管理员
         
         Args:
-            user: 当前用户实例
+            user: 用户对象
             
         Returns:
-            bool: 是否为管理员
+            bool: 如果用户是管理员或超级管理员则返回True
         """
-        return self._is_role(user, [Role.ADMIN])
-
-    async def is_moderator(self, user: User = Depends(get_current_active_user)) -> bool:
+        return self._is_role(user, [Role.ADMIN, Role.SUPER_ADMIN])
+    
+    async def is_moderator(self, user: User = Depends(get_current_active_user())) -> bool:
         """检查用户是否为版主
         
         Args:
-            user: 当前用户实例
+            user: 用户对象
             
         Returns:
-            bool: 是否为版主
+            bool: 如果用户是版主、管理员或超级管理员则返回True
         """
-        return self._is_role(user, [Role.ADMIN, Role.MODERATOR])
-
+        return self._is_role(user, [Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN])
+    
     async def can_modify_post(
         self,
         post_id: int,
-        user: User = Depends(get_current_active_user)
+        user: User = Depends(get_current_active_user())
     ) -> bool:
-        """检查用户是否可以修改指定帖子
+        """检查用户是否可以修改帖子
         
-        验证规则：
-        1. 管理员可以修改任何帖子
-        2. 版主可以修改其管理的版块中的帖子
-        3. 普通用户只能修改自己的帖子
+        用户可以修改自己的帖子，管理员可以修改任何帖子。
         
         Args:
             post_id: 帖子ID
-            user: 当前用户实例
+            user: 用户对象
             
         Returns:
-            bool: 是否可以修改帖子
-            
-        Raises:
-            HTTPException: 帖子不存在时抛出404错误
+            bool: 如果用户可以修改帖子则返回True
         """
-        has_permission, post = check_resource_permission(
-            user, post_id, 'post', 'edit', self.db
-        )
-        
-        if post is None:
-            raise HTTPException(status_code=404, detail="帖子不存在")
+        # 管理员可以修改任何帖子
+        if self._is_role(user, [Role.ADMIN, Role.SUPER_ADMIN]):
+            return True
             
-        return has_permission
-
+        # 查询帖子
+        result = await self.db.execute(
+            select(Post).where(Post.id == post_id)
+        )
+        post = result.scalar_one_or_none()
+        
+        if not post:
+            return False
+            
+        # 用户可以修改自己的帖子
+        return post.user_id == user.id
+    
     async def can_delete_post(
         self,
         post_id: int,
-        user: User = Depends(get_current_active_user)
+        user: User = Depends(get_current_active_user())
     ) -> bool:
-        """检查用户是否可以删除指定帖子
+        """检查用户是否可以删除帖子
         
-        验证规则与修改帖子相同
+        用户可以删除自己的帖子，管理员可以删除任何帖子。
         
         Args:
             post_id: 帖子ID
-            user: 当前用户实例
+            user: 用户对象
             
         Returns:
-            bool: 是否可以删除帖子
+            bool: 如果用户可以删除帖子则返回True
         """
-        has_permission, post = check_resource_permission(
-            user, post_id, 'post', 'delete', self.db
-        )
-        
-        if post is None:
-            raise HTTPException(status_code=404, detail="帖子不存在")
+        # 管理员可以删除任何帖子
+        if self._is_role(user, [Role.ADMIN, Role.SUPER_ADMIN]):
+            return True
             
-        return has_permission
-
+        # 查询帖子
+        result = await self.db.execute(
+            select(Post).where(Post.id == post_id)
+        )
+        post = result.scalar_one_or_none()
+        
+        if not post:
+            return False
+            
+        # 用户可以删除自己的帖子
+        return post.user_id == user.id
+    
     async def can_hide_post(
         self,
         post_id: int,
-        user: User = Depends(get_current_active_user)
+        user: User = Depends(get_current_active_user())
     ) -> bool:
-        """检查用户是否可以隐藏指定帖子
+        """检查用户是否可以隐藏帖子
         
-        验证规则：
-        1. 管理员可以隐藏任何帖子
-        2. 版主可以隐藏其管理的版块中的帖子
-        3. 普通用户只能隐藏自己的帖子
+        只有管理员和版主可以隐藏帖子。
         
         Args:
             post_id: 帖子ID
-            user: 当前用户实例
+            user: 用户对象
             
         Returns:
-            bool: 是否可以隐藏帖子
-            
-        Raises:
-            HTTPException: 帖子不存在时抛出404错误
+            bool: 如果用户可以隐藏帖子则返回True
         """
-        has_permission, post = check_resource_permission(
-            user, post_id, 'post', 'hide', self.db
-        )
-        
-        if post is None:
-            raise HTTPException(status_code=404, detail="帖子不存在")
+        # 只有管理员和版主可以隐藏帖子
+        if not self._is_role(user, [Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN]):
+            return False
             
-        return has_permission
-
+        # 查询帖子
+        result = await self.db.execute(
+            select(Post).where(Post.id == post_id)
+        )
+        post = result.scalar_one_or_none()
+        
+        return post is not None
+    
     async def can_manage_section(
         self,
         section_id: int,
-        user: User = Depends(get_current_active_user)
+        user: User = Depends(get_current_active_user())
     ) -> bool:
-        """检查用户是否可以管理指定版块
+        """检查用户是否可以管理版块
         
-        验证规则：
-        1. 管理员可以管理任何版块
-        2. 版主只能管理被分配的版块
-        3. 其他用户没有管理权限
+        只有管理员和版主可以管理版块。
         
         Args:
             section_id: 版块ID
-            user: 当前用户实例
+            user: 用户对象
             
         Returns:
-            bool: 是否可以管理版块
+            bool: 如果用户可以管理版块则返回True
         """
-        has_permission, section = check_resource_permission(
-            user, section_id, 'section', 'edit', self.db
-        )
-        
-        if section is None:
-            raise HTTPException(status_code=404, detail="版块不存在")
+        # 只有管理员和版主可以管理版块
+        if not self._is_role(user, [Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN]):
+            return False
             
-        return has_permission
+        # 查询版块
+        result = await self.db.execute(
+            select(Section).where(Section.id == section_id)
+        )
+        section = result.scalar_one_or_none()
+        
+        return section is not None
 
 def get_permission_checker(db: Session = Depends(get_db)):
-    """创建权限检查器实例
-    
-    用于依赖注入的工厂函数
+    """获取权限检查器实例
     
     Args:
-        db: 数据库会话
+        db: 数据库会话实例
         
     Returns:
-        PermissionChecker实例
+        PermissionChecker: 权限检查器实例
     """
     return PermissionChecker(db)
 
-def check_admin(user: User = Depends(get_current_active_user)):
-    """验证用户是否为管理员
+def check_admin(user: User = Depends(get_current_active_user())):
+    """检查用户是否为管理员
     
-    用于FastAPI依赖注入的管理员权限检查。
+    用于FastAPI依赖项，验证当前用户是否具有管理员权限。
+    如果不是管理员，则抛出403错误。
     
     Args:
-        user: 当前登录用户
-        
-    Returns:
-        dict: 成功时返回用户信息
+        user: 当前用户实例
         
     Raises:
-        HTTPException: 权限不足时抛出403错误
+        HTTPException: 当用户不是管理员时抛出403错误
     """
-    if not has_permission(user.role, Permission.MANAGE_SYSTEM):
-        raise HTTPException(status_code=403, detail="权限不足，需要管理员权限")
-    return {"id": user.id, "username": user.username}
+    if user.role not in [Role.ADMIN.value, Role.SUPER_ADMIN.value]:
+        raise HTTPException(
+            status_code=403,
+            detail="需要管理员权限"
+        )
+    return user
 
-def check_moderator(user: User = Depends(get_current_active_user)):
-    """验证用户是否为版主或管理员
+def check_moderator(user: User = Depends(get_current_active_user())):
+    """检查用户是否为版主
+    
+    用于FastAPI依赖项，验证当前用户是否具有版主权限。
+    如果不是版主或管理员，则抛出403错误。
     
     Args:
-        user: 当前登录用户
-        
-    Returns:
-        User: 用户对象
+        user: 当前用户实例
         
     Raises:
-        HTTPException: 权限不足时抛出403错误
+        HTTPException: 当用户不是版主或管理员时抛出403错误
     """
-    role = safe_enum_parse(Role, user.role)
-    if role not in [Role.ADMIN, Role.MODERATOR]:
+    if user.role not in [Role.MODERATOR.value, Role.ADMIN.value, Role.SUPER_ADMIN.value]:
         raise HTTPException(
             status_code=403,
             detail="需要版主权限"
