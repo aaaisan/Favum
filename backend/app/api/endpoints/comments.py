@@ -74,50 +74,6 @@ async def create_comment(
     comment.author_id = request.state.user.get("id")
     return comment_crud.create_comment(db=db, comment=comment)
 
-@router.get("/post/{post_id}", response_model=List[comment_schema.Comment])
-@handle_exceptions(SQLAlchemyError, status_code=500, message="获取评论列表失败", include_details=True)
-@validate_token
-@cache(expire=60, include_query_params=True, include_user_id=False)  # 缓存1分钟，包含查询参数，不区分用户
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-async def read_comments_by_post(
-    request: Request,
-    post_id: int,
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
-):
-    """获取帖子评论列表
-    
-    获取指定帖子下的所有评论，支持分页。
-    包含以下特性：
-    1. 异常处理：自动处理数据库异常
-    2. 令牌验证：需要有效的访问令牌
-    3. 权限检查：需要VIEW_CONTENT权限
-    4. 响应缓存：结果缓存1分钟
-    5. 执行时间日志：记录API执行时间
-    
-    Args:
-        request: FastAPI请求对象
-        post_id: 帖子ID
-        skip: 分页偏移量，默认0
-        limit: 每页数量，默认100
-        db: 数据库会话实例
-        
-    Returns:
-        List[Comment]: 评论列表
-        
-    Raises:
-        HTTPException: 当权限不足或令牌无效时抛出相应错误
-        SQLAlchemyError: 当数据库操作失败时抛出500错误
-    """
-    comments = comment_crud.get_comments_by_post(
-        db,
-        post_id=post_id,
-        skip=skip,
-        limit=limit
-    )
-    return comments
-
 @router.get("/{comment_id}", response_model=comment_schema.Comment)
 @handle_exceptions(SQLAlchemyError, status_code=500, message="获取评论详情失败", include_details=True)
 @validate_token

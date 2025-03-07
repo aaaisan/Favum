@@ -9,7 +9,9 @@ from datetime import datetime
 from ...core.permissions import Permission, Role
 from ...db.database import get_db
 from ...schemas import post as post_schema
+from ...schemas import comment as comment_schema
 from ...crud import post as post_crud
+from ...crud import comment as comment_crud
 from ...core.auth import get_current_active_user
 from ...core.decorators.error import handle_exceptions
 from ...core.decorators.auth import validate_token, require_permissions, require_roles, owner_required
@@ -457,3 +459,44 @@ async def check_favorite_status(
     # 检查收藏状态
     status = favorite_crud.is_post_favorited(db, post_id, current_user.id)
     return status
+
+@router.get("/{post_id}/comments", response_model=List[comment_schema.Comment])
+@public_endpoint(cache_ttl=60, custom_message="获取帖子评论失败")
+async def read_post_comments(
+    request: Request,
+    post_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """获取帖子评论列表
+    
+    通过RESTful风格的API获取指定帖子下的所有评论，支持分页。
+    此API端点允许游客访问，不需要身份验证。
+    
+    Args:
+        request: FastAPI请求对象
+        post_id: 帖子ID
+        skip: 分页偏移量，默认0
+        limit: 每页数量，默认100
+        db: 数据库会话实例
+        
+    Returns:
+        List[Comment]: 评论列表
+        
+    Raises:
+        HTTPException: 当帖子不存在或数据库操作失败时抛出相应错误
+    """
+    # 首先检查帖子是否存在
+    post = post_crud.get_post(db, post_id=post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail="帖子不存在")
+    
+    try:
+        # 获取评论列表
+        comments = comment_crud.get_comments_by_post(db, post_id=post_id, skip=skip, limit=limit)
+        return comments
+    except SQLAlchemyError as e:
+        logger = logging.getLogger("posts_api")
+        logger.error(f"获取帖子评论失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取帖子评论失败: {str(e)}")
