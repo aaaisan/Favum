@@ -166,9 +166,9 @@ forum/
 │   │   ├── db/             # 数据库配置
 │   │   ├── models/         # 数据库模型
 │   │   ├── schemas/        # Pydantic 模型
-│   │   ├── services/       # 业务逻辑
+│   │   ├── utils/          # 工具函数和类
 │   │   ├── tasks/          # Celery 任务
-│   │   └── utils/          # 工具函数
+│   │   └── middlewares/    # 中间件
 │   ├── tests/              # 测试文件
 │   └── requirements.txt    # 依赖文件
 └── frontend/               # 前端代码
@@ -192,18 +192,12 @@ emails==0.6
 
 ## 开发指南
 
-### 添加新的 API 端点
-
-1. 在 `app/api/endpoints/` 下创建新的路由文件
-2. 在 `app/api/api_v1/api.py` 中注册路由
-3. 在 `app/schemas/` 下创建相应的 Pydantic 模型
-4. 在 `app/crud/` 下实现数据库操作
-5. 在 `app/services/` 下实现业务逻辑
-
-### 添加新的 Celery 任务
-
-1. 在 `app/tasks/` 下创建新的任务文件
-2. 在 `app/core/celery_config.py` 中注册任务
+1. 在 `app/models/` 下定义数据模型
+2. 在 `app/schemas/` 下定义数据验证模式
+3. 在 `app/crud/` 下实现数据库操作
+4. 在 `app/api/` 下实现API端点
+5. 在 `app/utils/` 下实现工具函数和类
+6. 在 `app/tasks/` 下实现异步任务
 
 ## 常见错误及解决方案
 

@@ -245,6 +245,43 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
 ```
 
+## 工具类 (utils)
+
+### 任务管理器 (tasks.py)
+```python
+class TaskManager:
+    """任务管理器类
+    
+    处理所有任务相关的操作，包括：
+    - 任务状态查询和管理
+    - 任务执行控制（取消、重试）
+    - 任务列表和统计信息
+    - 工作器状态监控
+    """
+    
+    @staticmethod
+    def get_task_status(task_id: str) -> dict:
+        """获取任务状态
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            dict: 包含任务状态信息的字典
+        """
+    
+    @staticmethod
+    def get_task_info(task_id: str) -> Optional[dict]:
+        """获取任务详细信息
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            Optional[dict]: 任务的详细信息，不存在则返回None
+        """
+```
+
 ## 异步任务 (tasks)
 
 ### 邮件任务 (email.py)
