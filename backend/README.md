@@ -26,7 +26,7 @@
 
 - Python 3.8+
 - Redis
-- PostgreSQL
+- MySQL
 - Node.js 14+ (用于前端)
 
 ## 安装步骤
@@ -75,11 +75,11 @@ cp .env.example .env
 # API配置
 API_V1_PREFIX=/api/v1
 PROJECT_NAME=Forum
-BACKEND_CORS_ORIGINS=["http://localhost:3000"]
+BACKEND_CORS_ORIGINS=["http://localhost:8080"]
 SECRET_KEY=your-secret-key
 
 # 数据库配置
-DATABASE_URL=postgresql://user:password@localhost:5432/forum
+DATABASE_URL=mysql+pymysql://user:password@localhost:3306/forum
 
 # Redis配置
 REDIS_URL=redis://localhost:6379/0
@@ -144,7 +144,7 @@ npm run dev
 
 - 后端 API: <http://localhost:8000>
 - API 文档: <http://localhost:8000/docs>
-- 前端应用: <http://localhost:3000>
+- 前端应用: <http://localhost:8080>
 
 ## API 文档
 
@@ -310,7 +310,8 @@ pydantic==2.4.2
 alembic==1.12.1
 celery==5.3.4
 redis==5.0.1
-psycopg2-binary==2.9.9
+pymysql==1.1.0
+cryptography==41.0.5
 python-jose==3.3.0
 passlib==1.7.4
 python-multipart==0.0.6
@@ -374,72 +375,6 @@ curl -X POST "http://localhost:8000/api/v1/posts" \
 
 ```bash
 curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_at&sort_order=desc"
-```
-
-## 常见错误及解决方案
-
-### 1. 未定义"status"错误
-
-**错误信息**：
-
-```
-未定义"status"
-```
-
-**原因**：在使用 FastAPI 的 HTTP 状态码（如 `status.HTTP_403_FORBIDDEN`）时，忘记导入 status 模块。
-
-**解决方案**：
-在文件顶部添加以下导入语句：
-
-```python
-from fastapi import status
-```
-
-或者如果已经导入了其他 FastAPI 组件：
-
-```python
-from fastapi import HTTPException, Request, status
-```
-
-### 2. Redis 反序列化失败
-
-**错误信息**：
-
-```
-反序列化失败: Expecting value: line 1 column 1 (char 0)
-```
-
-**原因**：Redis 中存储的数据不是有效的 JSON 格式或为空。
-
-**解决方案**：
-
-- 检查缓存写入逻辑，确保存入的是有效的 JSON 数据
-- 如果问题持续，可以考虑清空 Redis 缓存：
-
-  ```bash
-  redis-cli FLUSHDB
-  ```
-
-### 3. 异步与同步 Redis 操作混用
-
-**错误信息**：
-
-```
-不允许在异步上下文中使用同步方法
-```
-
-**原因**：在异步函数中使用了同步的 Redis 客户端方法。
-
-**解决方案**：
-
-确保在异步上下文中使用异步的 Redis 客户端方法：
-
-```python
-# 错误示例
-redis_client.get(key)  # 同步方法
-
-# 正确示例
-await redis_client.get(key)  # 异步方法
 ```
 
 ## 贡献指南
