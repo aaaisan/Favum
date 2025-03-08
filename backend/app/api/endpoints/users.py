@@ -322,8 +322,9 @@ async def read_user_posts(
     posts, total = await user_service.get_user_posts(user_id=user_id, skip=skip, limit=limit)
     
     return {
-        "items": posts,
-        "total": total
+        "posts": posts,
+        "total": total,
+        "page_size": limit
     }
 
 @router.get("/me/favorites", response_model=post_schema.PostFavoritesList)

@@ -222,4 +222,18 @@ class CommentRepository(BaseRepository):
             comment_dict = self.model_to_dict(comment)
             comment_dict["author_name"] = author_name
             
-            return comment_dict 
+            return comment_dict
+
+    def model_to_dict(self, model) -> Dict[str, Any]:
+        """将模型对象转换为字典
+        
+        Args:
+            model: 模型对象
+            
+        Returns:
+            Dict[str, Any]: 字典表示
+        """
+        result = {}
+        for column in model.__table__.columns:
+            result[column.name] = getattr(model, column.name)
+        return result 

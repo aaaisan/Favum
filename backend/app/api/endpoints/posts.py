@@ -12,6 +12,7 @@ from ...utils.api_decorators import public_endpoint, admin_endpoint
 from ...services.favorite_service import FavoriteService
 from ...services import PostService
 from ...core.exceptions import BusinessException
+from ..responses.post import PostResponse, PostListResponse  # 导入新定义的响应模型
 
 router = APIRouter()
 
@@ -44,7 +45,7 @@ async def get_post_owner(post_id: int) -> int:
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/", response_model=post_schema.Post)
+@router.post("/", response_model=PostResponse)
 @public_endpoint(rate_limit_count=10, auth_required=True, custom_message="创建帖子失败")
 async def create_post(
     request: Request,
@@ -93,11 +94,10 @@ async def create_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/test", response_model=post_schema.Post)
-@public_endpoint(auth_required=True, custom_message="测试创建帖子失败")
-async def test_create_post(
-    request: Request,
-    post: post_schema.PostCreate
+@router.post("/test", response_model=PostResponse)
+@public_endpoint(rate_limit_count=10, auth_required=True, custom_message="创建测试帖子失败")
+async def create_test_post(
+    request: Request
 ):
     """测试创建帖子
     
@@ -111,11 +111,13 @@ async def test_create_post(
         current_user_id = request.state.user.get("id")
         
         # 准备帖子数据
-        post_data = post.model_dump()
-        
-        # 如果未提供作者ID，使用当前用户ID
-        if "author_id" not in post_data or not post_data["author_id"]:
-            post_data["author_id"] = current_user_id
+        post_data = {
+            "title": "Test Post",
+            "content": "This is a test post",
+            "category_id": 1,
+            "section_id": 1,
+            "author_id": current_user_id
+        }
         
         # 创建帖子
         created_post = await post_service.create_post(post_data)
@@ -127,8 +129,8 @@ async def test_create_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=post_schema.PostList)
-@public_endpoint(cache_ttl=60, custom_message="获取帖子列表失败")
+@router.get("/", response_model=PostListResponse)
+@public_endpoint(rate_limit_count=100, custom_message="获取帖子列表失败")
 async def read_posts(
     request: Request,
     skip: int = 0,
@@ -163,7 +165,7 @@ async def read_posts(
         order: 排序顺序，"asc"或"desc"
         
     Returns:
-        PostList: 包含帖子列表和总数的响应
+        PostListResponse: 包含帖子列表和总数的响应
     """
     # 创建帖子服务实例
     post_service = PostService()
@@ -203,8 +205,8 @@ async def read_posts(
     
     return response
 
-@router.get("/{post_id}", response_model=post_schema.Post)
-@public_endpoint(cache_ttl=60, custom_message="获取帖子详情失败")
+@router.get("/{post_id}", response_model=PostResponse)
+@public_endpoint(rate_limit_count=1000, custom_message="获取帖子详情失败")
 async def read_post(
     request: Request,
     post_id: int
@@ -254,8 +256,8 @@ async def read_post(
     
     return post
 
-@router.put("/{post_id}", response_model=post_schema.Post)
-@public_endpoint(auth_required=True, custom_message="更新帖子失败")
+@router.put("/{post_id}", response_model=PostResponse)
+@public_endpoint(rate_limit_count=20, auth_required=True, custom_message="更新帖子失败", ownership_check_func=get_post_owner)
 async def update_post(
     request: Request,
     post_id: int,

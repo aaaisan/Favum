@@ -270,3 +270,20 @@ class UserService(BaseService):
             )
             
         return user_profile 
+    
+    async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """通过ID获取用户信息
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            Optional[Dict[str, Any]]: 用户信息，不存在则返回None
+            
+        Raises:
+            HTTPException: 用户不存在时抛出404错误
+        """
+        user = await self.repository.get(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return user 

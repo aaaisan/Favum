@@ -11,7 +11,7 @@
 """
 
 from sqlalchemy import select, and_, or_, func, update, insert, delete, desc, asc
-from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.orm import selectinload, joinedload, aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple, Union
@@ -19,6 +19,7 @@ from typing import Dict, Any, List, Optional, Tuple, Union
 from .base_repository import BaseRepository
 from ..models import Post, Tag, post_tags, PostVote, VoteType, Category, Section, User
 from ...core.exceptions import BusinessError
+from ..database import AsyncSessionLocal
 
 class PostRepository(BaseRepository):
     """Post实体的数据访问仓储类"""
@@ -42,27 +43,73 @@ class PostRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 帖子数据字典，不存在则返回None
         """
-        # 构建查询条件
-        conditions = [self.model.id == post_id, self.model.is_deleted == False]
-        if not include_hidden:
-            conditions.append(self.model.is_hidden == False)
+        db = AsyncSessionLocal()
+        try:
+            # 构建查询条件
+            conditions = [self.model.id == post_id, self.model.is_deleted == False]
+            if not include_hidden:
+                conditions.append(self.model.is_hidden == False)
             
-        # 构建查询，加载关联实体
-        query = (
-            select(self.model)
-            .options(
-                joinedload(self.model.category),
-                joinedload(self.model.section),
-                joinedload(self.model.tags)
+            # 构建查询，加载关联实体
+            query = (
+                select(self.model)
+                .options(
+                    joinedload(self.model.category),
+                    joinedload(self.model.section),
+                    joinedload(self.model.tags)
+                )
+                .where(and_(*conditions))
             )
-            .where(and_(*conditions))
-        )
-        
-        # 执行查询
-        result = await self.db.execute(query)
-        post = result.unique().scalar_one_or_none()
-        
-        return post.to_dict(include_relations=True) if post else None
+            
+            # 执行查询
+            result = await db.execute(query)
+            post = result.unique().scalar_one_or_none()
+            
+            if not post:
+                return None
+                
+            # 手动创建字典
+            post_dict = {
+                "id": post.id,
+                "title": post.title,
+                "content": post.content,
+                "author_id": post.author_id,
+                "section_id": post.section_id,
+                "category_id": post.category_id,
+                "is_hidden": post.is_hidden,
+                "created_at": post.created_at,
+                "updated_at": post.updated_at,
+                "is_deleted": post.is_deleted,
+                "deleted_at": post.deleted_at,
+                "vote_count": post.vote_count
+            }
+            
+            # 添加关联实体信息
+            if post.category:
+                post_dict["category"] = {
+                    "id": post.category.id,
+                    "name": post.category.name,
+                    "created_at": post.category.created_at
+                }
+                
+            if post.section:
+                post_dict["section"] = {
+                    "id": post.section.id,
+                    "name": post.section.name
+                }
+                
+            if post.tags:
+                post_dict["tags"] = [
+                    {
+                        "id": tag.id, 
+                        "name": tag.name,
+                        "created_at": tag.created_at
+                    } for tag in post.tags
+                ]
+                
+            return post_dict
+        finally:
+            await db.close()
     
     async def get_posts(
         self, 
@@ -94,68 +141,121 @@ class PostRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
-        # 构建基础查询条件
-        conditions = [self.model.is_deleted == False]
-        if not include_hidden:
-            conditions.append(self.model.is_hidden == False)
-            
-        # 添加筛选条件
-        if category_id:
-            conditions.append(self.model.category_id == category_id)
-        if section_id:
-            conditions.append(self.model.section_id == section_id)
-        if author_id:
-            conditions.append(self.model.author_id == author_id)
-            
-        # 构建查询，加载关联实体
-        query = (
-            select(self.model)
-            .options(
-                joinedload(self.model.category),
-                joinedload(self.model.section),
-                joinedload(self.model.tags)
-            )
-            .where(and_(*conditions))
-        )
-        
-        # 处理标签筛选
-        if tag_ids:
-            # 使用exists子查询检查帖子是否包含指定标签
-            for tag_id in tag_ids:
-                subquery = (
-                    select(post_tags.c.post_id)
-                    .where(
-                        and_(
-                            post_tags.c.post_id == self.model.id,
-                            post_tags.c.tag_id == tag_id
-                        )
-                    )
-                    .exists()
-                )
-                query = query.where(subquery)
+        session = await self.get_session()
+        try:
+            # 构建基础查询条件
+            conditions = [self.model.is_deleted == False]
+            if not include_hidden:
+                conditions.append(self.model.is_hidden == False)
                 
-        # 处理排序
-        if sort_field:
-            sort_attr = getattr(self.model, sort_field, self.model.created_at)
-            query = query.order_by(desc(sort_attr) if sort_order == "desc" else asc(sort_attr))
-        else:
-            # 默认按创建时间降序排列
-            query = query.order_by(desc(self.model.created_at))
+            # 添加筛选条件
+            if category_id:
+                conditions.append(self.model.category_id == category_id)
+            if section_id:
+                conditions.append(self.model.section_id == section_id)
+            if author_id:
+                conditions.append(self.model.author_id == author_id)
+                
+            # 构建查询，加载关联实体
+            query = (
+                select(self.model)
+                .options(
+                    joinedload(self.model.category),
+                    joinedload(self.model.section),
+                    joinedload(self.model.tags)
+                )
+                .where(and_(*conditions))
+            )
             
-        # 添加分页
-        query = query.offset(skip).limit(limit)
-        
-        # 执行查询
-        result = await self.db.execute(query)
-        posts = result.unique().scalars().all()
-        posts_data = [post.to_dict(include_relations=True) for post in posts]
-        
-        # 获取总数
-        count_query = select(func.count()).select_from(self.model).where(and_(*conditions))
-        count_result = await self.db.execute(count_query)
-        total = count_result.scalar_one()
-        
-        return posts_data, total
+            # 处理标签筛选
+            if tag_ids:
+                # 使用exists子查询检查帖子是否包含指定标签
+                for tag_id in tag_ids:
+                    subquery = (
+                        select(post_tags.c.post_id)
+                        .where(
+                            and_(
+                                post_tags.c.post_id == self.model.id,
+                                post_tags.c.tag_id == tag_id
+                            )
+                        )
+                        .exists()
+                    )
+                    query = query.where(subquery)
+                    
+            # 处理排序
+            if sort_field:
+                sort_attr = getattr(self.model, sort_field, self.model.created_at)
+                query = query.order_by(desc(sort_attr) if sort_order == "desc" else asc(sort_attr))
+            else:
+                # 默认按创建时间降序排列
+                query = query.order_by(desc(self.model.created_at))
+                
+            # 添加分页
+            query = query.offset(skip).limit(limit)
+            
+            # 执行查询
+            result = await session.execute(query)
+            posts = result.unique().scalars().all()
+            
+            # 构建计数查询
+            count_query = (
+                select(func.count())
+                .select_from(self.model)
+                .where(and_(*conditions))
+            )
+            
+            # 处理标签筛选
+            if tag_ids:
+                for tag_id in tag_ids:
+                    subquery = (
+                        select(post_tags.c.post_id)
+                        .where(
+                            and_(
+                                post_tags.c.post_id == self.model.id,
+                                post_tags.c.tag_id == tag_id
+                            )
+                        )
+                        .exists()
+                    )
+                    count_query = count_query.where(subquery)
+                    
+            # 执行计数查询
+            count_result = await session.execute(count_query)
+            total = count_result.scalar_one()
+            
+            # 处理结果
+            posts_data = []
+            for post in posts:
+                post_dict = post.to_dict(include_relations=True) if hasattr(post, 'to_dict') else {
+                    "id": post.id,
+                    "title": post.title,
+                    "content": post.content,
+                    "author_id": post.author_id,
+                    "section_id": post.section_id,
+                    "category_id": post.category_id,
+                    "is_hidden": post.is_hidden,
+                    "created_at": post.created_at,
+                    "updated_at": post.updated_at,
+                    "is_deleted": post.is_deleted,
+                    "vote_count": post.vote_count,
+                    "category": {
+                        "id": post.category.id, 
+                        "name": post.category.name,
+                        "created_at": post.category.created_at
+                    } if post.category else None,
+                    "section": {"id": post.section.id, "name": post.section.name} if post.section else None,
+                    "tags": [{
+                        "id": tag.id, 
+                        "name": tag.name,
+                        "created_at": tag.created_at
+                    } for tag in post.tags]
+                }
+                posts_data.append(post_dict)
+                
+            return posts_data, total
+        finally:
+            await session.close()
     
     async def update_tags(self, post_id: int, tag_ids: List[int]) -> bool:
         """更新帖子的标签关联

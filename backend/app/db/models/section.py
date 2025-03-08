@@ -14,4 +14,4 @@ class Section(Base):
     is_deleted = Column(Boolean, default=False)  # 添加软删除标记
     
     posts = relationship("Post", back_populates="section")
-    moderators = relationship("User", secondary="section_moderators") 
+    moderators = relationship("User", secondary="section_moderators", overlaps="moderated_sections") 

@@ -14,6 +14,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from .base_repository import BaseRepository
 from ..models import User, Post, Comment
+from ..database import get_db, SessionLocal, async_get_db, AsyncSessionLocal
 
 class UserRepository(BaseRepository):
     """User实体的数据访问仓储类"""
@@ -34,15 +35,37 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        query = select(self.model).where(
-            and_(
-                self.model.email == email,
-                self.model.is_deleted == False
+        from ..database import AsyncSessionLocal
+        
+        db = AsyncSessionLocal()
+        try:
+            query = select(self.model).where(
+                and_(
+                    self.model.email == email,
+                    self.model.is_deleted == False
+                )
             )
-        )
-        result = await self.db.execute(query)
-        item = result.scalar_one_or_none()
-        return item.to_dict() if item else None
+            result = await db.execute(query)
+            item = result.scalar_one_or_none()
+            
+            if not item:
+                return None
+                
+            # 手动创建字典而不是使用to_dict方法
+            return {
+                "id": item.id,
+                "username": item.username,
+                "email": item.email,
+                "hashed_password": item.hashed_password,
+                "is_active": item.is_active,
+                "role": item.role,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+                "is_deleted": item.is_deleted,
+                "deleted_at": item.deleted_at
+            }
+        finally:
+            await db.close()
     
     async def get_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """通过用户名查询用户
@@ -53,15 +76,38 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        query = select(self.model).where(
-            and_(
-                self.model.username == username,
-                self.model.is_deleted == False
+        from ..database import AsyncSessionLocal
+        
+        # 直接创建会话而不使用上下文管理器
+        db = AsyncSessionLocal()
+        try:
+            query = select(self.model).where(
+                and_(
+                    self.model.username == username,
+                    self.model.is_deleted == False
+                )
             )
-        )
-        result = await self.db.execute(query)
-        item = result.scalar_one_or_none()
-        return item.to_dict() if item else None
+            result = await db.execute(query)
+            item = result.scalar_one_or_none()
+            
+            if not item:
+                return None
+                
+            # 手动创建字典而不是使用to_dict方法
+            return {
+                "id": item.id,
+                "username": item.username,
+                "email": item.email,
+                "hashed_password": item.hashed_password,
+                "is_active": item.is_active,
+                "role": item.role,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+                "is_deleted": item.is_deleted,
+                "deleted_at": item.deleted_at
+            }
+        finally:
+            await db.close()
     
     async def get_user_posts(
         self, 
@@ -79,28 +125,49 @@ class UserRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
-        # 查询帖子
-        query = select(Post).where(
-            and_(
-                Post.author_id == user_id,
-                Post.is_deleted == False
+        # 获取数据库会话
+        session = await self.get_session()
+        
+        try:
+            # 查询帖子
+            query = select(Post).where(
+                and_(
+                    Post.author_id == user_id,
+                    Post.is_deleted == False
+                )
+            ).order_by(Post.created_at.desc()).offset(skip).limit(limit)
+            
+            result = await session.execute(query)
+            posts = []
+            for post in result.scalars().all():
+                # 手动处理帖子数据
+                post_data = {
+                    "id": post.id,
+                    "title": post.title,
+                    "content": post.content,
+                    "author_id": post.author_id,
+                    "created_at": post.created_at,
+                    "updated_at": post.updated_at,
+                    "is_hidden": post.is_hidden,
+                    "is_deleted": post.is_deleted,
+                    "category_id": post.category_id,
+                    "section_id": post.section_id
+                }
+                posts.append(post_data)
+            
+            # 查询总数
+            count_query = select(func.count()).where(
+                and_(
+                    Post.author_id == user_id,
+                    Post.is_deleted == False
+                )
             )
-        ).order_by(Post.created_at.desc()).offset(skip).limit(limit)
-        
-        result = await self.db.execute(query)
-        posts = [post.to_dict() for post in result.scalars().all()]
-        
-        # 查询总数
-        count_query = select(func.count()).where(
-            and_(
-                Post.author_id == user_id,
-                Post.is_deleted == False
-            )
-        )
-        count_result = await self.db.execute(count_query)
-        total = count_result.scalar_one()
-        
-        return posts, total
+            count_result = await session.execute(count_query)
+            total = count_result.scalar_one()
+            
+            return posts, total
+        finally:
+            await session.close()
         
     async def soft_delete(self, user_id: int) -> bool:
         """软删除用户
@@ -167,8 +234,10 @@ class UserRepository(BaseRepository):
         if not user:
             return None
         
-        # 获取用户的帖子数量
-        async with self.db.begin() as session:
+        # 获取数据库会话
+        session = await self.get_session()
+        
+        try:
             # 获取用户的帖子数量
             post_count_query = select(func.count()).select_from(Post).where(
                 and_(
@@ -190,23 +259,67 @@ class UserRepository(BaseRepository):
             comment_count_result = await session.execute(comment_count_query)
             comment_count = comment_count_result.scalar() or 0
         
-        # 创建用户资料对象
-        user_profile = {
-            "id": user["id"],
-            "username": user["username"],
-            "email": user["email"],
-            "bio": user.get("bio"),
-            "avatar_url": user.get("avatar_url"),
-            "is_active": user["is_active"],
-            "role": user["role"],
-            "created_at": user["created_at"],
-            "updated_at": user.get("updated_at", user["created_at"]),
-            "post_count": post_count,
-            "comment_count": comment_count,
-            "last_login": user.get("last_login"),
-            "join_date": user["created_at"],
-            "reputation": user.get("reputation", 0),
-            "badges": user.get("badges", [])
-        }
+            # 创建用户资料对象
+            user_profile = {
+                "id": user["id"],
+                "username": user["username"],
+                "email": user["email"],
+                "bio": user.get("bio"),
+                "avatar_url": user.get("avatar_url"),
+                "is_active": user["is_active"],
+                "role": user["role"],
+                "created_at": user["created_at"],
+                "updated_at": user.get("updated_at", user["created_at"]),
+                "post_count": post_count,
+                "comment_count": comment_count,
+                "last_login": user.get("last_login"),
+                "join_date": user["created_at"],
+                "reputation": user.get("reputation", 0),
+                "badges": user.get("badges", [])
+            }
+            
+            return user_profile
+        finally:
+            await session.close()
+    
+    async def get_by_id(self, user_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
+        """通过ID查询用户
         
-        return user_profile 
+        Args:
+            user_id: 用户ID
+            include_deleted: 是否包含已删除的用户
+            
+        Returns:
+            Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
+        """
+        session = await self.get_session()
+        try:
+            # 构建查询条件
+            conditions = [self.model.id == user_id]
+            if not include_deleted:
+                conditions.append(self.model.is_deleted == False)
+                
+            query = select(self.model).where(and_(*conditions))
+            result = await session.execute(query)
+            item = result.scalar_one_or_none()
+            
+            if not item:
+                return None
+                
+            # 手动创建字典而不是使用to_dict方法
+            return {
+                "id": item.id,
+                "username": item.username,
+                "email": item.email,
+                "hashed_password": item.hashed_password,
+                "is_active": item.is_active,
+                "role": item.role,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+                "is_deleted": item.is_deleted,
+                "deleted_at": item.deleted_at,
+                "bio": getattr(item, "bio", None),
+                "avatar_url": getattr(item, "avatar_url", None)
+            }
+        finally:
+            await session.close() 

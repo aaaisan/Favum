@@ -146,7 +146,8 @@ def public_endpoint(
     rate_limit_count: Optional[int] = None,
     cache_ttl: Optional[int] = None,
     auth_required: bool = False,
-    custom_message: Optional[str] = None
+    custom_message: Optional[str] = None,
+    ownership_check_func: Optional[callable] = None
 ):
     """
     公共端点装饰器组合
@@ -160,6 +161,7 @@ def public_endpoint(
         cache_ttl: 缓存过期时间（秒），如果提供则添加缓存
         auth_required: 是否需要认证，默认为False
         custom_message: 自定义错误消息，默认使用"操作失败"
+        ownership_check_func: 权限检查函数，用于验证用户是否有权操作特定资源
         
     Returns:
         组合多个装饰器的装饰器函数
@@ -184,6 +186,10 @@ def public_endpoint(
         # 如果需要认证，添加令牌验证
         if auth_required:
             _decorated = validate_token(_decorated)
+            
+            # 如果提供了所有权检查函数，添加所有权验证
+            if ownership_check_func:
+                _decorated = owner_required(get_owner_id_func=ownership_check_func)(_decorated)
         
         # 可选添加速率限制
         if rate_limit_count:

@@ -10,7 +10,7 @@ from ..schemas import auth as auth_schema
 from ..db.repositories.user_repository import UserRepository
 
 # OAuth2密码流认证方案，指定token获取URL
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 def decode_token(token: str) -> Optional[Dict[str, Any]]:
     """解析JWT令牌

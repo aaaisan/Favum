@@ -3,8 +3,9 @@ from typing import Any, Dict, List, Optional, Type
 from datetime import datetime
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from contextlib import asynccontextmanager
 
-from ..database import Base, get_db
+from ..database import Base, async_get_db, AsyncSessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 
 class BaseRepository:
@@ -13,9 +14,28 @@ class BaseRepository:
     def __init__(self, model: Type[Base]): # type: ignore
         self.model = model
     
+    async def get_session(self) -> AsyncSession:
+        """获取数据库会话"""
+        return AsyncSessionLocal()
+    
+    @asynccontextmanager
+    async def session(self):
+        """获取数据库会话的上下文管理器
+        
+        用于with语句，自动关闭会话
+        
+        Returns:
+            AsyncSession: 数据库会话
+        """
+        session = await self.get_session()
+        try:
+            yield session
+        finally:
+            await session.close()
+    
     async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """创建记录"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 item = self.model(**data)  # type: ignore
                 db.add(item)
@@ -28,7 +48,7 @@ class BaseRepository:
     
     async def get(self, id: Any) -> Optional[Dict[str, Any]]:
         """获取记录"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 result = await db.execute(
                     select(self.model).where(
@@ -50,7 +70,7 @@ class BaseRepository:
         data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """更新记录"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 # 首先检查记录是否存在
                 result = await db.execute(
@@ -77,7 +97,7 @@ class BaseRepository:
     
     async def delete(self, id: Any) -> bool:
         """软删除记录"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 result = await db.execute(
                     select(self.model).where(
@@ -99,7 +119,7 @@ class BaseRepository:
     
     async def restore(self, id: Any) -> bool:
         """恢复删除的记录"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 result = await db.execute(
                     select(self.model).where(
@@ -121,7 +141,7 @@ class BaseRepository:
     
     async def hard_delete(self, id: Any) -> bool:
         """硬删除记录"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 result = await db.execute(
                     select(self.model).where(self.model.id == id)
@@ -147,7 +167,7 @@ class BaseRepository:
         include_deleted: bool = False
     ) -> List[Dict[str, Any]]:
         """获取记录列表"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 query = select(self.model)
                 
@@ -184,7 +204,7 @@ class BaseRepository:
         include_deleted: bool = False
     ) -> int:
         """获取记录数量"""
-        async with get_db() as db:
+        async with async_get_db() as db:
             try:
                 query = select(func.count(self.model.id))
                 

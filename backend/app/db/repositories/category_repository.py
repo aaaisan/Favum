@@ -87,7 +87,8 @@ class CategoryRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 分类列表和总数
         """
-        async with self.session() as session:
+        session = await self.get_session()
+        try:
             # 查询顶级分类
             query = (
                 select(Category)
@@ -103,32 +104,54 @@ class CategoryRepository(BaseRepository):
             result = await session.execute(query)
             categories = result.scalars().all()
             
-            # 查询总数
-            count_query = select(func.count(Category.id)).where(
-                Category.parent_id.is_(None),
-                Category.is_deleted == False
+            # 查询总记录数
+            count_query = (
+                select(func.count(Category.id))
+                .where(
+                    Category.parent_id.is_(None),
+                    Category.is_deleted == False
+                )
             )
             count_result = await session.execute(count_query)
-            total = count_result.scalar() or 0
+            total = count_result.scalar_one()
             
-            # 处理结果，获取每个顶级分类的子分类
-            categories_with_children = []
+            # 获取每个分类的子分类
+            categories_data = []
             for category in categories:
-                category_dict = self.model_to_dict(category)
+                category_dict = category.to_dict() if hasattr(category, 'to_dict') else {
+                    "id": category.id,
+                    "name": category.name,
+                    "description": category.description,
+                    "order": category.order,
+                    "created_at": category.created_at,
+                    "updated_at": category.updated_at if hasattr(category, 'updated_at') else None,
+                    "is_deleted": category.is_deleted,
+                    "parent_id": category.parent_id
+                }
                 
-                # 获取子分类
-                children_query = select(Category).where(
-                    Category.parent_id == category.id,
-                    Category.is_deleted == False
-                ).order_by(Category.order)
-                
+                # 查询子分类
+                children_query = (
+                    select(Category)
+                    .where(
+                        Category.parent_id == category.id,
+                        Category.is_deleted == False
+                    )
+                    .order_by(Category.order)
+                )
                 children_result = await session.execute(children_query)
                 children = children_result.scalars().all()
                 
-                category_dict["children"] = [self.model_to_dict(child) for child in children]
-                categories_with_children.append(category_dict)
+                # 将子分类添加到父分类中
+                category_dict["children"] = []
+                for child in children:
+                    child_dict = self.model_to_dict(child)
+                    category_dict["children"].append(child_dict)
                 
-            return categories_with_children, total
+                categories_data.append(category_dict)
+            
+            return categories_data, total
+        finally:
+            await session.close()
     
     async def create(self, category_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建分类
@@ -420,4 +443,18 @@ class CategoryRepository(BaseRepository):
                 category = category_map[category_id]
                 updated_categories.append(self.model_to_dict(category))
             
-            return updated_categories 
+            return updated_categories
+
+    def model_to_dict(self, model) -> Dict[str, Any]:
+        """将模型对象转换为字典
+        
+        Args:
+            model: 模型对象
+            
+        Returns:
+            Dict[str, Any]: 字典表示
+        """
+        result = {}
+        for column in model.__table__.columns:
+            result[column.name] = getattr(model, column.name)
+        return result 

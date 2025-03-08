@@ -76,7 +76,8 @@ class TagRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 标签列表和总数
         """
-        async with self.session() as session:
+        session = await self.get_session()
+        try:
             # 查询标签
             query = (
                 select(Tag)
@@ -89,16 +90,26 @@ class TagRepository(BaseRepository):
             tags = result.scalars().all()
             
             # 查询总数
-            count_query = select(func.count(Tag.id)).where(
-                Tag.is_deleted == False
-            )
+            count_query = select(func.count(Tag.id)).where(Tag.is_deleted == False)
             count_result = await session.execute(count_query)
-            total = count_result.scalar() or 0
+            total = count_result.scalar_one()
             
             # 处理结果
-            tags_list = [self.model_to_dict(tag) for tag in tags]
-                
-            return tags_list, total
+            tags_data = []
+            for tag in tags:
+                tag_dict = tag.to_dict() if hasattr(tag, 'to_dict') else {
+                    "id": tag.id,
+                    "name": tag.name,
+                    "created_at": tag.created_at,
+                    "updated_at": tag.updated_at if hasattr(tag, 'updated_at') else None,
+                    "is_deleted": tag.is_deleted,
+                    "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
+                }
+                tags_data.append(tag_dict)
+            
+            return tags_data, total
+        finally:
+            await session.close()
     
     async def get_popular_tags(self, limit: int = 10) -> List[Dict[str, Any]]:
         """获取热门标签

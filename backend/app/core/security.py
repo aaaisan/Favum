@@ -1,16 +1,21 @@
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
-from typing import Annotated, Optional, Union, Dict, Any
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt # type: ignore
 from passlib.context import CryptContext # type: ignore
+from pydantic import ValidationError
+from typing import Annotated
+import uuid
 from sqlalchemy.orm import Session
 from types import SimpleNamespace
 
-from .config import settings
-from ..db.database import get_db
+from ..core.config import settings
 from ..schemas import auth as auth_schema
+from ..db.database import get_db
 from ..db.repositories.user_repository import UserRepository
+from ..core.enums import Role
+from ..core.permissions import get_role_permissions
 
 """
 安全相关功能模块
@@ -22,8 +27,8 @@ from ..db.repositories.user_repository import UserRepository
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2认证方案
-# 配置token获取URL为/api/v1/auth/login
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+# 配置token获取URL为/token以兼容Swagger UI
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -207,6 +212,7 @@ async def get_current_user(
         raise credentials_exception
     
     # 检查用户是否存在
+    user_repository = UserRepository()
     user = await user_repository.get_by_username(username=token_data.username)
     if user is None:
         print(f"[Security] 用户不存在: {token_data.username}")

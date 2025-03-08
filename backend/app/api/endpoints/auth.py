@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Union
 import logging
 
 from ...core.permissions import get_role_permissions, Role
@@ -23,6 +23,7 @@ from ...utils.captcha import CaptchaValidator
 from ...schemas import auth as auth_schema
 from ...services.user_service import UserService
 from ...db.repositories.user_repository import UserRepository
+from fastapi.security import OAuth2PasswordRequestForm
 
 router = APIRouter()
 
@@ -170,6 +171,43 @@ async def login(
     # 打印生成的令牌信息
     print(f"生成访问令牌: user_id={user.id}, username={user.username}, role={user.role}")
     
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/token", response_model=auth_schema.Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    """获取访问令牌
+    
+    OAuth2密码流端点，用于Swagger UI授权
+    不需要验证码
+    """
+    print(f"OAuth2授权请求: 用户名={form_data.username}")
+    
+    user = await authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 获取用户角色和权限
+    role_name = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    role = getattr(Role, role_name.upper(), Role.USER)
+    permissions = [p for p in get_role_permissions(role)]
+    
+    # 生成访问令牌
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={
+            "sub": user.username, 
+            "id": user.id, 
+            "role": role_name,
+            "permissions": permissions
+        },
+        expires_delta=access_token_expires
+    )
+    
+    print(f"OAuth2授权成功: user_id={user.id}, username={user.username}")
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/test-token", response_model=auth_schema.TokenData)
