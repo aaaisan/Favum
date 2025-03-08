@@ -19,7 +19,7 @@ from ..responses import (
 
 router = APIRouter()
 
-@router.post("/", response_model=CategoryResponse)
+@router.post("", response_model=CategoryResponse)
 @admin_endpoint(custom_message="创建分类失败")
 async def create_category(
     request: Request,
@@ -54,7 +54,7 @@ async def create_category(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=CategoryListResponse)
+@router.get("", response_model=CategoryListResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取分类列表失败")
 async def read_categories(
     request: Request,

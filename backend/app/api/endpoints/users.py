@@ -35,8 +35,8 @@ from ..responses.post import PostListResponse  # 引用现有的帖子响应模�
 
 router = APIRouter()
 
-@router.post("/", response_model=UserResponse)
-@public_endpoint(custom_message="创建用户失败", rate_limit_count=20)
+@router.post("", response_model=UserResponse)
+@admin_endpoint(custom_message="创建用户失败")
 async def create_user(
     request: Request,
     user: user_schema.UserCreate
@@ -75,7 +75,7 @@ async def create_user(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=UserListResponse)
+@router.get("", response_model=UserListResponse)
 @admin_endpoint(custom_message="获取用户列表失败")
 async def read_users(
     request: Request,

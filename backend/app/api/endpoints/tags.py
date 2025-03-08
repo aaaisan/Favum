@@ -19,7 +19,7 @@ from ...core.decorators import public_endpoint, admin_endpoint
 
 router = APIRouter()
 
-@router.post("/", response_model=TagResponse)
+@router.post("", response_model=TagResponse)
 @admin_endpoint(custom_message="创建标签失败")
 async def create_tag(
     request: Request,
@@ -54,7 +54,7 @@ async def create_tag(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=TagListResponse)
+@router.get("", response_model=TagListResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取标签列表失败")
 async def read_tags(
     request: Request,

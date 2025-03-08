@@ -46,8 +46,8 @@ async def get_comment_owner(comment_id: int) -> int:
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/", response_model=CommentResponse)
-@public_endpoint(rate_limit_count=30, auth_required=True, custom_message="创建评论失败")
+@router.post("", response_model=CommentResponse)
+@public_endpoint(auth_required=True, custom_message="创建评论失败", rate_limit_count=20)
 async def create_comment(
     request: Request,
     comment: comment_schema.CommentCreate

@@ -19,7 +19,7 @@ from ...core.decorators import public_endpoint, admin_endpoint
 
 router = APIRouter()
 
-@router.post("/", response_model=SectionResponse)
+@router.post("", response_model=SectionResponse)
 @admin_endpoint(custom_message="创建版块失败")
 async def create_section(
     request: Request,
@@ -54,7 +54,7 @@ async def create_section(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=SectionListResponse)
+@router.get("", response_model=SectionListResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取版块列表失败")
 async def read_sections(
     request: Request,

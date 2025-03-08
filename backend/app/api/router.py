@@ -5,7 +5,7 @@ from ..core.config import settings
 api_router = APIRouter()
 
 # 添加API根路由
-@api_router.get("/")
+@api_router.get("")
 async def api_root():
     """API根路径处理函数"""
     return {

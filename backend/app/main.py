@@ -81,6 +81,7 @@ def create_app() -> FastAPI:
         redoc_url=f"{settings.API_V1_STR}/redoc",
         lifespan=lifespan,
         generate_unique_id_function=custom_generate_unique_id,  # 自定义操作ID生成
+        redirect_slashes=False,  # 禁用路径尾部斜杠的自动重定向
     )
 
     # CORS 中间件已在 middleware.py 中配置

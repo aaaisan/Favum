@@ -53,7 +53,7 @@ async def get_post_owner(post_id: int) -> int:
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/", response_model=PostResponse)
+@router.post("", response_model=PostResponse)
 @public_endpoint(rate_limit_count=10, auth_required=True, custom_message="创建帖子失败")
 async def create_post(
     request: Request,
@@ -137,7 +137,7 @@ async def create_test_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=PostListResponse)
+@router.get("", response_model=PostListResponse)
 @public_endpoint(rate_limit_count=100, custom_message="获取帖子列表失败")
 async def read_posts(
     request: Request,

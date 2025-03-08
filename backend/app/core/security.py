@@ -221,7 +221,7 @@ async def get_current_user(
         print(f"[Security] 用户不存在: {token_data.username}")
         raise credentials_exception
     
-    print(f"[Security] 用户验证成功: {user.username}")
+    print(f"[Security] 用户验证成功: {user['username']}")
     return token_data
 
 async def get_current_active_user(
