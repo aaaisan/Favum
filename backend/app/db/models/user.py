@@ -13,6 +13,8 @@ class User(Base):
     hashed_password = Column(String(255))
     is_active = Column(Boolean, default=True)
     role = Column(String(20), default=UserRole.USER)
+    avatar_url = Column(String(255), nullable=True)  # 用户头像URL
+    bio = Column(Text, nullable=True)  # 用户简介
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)  # 添加更新时间字段
     is_deleted = Column(Boolean, default=False)  # 添加软删除标记

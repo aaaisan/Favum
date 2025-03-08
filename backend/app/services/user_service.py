@@ -102,7 +102,7 @@ class UserService(BaseService):
         # 创建用户
         return await self.create(user_data)
         
-    async def update_user(self, user_id: int, user_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def update_user(self, user_id: int, user_data: Dict[str, Any], current_user_id: int = None) -> Optional[Dict[str, Any]]:
         """更新用户信息
         
         处理密码更新、邮箱唯一性检查等业务规则
@@ -110,6 +110,7 @@ class UserService(BaseService):
         Args:
             user_id: 用户ID
             user_data: 要更新的用户数据
+            current_user_id: 当前操作用户的ID，用于权限检查
             
         Returns:
             Optional[Dict[str, Any]]: 更新后的用户信息，不存在则返回None

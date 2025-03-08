@@ -59,6 +59,8 @@ class UserRepository(BaseRepository):
                 "hashed_password": item.hashed_password,
                 "is_active": item.is_active,
                 "role": item.role,
+                "avatar_url": item.avatar_url,
+                "bio": item.bio,
                 "created_at": item.created_at,
                 "updated_at": item.updated_at,
                 "is_deleted": item.is_deleted,
@@ -101,6 +103,8 @@ class UserRepository(BaseRepository):
                 "hashed_password": item.hashed_password,
                 "is_active": item.is_active,
                 "role": item.role,
+                "avatar_url": item.avatar_url,
+                "bio": item.bio,
                 "created_at": item.created_at,
                 "updated_at": item.updated_at,
                 "is_deleted": item.is_deleted,
@@ -314,12 +318,12 @@ class UserRepository(BaseRepository):
                 "hashed_password": item.hashed_password,
                 "is_active": item.is_active,
                 "role": item.role,
+                "avatar_url": item.avatar_url,
+                "bio": item.bio,
                 "created_at": item.created_at,
                 "updated_at": item.updated_at,
                 "is_deleted": item.is_deleted,
-                "deleted_at": item.deleted_at,
-                "bio": getattr(item, "bio", None),
-                "avatar_url": getattr(item, "avatar_url", None)
+                "deleted_at": item.deleted_at
             }
         finally:
             await session.close() 

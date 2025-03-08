@@ -491,6 +491,8 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "email": "admin@example.com",
     "is_active": true,
     "role": "admin",
+    "bio": "系统管理员，负责论坛维护工作",
+    "avatar_url": "https://example.com/avatars/admin.jpg",
     "created_at": "2025-03-05T16:15:30",
     "updated_at": "2025-03-05T16:15:30",
     "profile": {
@@ -533,6 +535,46 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```bash
   curl -X GET "http://localhost:8000/api/v1/users/46/posts?skip=0&limit=10" \
        -H "Authorization: Bearer {access_token}"
+  ```
+
+### 更新用户信息
+- **路径**: `/api/v1/users/{user_id}`
+- **方法**: PUT
+- **作用**: 更新指定ID的用户信息
+- **请求头**:
+  - `Authorization`: Bearer {access_token}
+- **请求体**:
+  ```json
+  {
+    "username": "更新后的用户名",
+    "email": "newemail@example.com",
+    "bio": "用户的个人简介信息",
+    "avatar_url": "https://example.com/avatars/new_avatar.jpg"
+  }
+  ```
+- **响应格式**:
+  ```json
+  {
+    "id": 46,
+    "username": "更新后的用户名",
+    "email": "newemail@example.com",
+    "bio": "用户的个人简介信息",
+    "avatar_url": "https://example.com/avatars/new_avatar.jpg",
+    "is_active": true,
+    "role": "user",
+    "created_at": "2025-02-20T22:27:05",
+    "updated_at": "2025-03-08T11:50:15"
+  }
+  ```
+- **使用示例**:
+  ```bash
+  curl -X PUT "http://localhost:8000/api/v1/users/46" \
+       -H "Authorization: Bearer {access_token}" \
+       -H "Content-Type: application/json" \
+       -d '{
+            "bio": "用户的个人简介信息",
+            "avatar_url": "https://example.com/avatars/new_avatar.jpg"
+          }'
   ```
 
 ## 帖子相关
@@ -1284,3 +1326,83 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   curl -X DELETE "http://localhost:8000/api/v1/tags/76" \
        -H "Authorization: Bearer {access_token}"
   ```
+
+## 最近更新
+
+### 2024-04-01: 添加用户头像和简介字段
+
+- 在用户数据库模型中添加了`avatar_url`和`bio`字段
+- 更新了用户相关的API端点，支持头像和简介信息的获取和更新
+- 创建了数据库迁移脚本，用于将新字段添加到现有数据库中
+- 修复了BaseRepository中的to_dict方法问题，添加了model_to_dict方法
+- 更新了UserService中的update_user方法，添加了current_user_id参数
+- 修改了用户API端点中的update_user方法，将update_data参数改为user_data
+
+**用户头像和简介字段说明：**
+
+- `avatar_url`: 用户头像的URL地址，类型为VARCHAR(255)，可为空
+- `bio`: 用户个人简介，类型为TEXT，可为空
+
+**相关API端点：**
+
+1. 获取用户资料：`GET /api/v1/users/me/profile` - 返回包含头像和简介的用户资料
+2. 更新用户信息：`PUT /api/v1/users/{user_id}` - 支持更新头像和简介信息
+
+**示例请求：**
+
+```bash
+# 更新用户头像和简介
+curl -X PUT "http://localhost:8000/api/v1/users/46" \
+     -H "Authorization: Bearer {access_token}" \
+     -H "Content-Type: application/json" \
+     -d '{
+          "bio": "热爱技术，专注于Web开发和人工智能",
+          "avatar_url": "https://example.com/avatars/user46.jpg"
+        }'
+```
+
+**示例响应：**
+
+```json
+{
+  "username": "admin",
+  "email": "admin@example.com",
+  "bio": "热爱技术，专注于Web开发和人工智能",
+  "avatar_url": "https://example.com/avatars/user46.jpg",
+  "id": 46,
+  "is_active": true,
+  "role": "admin",
+  "created_at": "2025-03-05T18:16:28",
+  "updated_at": "2025-03-08T04:12:39"
+}
+```
+
+**获取用户资料示例：**
+
+```bash
+# 获取当前用户资料
+curl -X GET "http://localhost:8000/api/v1/users/me/profile" \
+     -H "Authorization: Bearer {access_token}"
+```
+
+**响应示例：**
+
+```json
+{
+  "username": "admin",
+  "email": "admin@example.com",
+  "bio": "系统管理员，负责论坛维护工作",
+  "avatar_url": "https://example.com/avatars/admin.jpg",
+  "id": 46,
+  "is_active": true,
+  "role": "admin",
+  "created_at": "2025-03-05T18:16:28",
+  "updated_at": "2025-03-08T04:12:39",
+  "post_count": 1,
+  "comment_count": 1,
+  "last_login": null,
+  "join_date": "2025-03-05T18:16:28",
+  "reputation": 0,
+  "badges": []
+}
+```

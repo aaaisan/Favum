@@ -14,6 +14,20 @@ class BaseRepository:
     def __init__(self, model: Type[Base]): # type: ignore
         self.model = model
     
+    def model_to_dict(self, model_instance) -> Dict[str, Any]:
+        """将模型实例转换为字典
+        
+        Args:
+            model_instance: 模型实例
+            
+        Returns:
+            Dict[str, Any]: 包含模型属性的字典
+        """
+        result = {}
+        for column in model_instance.__table__.columns:
+            result[column.name] = getattr(model_instance, column.name)
+        return result
+    
     async def get_session(self) -> AsyncSession:
         """获取数据库会话"""
         return AsyncSessionLocal()
@@ -41,7 +55,7 @@ class BaseRepository:
                 db.add(item)
                 await db.commit()
                 await db.refresh(item)
-                return item.to_dict()
+                return self.model_to_dict(item)
             except SQLAlchemyError as e:
                 await db.rollback()
                 raise e
@@ -59,7 +73,7 @@ class BaseRepository:
                 item = result.scalar_one_or_none()
                 if not item:
                     return None
-                return item.to_dict()
+                return self.model_to_dict(item)
             except SQLAlchemyError as e:
                 await db.rollback()
                 raise e
@@ -90,7 +104,7 @@ class BaseRepository:
                 item.updated_at = datetime.utcnow()
                 await db.commit()
                 await db.refresh(item)
-                return item.to_dict()
+                return self.model_to_dict(item)
             except SQLAlchemyError as e:
                 await db.rollback()
                 raise e
@@ -194,7 +208,7 @@ class BaseRepository:
                 
                 result = await db.execute(query)
                 items = result.scalars().all()
-                return [item.to_dict() for item in items]
+                return [self.model_to_dict(item) for item in items]
             except SQLAlchemyError as e:
                 raise e
     

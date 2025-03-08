@@ -175,7 +175,7 @@ async def update_user(
         # 更新用户信息
         updated_user = await user_service.update_user(
             user_id=user_id,
-            update_data=user_update.model_dump(exclude_unset=True),
+            user_data=user_update.model_dump(exclude_unset=True),
             current_user_id=current_user_id
         )
         
