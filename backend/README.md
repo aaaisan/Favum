@@ -165,9 +165,9 @@ npm run dev
 |------|------|------|----------|----------|----------|
 | `/check-username/{username}` | GET | 检查用户名是否可用 | 无 | 路径参数: username | `{"message": "用户名可用"}` |
 | `/check-email/{email}` | GET | 检查邮箱是否可用 | 无 | 路径参数: email | `{"message": "邮箱可用"}` |
-| `/register` | POST | 注册新用户 | 无 | UserRegister 对象 | Token 对象，包含 access_token |
-| `/login` | POST | 用户登录 | 无 | Login 对象(用户名、密码、验证码) | Token 对象，包含 access_token |
-| `/test-token` | POST | 测试令牌有效性 | 有效令牌 | 无 | TokenData 对象，含用户信息 |
+| `/register` | POST | 注册新用户 | 无 | UserRegister 对象 | TokenResponse 对象 |
+| `/login` | POST | 用户登录 | 无 | Login 对象 | TokenResponse 对象 |
+| `/test-token` | POST | 测试令牌有效性 | 有效令牌 | 无 | TokenDataResponse 对象 |
 
 ### 用户 API (`/api/v1/users`)
 
@@ -273,32 +273,29 @@ npm run dev
 ## 目录结构
 
 ```
-forum/
-├── backend/
-│   ├── alembic/            # 数据库迁移
-│   ├── app/
-│   │   ├── api/            # API 路由
-│   │   │   ├── endpoints/  # 各模块 API 端点
-│   │   │   └── router.py   # API 路由注册
-│   │   ├── core/           # 核心功能
-│   │   │   ├── config.py   # 配置管理
-│   │   │   ├── security.py # 安全相关
-│   │   │   └── permissions.py # 权限管理
-│   │   ├── db/             # 数据库配置
-│   │   │   ├── database.py # 数据库连接
-│   │   │   ├── models/     # SQLAlchemy 模型
-│   │   │   └── repositories/ # 数据访问层
-│   │   ├── models/         # 数据库模型
-│   │   ├── schemas/        # Pydantic 模型
-│   │   ├── services/       # 业务服务层
-│   │   ├── utils/          # 工具函数和类
-│   │   │   ├── api_decorators.py # API装饰器
-│   │   │   └── captcha.py  # 验证码工具
-│   │   ├── tasks/          # Celery 任务
-│   │   └── middlewares/    # 中间件
-│   ├── tests/              # 测试文件
-│   └── requirements.txt    # 依赖文件
-└── frontend/               # 前端代码
+backend/
+├── alembic/            # 数据库迁移文件
+├── app/                # 应用程序主目录
+│   ├── api/            # API相关代码
+│   │   ├── endpoints/  # API端点定义
+│   │   ├── responses/  # API响应模型
+│   │   └── router.py   # API路由注册
+│   ├── core/           # 核心功能
+│   │   ├── config.py   # 配置管理
+│   │   ├── decorators/ # 装饰器
+│   │   ├── security.py # 安全相关
+│   │   └── ...
+│   ├── db/             # 数据库相关
+│   │   ├── base.py     # 数据库基础设置
+│   │   ├── models/     # 数据模型
+│   │   └── session.py  # 数据库会话
+│   ├── dependencies/   # FastAPI依赖项
+│   ├── middlewares/    # 中间件
+│   ├── schemas/        # Pydantic模型
+│   ├── services/       # 业务逻辑服务
+│   ├── tasks/          # Celery异步任务
+│   └── utils/          # 实用工具函数
+└── requirements.txt    # 项目依赖
 ```
 
 ## 主要依赖包
@@ -1406,3 +1403,79 @@ curl -X GET "http://localhost:8000/api/v1/users/me/profile" \
   "badges": []
 }
 ```
+
+## 响应模型结构
+
+项目使用了模块化的响应模型结构，每种资源类型都有独立的响应模型文件：
+
+- `app/api/responses/base.py` - 基础响应模型
+- `app/api/responses/auth.py` - 认证相关响应
+- `app/api/responses/user.py` - 用户相关响应
+- `app/api/responses/post.py` - 帖子相关响应
+- `app/api/responses/comment.py` - 评论相关响应
+- `app/api/responses/category.py` - 分类相关响应
+- `app/api/responses/section.py` - 板块相关响应
+- `app/api/responses/tag.py` - 标签相关响应
+
+## 装饰器系统
+
+项目实现了一套强大的装饰器系统，用于简化API开发：
+
+- `rate_limit` - 请求速率限制
+- `cache_response` - 响应缓存
+- `validate_permissions` - 权限验证
+- `log_activity` - 活动日志记录
+- `error_handler` - 统一错误处理
+- `transaction` - 数据库事务管理
+
+### 装饰器示例
+
+```python
+@router.get("/{post_id}", response_model=post_schema.Post)
+@rate_limit(limit=100, window=60)  # 每60秒限制100次请求
+@cache_response(expire=300)        # 缓存结果5分钟
+@log_activity("查看帖子")          # 记录用户活动
+async def read_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    # 业务逻辑...
+```
+
+## 性能优化
+
+本项目实现了多种性能优化措施：
+
+1. **响应缓存**: 使用Redis缓存API响应，减少数据库负载。
+2. **速率限制**: 使用装饰器对API请求进行速率限制，防止滥用。
+3. **异步处理**: 对耗时操作使用异步任务处理。
+4. **连接池**: 数据库和Redis使用连接池管理资源。
+5. **延迟加载**: ORM模型使用延迟加载优化查询性能。
+
+## 安全措施
+
+1. **JWT认证**: 使用JWT进行API认证。
+2. **密码哈希**: 使用Argon2或Bcrypt进行密码哈希。
+3. **CORS保护**: 配置合适的CORS策略。
+4. **速率限制**: 防止暴力破解攻击。
+5. **中间件保护**: 使用多层安全中间件。
+6. **CAPTCHA验证**: 防止自动化工具滥用。
+
+## 开发指南
+
+### 添加新的API端点
+
+1. 在 `app/api/endpoints/` 中创建或更新相应的路由文件
+2. 在 `app/api/responses/` 中定义相应的响应模型 
+3. 在 `app/db/models/` 中更新数据库模型（如需要）
+4. 在 `app/schemas/` 中定义请求验证模式
+5. 在 `app/services/` 中实现业务逻辑
+6. 在 `app/api/router.py` 中注册新的路由
+
+### 代码风格
+
+- 使用 Black 格式化代码
+- 使用 isort 排序导入
+- 使用 flake8 检查代码质量
+- 使用 mypy 进行类型检查
