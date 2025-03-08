@@ -169,4 +169,4 @@ def setup_middleware(app: FastAPI) -> None:
     )
     app.add_middleware(GZipMiddleware, minimum_size=1000)  # 压缩响应
     
-    logger.error("中间件配置完成") 
+    logger.info("中间件配置完成") 

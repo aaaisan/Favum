@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
         # 初始化缓存管理器
         await cache_manager.initialize()
         
-        logger.error("应用初始化成功: Redis连接已建立")
+        logger.info("应用初始化成功: Redis连接已建立")
     except Exception as e:
         logger.critical(f"应用初始化失败: {str(e)}", 
                        extra={
@@ -52,9 +52,9 @@ async def lifespan(app: FastAPI):
     
     # 关闭Redis连接
     if hasattr(app.state, "redis") and app.state.redis:
-        logger.error("正在关闭Redis连接...")
+        logger.info("正在关闭Redis连接...")
         await app.state.redis.close()
-        logger.error("Redis连接已关闭")
+        logger.info("Redis连接已关闭")
 
 def create_app() -> FastAPI:
     """
