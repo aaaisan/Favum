@@ -9,6 +9,14 @@ from ...services.comment_service import CommentService
 from ...core.exceptions import BusinessException
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 
+# 导入响应模型
+
+from ..responses import (
+    CommentResponse,
+    CommentListResponse,
+    CommentDeleteResponse
+)
+
 router = APIRouter()
 
 async def get_comment_owner(comment_id: int) -> int:
@@ -38,7 +46,7 @@ async def get_comment_owner(comment_id: int) -> int:
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/", response_model=comment_schema.Comment)
+@router.post("/", response_model=CommentResponse)
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="创建评论失败")
 async def create_comment(
     request: Request,
@@ -48,22 +56,19 @@ async def create_comment(
     
     创建一个新的评论。
     包含以下特性：
-    1. 异常处理：自动处理数据库异常
-    2. 令牌验证：需要有效的访问令牌
+    1. 异常处理：自动处理数据库异常和业务异常
+    2. 速率限制：每小时最多创建30条评论
     3. 权限检查：需要CREATE_COMMENT权限
-    4. 速率限制：每小时最多发30条评论
-    5. 执行时间日志：记录API执行时间
     
     Args:
         request: FastAPI请求对象
         comment: 评论创建模型，包含评论内容
         
     Returns:
-        Comment: 创建成功的评论信息
+        CommentResponse: 创建成功的评论信息
         
     Raises:
-        HTTPException: 当权限不足或令牌无效时抛出相应错误
-        BusinessException: 当业务规则验证失败时抛出业务异常
+        HTTPException: 当用户未登录或评论内容不符合要求时抛出相应错误
     """
     # 使用 Service 架构替代直接 CRUD 操作
     comment_service = CommentService()
@@ -86,7 +91,7 @@ async def create_comment(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/{comment_id}", response_model=comment_schema.Comment)
+@router.get("/{comment_id}", response_model=CommentResponse)
 @public_endpoint(cache_ttl=300, auth_required=True, custom_message="获取评论详情失败")
 async def read_comment(
     request: Request,
@@ -106,7 +111,7 @@ async def read_comment(
         comment_id: 评论ID
         
     Returns:
-        Comment: 评论详细信息
+        CommentResponse: 评论详细信息
         
     Raises:
         HTTPException: 当评论不存在或权限不足时抛出相应错误
@@ -126,7 +131,7 @@ async def read_comment(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.put("/{comment_id}", response_model=comment_schema.Comment)
+@router.put("/{comment_id}", response_model=CommentResponse)
 @public_endpoint(rate_limit_count=20, auth_required=True, custom_message="更新评论失败")
 async def update_comment(
     request: Request,
@@ -148,7 +153,7 @@ async def update_comment(
         comment: 评论更新模型，包含更新的内容
         
     Returns:
-        Comment: 更新后的评论信息
+        CommentResponse: 更新后的评论信息
         
     Raises:
         HTTPException: 当评论不存在或权限不足时抛出404或403错误
@@ -175,7 +180,7 @@ async def update_comment(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.delete("/{comment_id}")
+@router.delete("/{comment_id}", response_model=CommentDeleteResponse)
 @public_endpoint(rate_limit_count=10, auth_required=True, custom_message="删除评论失败")
 async def delete_comment(
     request: Request,
@@ -195,7 +200,7 @@ async def delete_comment(
         comment_id: 评论ID
         
     Returns:
-        JSONResponse: 删除操作结果
+        CommentDeleteResponse: 删除操作结果
         
     Raises:
         HTTPException: 当评论不存在或权限不足时抛出404或403错误
@@ -211,12 +216,17 @@ async def delete_comment(
     
     try:
         # 删除评论
-        result = await comment_service.delete_comment(
+        await comment_service.delete_comment(
             comment_id=comment_id,
             user_id=user_id,
             is_admin=is_admin
         )
-        return JSONResponse(content=result)
+        
+        # 构建符合CommentDeleteResponse的返回结构
+        return {
+            "id": comment_id,
+            "message": "评论已成功删除"
+        }
     except BusinessException as e:
         # 将业务异常转换为HTTPException
         raise HTTPException(
@@ -224,7 +234,7 @@ async def delete_comment(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/{comment_id}/restore")
+@router.post("/{comment_id}/restore", response_model=CommentResponse)
 @admin_endpoint(custom_message="恢复评论失败")
 async def restore_comment(
     request: Request,
@@ -244,7 +254,7 @@ async def restore_comment(
         comment_id: 要恢复的评论ID
         
     Returns:
-        dict: 包含成功消息的响应
+        CommentResponse: 包含成功消息的响应
         
     Raises:
         HTTPException: 当评论不存在或未被删除时抛出相应错误
@@ -283,7 +293,7 @@ async def guest_comment_notice(request: Request):
         "detail": "评论功能仅对已登录用户开放，请注册新账号或登录后再尝试"
     }
 
-@router.get("/post/{post_id}", response_model=List[comment_schema.Comment])
+@router.get("/post/{post_id}", response_model=CommentListResponse)
 @public_endpoint(cache_ttl=60, custom_message="获取帖子评论失败")
 async def get_comments_by_post(
     request: Request,
@@ -303,7 +313,7 @@ async def get_comments_by_post(
         limit: 每页数量，默认100
         
     Returns:
-        List[Comment]: 评论列表
+        CommentListResponse: 评论列表
         
     Raises:
         HTTPException: 当获取评论失败时抛出相应错误
@@ -313,12 +323,18 @@ async def get_comments_by_post(
         comment_service = CommentService()
         
         # 获取评论列表
-        comments, _ = await comment_service.get_comments_by_post(
+        comments, total = await comment_service.get_comments_by_post(
             post_id=post_id,
             skip=skip,
             limit=limit
         )
-        return comments
+        
+        # 构建符合CommentListResponse的返回结构
+        return {
+            "comments": comments,
+            "total": total,
+            "post_id": post_id
+        }
     except BusinessException as e:
         # 将业务异常转换为HTTPException
         raise HTTPException(

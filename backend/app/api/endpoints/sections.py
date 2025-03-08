@@ -1,7 +1,16 @@
-from fastapi import APIRouter, HTTPException, Request
 from fastapi import APIRouter, HTTPException, Request, status
-from typing import List
 from typing import List, Optional
+
+# 导入响应模型
+
+from ..responses import (
+    SectionResponse,
+    SectionDetailResponse,
+    SectionListResponse
+)
+from ..responses.post import PostListResponse
+from ..responses.user import UserListResponse, UserInfoResponse
+
 from ...schemas.section import SectionCreate, Section, SectionUpdate
 from ...schemas import post as post_schema
 from ...services.section_service import SectionService
@@ -10,7 +19,7 @@ from ...core.decorators import public_endpoint, admin_endpoint
 
 router = APIRouter()
 
-@router.post("/", response_model=Section)
+@router.post("/", response_model=SectionResponse)
 @admin_endpoint(custom_message="创建版块失败")
 async def create_section(
     request: Request,
@@ -26,7 +35,7 @@ async def create_section(
         section: 版块创建模型，包含版块信息
         
     Returns:
-        Section: 创建成功的版块信息
+        SectionResponse: 创建成功的版块信息
         
     Raises:
         HTTPException: 当权限不足时抛出403错误
@@ -45,17 +54,16 @@ async def create_section(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=List[Section])
+@router.get("/", response_model=SectionListResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取版块列表失败")
 async def read_sections(
     request: Request,
     skip: int = 0,
     limit: int = 100
 ):
-    """获取版块列表
+    """获取所有版块列表
     
-    获取所有论坛版块的列表，支持分页。
-    此接口对所有用户开放。
+    返回所有可用的版块列表。
     
     Args:
         request: FastAPI请求对象
@@ -63,15 +71,23 @@ async def read_sections(
         limit: 每页数量，默认100
         
     Returns:
-        List[Section]: 版块列表
+        SectionListResponse: 版块列表
+        
+    Raises:
+        HTTPException: 当获取版块失败时抛出相应错误
     """
     try:
         # 使用Service架构
         section_service = SectionService()
         
         # 获取版块列表
-        sections, _ = await section_service.get_sections(skip=skip, limit=limit)
-        return sections
+        sections, total = await section_service.get_sections(skip=skip, limit=limit)
+        
+        # 构建符合SectionListResponse的返回结构
+        return {
+            "sections": sections,
+            "total": total
+        }
     except BusinessException as e:
         # 将业务异常转换为HTTPException
         raise HTTPException(
@@ -79,7 +95,7 @@ async def read_sections(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/{section_id}", response_model=Section)
+@router.get("/{section_id}", response_model=SectionDetailResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取版块详情失败")
 async def read_section(
     request: Request,
@@ -95,7 +111,7 @@ async def read_section(
         section_id: 版块ID
         
     Returns:
-        Section: 版块详细信息
+        SectionDetailResponse: 版块详细信息
         
     Raises:
         HTTPException: 当版块不存在时抛出404错误
@@ -114,7 +130,7 @@ async def read_section(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.put("/{section_id}", response_model=Section)
+@router.put("/{section_id}", response_model=SectionResponse)
 @admin_endpoint(custom_message="更新版块失败")
 async def update_section(
     request: Request,
@@ -132,7 +148,7 @@ async def update_section(
         section: 版块更新模型，包含要更新的信息
         
     Returns:
-        Section: 更新后的版块信息
+        SectionResponse: 更新后的版块信息
         
     Raises:
         HTTPException: 当版块不存在时抛出404错误，当权限不足时抛出403错误
@@ -228,7 +244,7 @@ async def remove_moderator(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/{section_id}/posts", response_model=List[post_schema.Post])
+@router.get("/{section_id}/posts", response_model=PostListResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取版块帖子失败")
 async def get_section_posts(
     request: Request,
@@ -247,7 +263,7 @@ async def get_section_posts(
         limit: 每页记录数，默认20条
         
     Returns:
-        List[Post]: 帖子列表
+        PostListResponse: 帖子列表
         
     Raises:
         HTTPException: 当版块不存在时抛出404错误
@@ -257,12 +273,17 @@ async def get_section_posts(
         section_service = SectionService()
         
         # 获取版块帖子
-        posts, _ = await section_service.get_section_posts(
+        posts, total = await section_service.get_section_posts(
             section_id=section_id,
             skip=skip,
             limit=limit
         )
-        return posts
+        
+        # 构建符合PostListResponse的返回结构
+        return {
+            "posts": posts,
+            "total": total
+        }
     except BusinessException as e:
         # 将业务异常转换为HTTPException
         raise HTTPException(
@@ -381,7 +402,7 @@ async def restore_moderator(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/{section_id}/moderators")
+@router.get("/{section_id}/moderators", response_model=UserListResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取版主列表失败")
 async def get_section_moderators(
     request: Request,
@@ -397,7 +418,7 @@ async def get_section_moderators(
         section_id: 版块ID
         
     Returns:
-        List[Dict]: 版主用户列表
+        UserListResponse: 版主用户列表
         
     Raises:
         HTTPException: 当版块不存在时抛出404错误
@@ -407,8 +428,13 @@ async def get_section_moderators(
         section_service = SectionService()
         
         # 获取版主列表
-        moderators = await section_service.get_section_moderators(section_id)
-        return moderators
+        moderators, total = await section_service.get_section_moderators(section_id)
+        
+        # 构建符合UserListResponse的返回结构
+        return {
+            "users": moderators,
+            "total": total
+        }
     except BusinessException as e:
         # 将业务异常转换为HTTPException
         raise HTTPException(

@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -565,7 +566,7 @@ async def get_post_votes(
         )
 
 @router.post("/{post_id}/favorite", response_model=post_schema.FavoriteResponse)
-@public_endpoint(auth_required=True, custom_message="收藏操作失败")
+@public_endpoint(rate_limit_count=30, auth_required=True, custom_message="收藏操作失败")
 async def favorite_post(
     request: Request,
     post_id: int
@@ -605,7 +606,7 @@ async def favorite_post(
         )
 
 @router.delete("/{post_id}/favorite", response_model=post_schema.FavoriteResponse)
-@public_endpoint(auth_required=True, custom_message="取消收藏失败")
+@public_endpoint(rate_limit_count=30, auth_required=True, custom_message="取消收藏操作失败")
 async def unfavorite_post(
     request: Request,
     post_id: int

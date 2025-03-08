@@ -8,9 +8,18 @@ from ...schemas import category as category_schema
 from ...services.category_service import CategoryService
 from ...core.exceptions import BusinessException
 
+# 导入响应模型
+
+from ..responses import (
+    CategoryResponse,
+    CategoryDetailResponse,
+    CategoryListResponse,
+    CategoryTreeResponse
+)
+
 router = APIRouter()
 
-@router.post("/", response_model=category_schema.Category)
+@router.post("/", response_model=CategoryResponse)
 @admin_endpoint(custom_message="创建分类失败")
 async def create_category(
     request: Request,
@@ -26,7 +35,7 @@ async def create_category(
         category: 分类创建模型，包含分类信息
         
     Returns:
-        Category: 创建成功的分类信息
+        CategoryResponse: 创建成功的分类信息
         
     Raises:
         HTTPException: 当权限不足或创建失败时抛出相应错误
@@ -45,7 +54,7 @@ async def create_category(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/", response_model=List[category_schema.Category])
+@router.get("/", response_model=CategoryListResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取分类列表失败")
 async def read_categories(
     request: Request,
@@ -63,15 +72,20 @@ async def read_categories(
         limit: 每页数量，默认100
         
     Returns:
-        List[Category]: 分类列表
+        CategoryListResponse: 分类列表
     """
     try:
         # 使用Service架构
         category_service = CategoryService()
         
         # 获取分类列表
-        categories, _ = await category_service.get_categories(skip=skip, limit=limit)
-        return categories
+        categories, total = await category_service.get_categories(skip=skip, limit=limit)
+        
+        # 构建符合CategoryListResponse的返回结构
+        return {
+            "categories": categories,
+            "total": total
+        }
     except BusinessException as e:
         # 将业务异常转换为HTTPException
         raise HTTPException(
@@ -79,7 +93,7 @@ async def read_categories(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/{category_id}", response_model=category_schema.Category)
+@router.get("/{category_id}", response_model=CategoryDetailResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取分类详情失败")
 async def read_category(
     request: Request,
@@ -95,7 +109,7 @@ async def read_category(
         category_id: 分类ID
         
     Returns:
-        Category: 分类详细信息
+        CategoryDetailResponse: 分类详细信息
         
     Raises:
         HTTPException: 当分类不存在时抛出404错误
@@ -114,7 +128,7 @@ async def read_category(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.put("/{category_id}", response_model=category_schema.Category)
+@router.put("/{category_id}", response_model=CategoryResponse)
 @admin_endpoint(custom_message="更新分类失败")
 async def update_category(
     request: Request,
@@ -132,7 +146,7 @@ async def update_category(
         category: 分类更新模型，包含要更新的信息
         
     Returns:
-        Category: 更新后的分类信息
+        CategoryResponse: 更新后的分类信息
         
     Raises:
         HTTPException: 当分类不存在时抛出404错误，当权限不足时抛出403错误
@@ -189,7 +203,7 @@ async def delete_category(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/{category_id}/restore")
+@router.post("/{category_id}/restore", response_model=CategoryResponse)
 @admin_endpoint(custom_message="恢复分类失败")
 async def restore_category(
     request: Request,
@@ -228,7 +242,7 @@ async def restore_category(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/reorder")
+@router.post("/reorder", response_model=CategoryListResponse)
 @admin_endpoint(custom_message="重新排序分类失败")
 async def reorder_categories(
     request: Request,
