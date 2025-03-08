@@ -16,12 +16,12 @@ def init_db():
     # 创建管理员用户
     db = Session(engine)
     try:
-        admin = db.query(User).filter(User.email == "admin@example.com").first()
+        admin = db.query(User).filter(User.email == settings.ADMIN_EMAIL).first()
         if not admin:
             admin = User(
-                username="admin",
-                email="admin@example.com",
-                hashed_password=get_password_hash("admin123"),
+                username=settings.ADMIN_NAME,
+                email=settings.ADMIN_EMAIL,
+                hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
                 is_active=True,
                 role=UserRole.ADMIN
             )
