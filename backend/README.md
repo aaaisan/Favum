@@ -38,7 +38,7 @@ git clone https://github.com/yourusername/forum.git
 cd forum
 ```
 
-2. 创建并激活虚拟环境
+1. 创建并激活虚拟环境
 
 ```bash
 python -m venv venv
@@ -47,14 +47,14 @@ source venv/bin/activate  # Linux/Mac
 .\venv\Scripts\activate  # Windows
 ```
 
-3. 安装后端依赖
+1. 安装后端依赖
 
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-4. 安装前端依赖
+1. 安装前端依赖
 
 ```bash
 cd frontend
@@ -69,7 +69,7 @@ npm install
 cp .env.example .env
 ```
 
-2. 修改 `.env` 文件中的配置：
+1. 修改 `.env` 文件中的配置：
 
 ```ini
 # API配置
@@ -112,28 +112,28 @@ alembic upgrade head
 redis-server
 ```
 
-2. 启动后端服务
+1. 启动后端服务
 
 ```bash
 cd backend
 uvicorn app.main:app --reload
 ```
 
-3. 启动 Celery Worker
+1. 启动 Celery Worker
 
 ```bash
 cd backend
 celery -A app.core.celery_config worker --loglevel=info
 ```
 
-4. 启动 Celery Beat（用于定时任务）
+1. 启动 Celery Beat（用于定时任务）
 
 ```bash
 cd backend
 celery -A app.core.celery_config beat --loglevel=info
 ```
 
-5. 启动前端开发服务器
+1. 启动前端开发服务器
 
 ```bash
 cd frontend
@@ -272,7 +272,7 @@ npm run dev
 
 ## 目录结构
 
-```
+```txt
 backend/
 ├── alembic/            # 数据库迁移文件
 ├── app/                # 应用程序主目录
@@ -300,7 +300,7 @@ backend/
 
 ## 主要依赖包
 
-```
+```txt
 fastapi==0.104.1
 sqlalchemy==2.0.23
 pydantic==2.4.2
@@ -314,16 +314,6 @@ passlib==1.7.4
 python-multipart==0.0.6
 emails==0.6
 ```
-
-## 开发指南
-
-1. 在 `app/models/` 下定义数据模型
-2. 在 `app/schemas/` 下定义数据验证模式
-3. 在 `app/db/repositories/` 下实现数据访问层
-4. 在 `app/services/` 下实现业务逻辑层
-5. 在 `app/api/endpoints/` 下实现API端点
-6. 在 `app/utils/` 下实现工具函数和类
-7. 在 `app/tasks/` 下实现异步任务
 
 ## API 请求示例
 
@@ -388,16 +378,18 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 
 ## 联系方式
 
-项目维护者 - yourname@example.com
+项目维护者 - <yourname@example.com>
 
 项目链接: [https://github.com/yourusername/forum](https://github.com/yourusername/forum)
 
-# Forum API 文档
+## Forum API 文档
 
 ## 概述
+
 本文档提供了Forum API的所有端点信息，包括路径、作用和使用方法。
 
 ## 目录
+
 - [认证相关](#认证相关)
 - [用户相关](#用户相关)
 - [帖子相关](#帖子相关)
@@ -409,6 +401,7 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ## 认证相关
 
 ### 登录获取令牌
+
 - **路径**: `/api/v1/auth/token`
 - **方法**: POST
 - **作用**: 获取JWT访问令牌，用于后续请求的认证
@@ -416,13 +409,16 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   - `username`: 用户名
   - `password`: 密码
 - **响应格式**:
+
   ```json
   {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X POST "http://localhost:8000/api/v1/auth/token" \
        -H "Content-Type: application/x-www-form-urlencoded" \
@@ -430,19 +426,23 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 刷新令牌
+
 - **路径**: `/api/v1/auth/refresh`
 - **方法**: POST
 - **作用**: 使用刷新令牌获取新的访问令牌
 - **请求头**:
   - `Authorization`: Bearer {refresh_token}
 - **响应格式**:
+
   ```json
   {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X POST "http://localhost:8000/api/v1/auth/refresh" \
        -H "Authorization: Bearer {refresh_token}"
@@ -451,12 +451,14 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ## 用户相关
 
 ### 获取当前用户信息
+
 - **路径**: `/api/v1/users/me`
 - **方法**: GET
 - **作用**: 获取当前认证用户的信息
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **响应格式**:
+
   ```json
   {
     "id": 46,
@@ -468,19 +470,23 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "updated_at": "2025-03-05T16:15:30"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/users/me" \
        -H "Authorization: Bearer {access_token}"
   ```
 
 ### 获取当前用户资料
+
 - **路径**: `/api/v1/users/me/profile`
 - **方法**: GET
 - **作用**: 获取当前认证用户的详细资料
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **响应格式**:
+
   ```json
   {
     "id": 46,
@@ -499,13 +505,16 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     }
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/users/me/profile" \
        -H "Authorization: Bearer {access_token}"
   ```
 
 ### 获取特定用户的帖子
+
 - **路径**: `/api/v1/users/{user_id}/posts`
 - **方法**: GET
 - **作用**: 获取指定用户发布的帖子列表
@@ -513,6 +522,7 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   - `skip` (可选): 跳过的记录数，默认为0
   - `limit` (可选): 返回的最大记录数，默认为20
 - **响应格式**:
+
   ```json
   [
     {
@@ -528,19 +538,23 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     // 更多帖子...
   ]
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/users/46/posts?skip=0&limit=10" \
        -H "Authorization: Bearer {access_token}"
   ```
 
 ### 更新用户信息
+
 - **路径**: `/api/v1/users/{user_id}`
 - **方法**: PUT
 - **作用**: 更新指定ID的用户信息
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "username": "更新后的用户名",
@@ -549,7 +563,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "avatar_url": "https://example.com/avatars/new_avatar.jpg"
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 46,
@@ -563,7 +579,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "updated_at": "2025-03-08T11:50:15"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X PUT "http://localhost:8000/api/v1/users/46" \
        -H "Authorization: Bearer {access_token}" \
@@ -577,6 +595,7 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ## 帖子相关
 
 ### 获取所有帖子
+
 - **路径**: `/api/v1/posts`
 - **方法**: GET
 - **作用**: 获取所有帖子列表
@@ -588,6 +607,7 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   - `sort` (可选): 排序方式，可选值为`created_at`、`vote_count`等
   - `order` (可选): 排序顺序，可选值为`asc`、`desc`
 - **响应格式**:
+
   ```json
   {
     "posts": [
@@ -622,16 +642,20 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     ]
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/posts?skip=0&limit=10&sort=created_at&order=desc"
   ```
 
 ### 获取特定帖子
+
 - **路径**: `/api/v1/posts/{post_id}`
 - **方法**: GET
 - **作用**: 获取指定ID的帖子详情
 - **响应格式**:
+
   ```json
   {
     "id": 24,
@@ -662,18 +686,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     ]
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/posts/24"
   ```
 
-### 创建帖子
+### 发帖
+
 - **路径**: `/api/v1/posts`
 - **方法**: POST
 - **作用**: 创建新帖子
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "title": "新帖子标题",
@@ -682,7 +710,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "tags": [61, 65]
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 29,
@@ -695,7 +725,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "vote_count": 0
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X POST "http://localhost:8000/api/v1/posts" \
        -H "Authorization: Bearer {access_token}" \
@@ -709,12 +741,14 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 更新帖子
+
 - **路径**: `/api/v1/posts/{post_id}`
 - **方法**: PUT
 - **作用**: 更新指定ID的帖子
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "title": "更新后的标题",
@@ -723,7 +757,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "tags": [61, 65]
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 24,
@@ -736,7 +772,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "vote_count": 48
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X PUT "http://localhost:8000/api/v1/posts/24" \
        -H "Authorization: Bearer {access_token}" \
@@ -750,18 +788,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 删除帖子
+
 - **路径**: `/api/v1/posts/{post_id}`
 - **方法**: DELETE
 - **作用**: 删除指定ID的帖子
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **响应格式**:
+
   ```json
   {
     "message": "帖子已成功删除"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X DELETE "http://localhost:8000/api/v1/posts/24" \
        -H "Authorization: Bearer {access_token}"
@@ -770,6 +812,7 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ## 评论相关
 
 ### 获取帖子的评论
+
 - **路径**: `/api/v1/posts/{post_id}/comments`
 - **方法**: GET
 - **作用**: 获取指定帖子的所有评论
@@ -777,6 +820,7 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   - `skip` (可选): 跳过的记录数，默认为0
   - `limit` (可选): 返回的最大记录数，默认为20
 - **响应格式**:
+
   ```json
   [
     {
@@ -795,24 +839,30 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     }
   ]
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/posts/24/comments?skip=0&limit=10"
   ```
 
 ### 创建评论
+
 - **路径**: `/api/v1/posts/{post_id}/comments`
 - **方法**: POST
 - **作用**: 为指定帖子创建新评论
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "content": "这是一条新评论"
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 19,
@@ -822,7 +872,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "created_at": "2025-03-08T12:05:20"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X POST "http://localhost:8000/api/v1/posts/24/comments" \
        -H "Authorization: Bearer {access_token}" \
@@ -831,18 +883,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 更新评论
+
 - **路径**: `/api/v1/comments/{comment_id}`
 - **方法**: PUT
 - **作用**: 更新指定ID的评论
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "content": "更新后的评论内容"
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 18,
@@ -853,7 +909,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "updated_at": "2025-03-08T12:10:30"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X PUT "http://localhost:8000/api/v1/comments/18" \
        -H "Authorization: Bearer {access_token}" \
@@ -862,18 +920,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 删除评论
+
 - **路径**: `/api/v1/comments/{comment_id}`
 - **方法**: DELETE
 - **作用**: 删除指定ID的评论
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **响应格式**:
+
   ```json
   {
     "message": "评论已成功删除"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X DELETE "http://localhost:8000/api/v1/comments/18" \
        -H "Authorization: Bearer {access_token}"
@@ -882,10 +944,12 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ## 分类相关
 
 ### 获取所有分类
+
 - **路径**: `/api/v1/categories`
 - **方法**: GET
 - **作用**: 获取所有分类列表，包括层级结构
 - **响应格式**:
+
   ```json
   [
     {
@@ -919,16 +983,20 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     // 更多分类...
   ]
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/categories"
   ```
 
 ### 获取特定分类
+
 - **路径**: `/api/v1/categories/{category_id}`
 - **方法**: GET
 - **作用**: 获取指定ID的分类详情
 - **响应格式**:
+
   ```json
   {
     "id": 28,
@@ -957,18 +1025,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     ]
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/categories/28"
   ```
 
 ### 创建分类
+
 - **路径**: `/api/v1/categories`
 - **方法**: POST
 - **作用**: 创建新分类
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "name": "新分类",
@@ -977,7 +1049,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "order": 6
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 35,
@@ -988,7 +1062,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "created_at": "2025-03-08T12:25:10"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X POST "http://localhost:8000/api/v1/categories" \
        -H "Authorization: Bearer {access_token}" \
@@ -1002,12 +1078,14 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 更新分类
+
 - **路径**: `/api/v1/categories/{category_id}`
 - **方法**: PUT
 - **作用**: 更新指定ID的分类
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "name": "更新后的分类名",
@@ -1016,7 +1094,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "order": 6
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 35,
@@ -1028,7 +1108,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "updated_at": "2025-03-08T12:30:20"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X PUT "http://localhost:8000/api/v1/categories/35" \
        -H "Authorization: Bearer {access_token}" \
@@ -1042,18 +1124,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 删除分类
+
 - **路径**: `/api/v1/categories/{category_id}`
 - **方法**: DELETE
 - **作用**: 删除指定ID的分类
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **响应格式**:
+
   ```json
   {
     "message": "分类已成功删除"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X DELETE "http://localhost:8000/api/v1/categories/35" \
        -H "Authorization: Bearer {access_token}"
@@ -1062,10 +1148,12 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ## 版块相关
 
 ### 获取所有版块
+
 - **路径**: `/api/v1/sections`
 - **方法**: GET
 - **作用**: 获取所有版块列表
 - **响应格式**:
+
   ```json
   [
     {
@@ -1088,16 +1176,20 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     }
   ]
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/sections"
   ```
 
 ### 获取特定版块
+
 - **路径**: `/api/v1/sections/{section_id}`
 - **方法**: GET
 - **作用**: 获取指定ID的版块详情
 - **响应格式**:
+
   ```json
   {
     "id": 12,
@@ -1114,25 +1206,31 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     ]
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/sections/12"
   ```
 
 ### 创建版块
+
 - **路径**: `/api/v1/sections`
 - **方法**: POST
 - **作用**: 创建新版块
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "name": "新版块",
     "description": "新版块的描述"
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 15,
@@ -1141,7 +1239,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "created_at": "2025-03-08T12:45:30"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X POST "http://localhost:8000/api/v1/sections" \
        -H "Authorization: Bearer {access_token}" \
@@ -1153,19 +1253,23 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 更新版块
+
 - **路径**: `/api/v1/sections/{section_id}`
 - **方法**: PUT
 - **作用**: 更新指定ID的版块
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "name": "更新后的版块名",
     "description": "更新后的描述"
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 15,
@@ -1175,7 +1279,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "updated_at": "2025-03-08T12:50:15"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X PUT "http://localhost:8000/api/v1/sections/15" \
        -H "Authorization: Bearer {access_token}" \
@@ -1187,18 +1293,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 删除版块
+
 - **路径**: `/api/v1/sections/{section_id}`
 - **方法**: DELETE
 - **作用**: 删除指定ID的版块
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **响应格式**:
+
   ```json
   {
     "message": "版块已成功删除"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X DELETE "http://localhost:8000/api/v1/sections/15" \
        -H "Authorization: Bearer {access_token}"
@@ -1207,10 +1317,12 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ## 标签相关
 
 ### 获取所有标签
+
 - **路径**: `/api/v1/tags`
 - **方法**: GET
 - **作用**: 获取所有标签列表
 - **响应格式**:
+
   ```json
   [
     {
@@ -1226,16 +1338,20 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     // 更多标签...
   ]
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/tags"
   ```
 
 ### 获取特定标签
+
 - **路径**: `/api/v1/tags/{tag_id}`
 - **方法**: GET
 - **作用**: 获取指定ID的标签详情
 - **响应格式**:
+
   ```json
   {
     "id": 61,
@@ -1244,24 +1360,30 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "post_count": 5
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X GET "http://localhost:8000/api/v1/tags/61"
   ```
 
 ### 创建标签
+
 - **路径**: `/api/v1/tags`
 - **方法**: POST
 - **作用**: 创建新标签
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "name": "新标签"
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 76,
@@ -1269,7 +1391,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "created_at": "2025-03-08T13:05:45"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X POST "http://localhost:8000/api/v1/tags" \
        -H "Authorization: Bearer {access_token}" \
@@ -1278,18 +1402,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 更新标签
+
 - **路径**: `/api/v1/tags/{tag_id}`
 - **方法**: PUT
 - **作用**: 更新指定ID的标签
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **请求体**:
+
   ```json
   {
     "name": "更新后的标签名"
   }
   ```
+
 - **响应格式**:
+
   ```json
   {
     "id": 76,
@@ -1298,7 +1426,9 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
     "updated_at": "2025-03-08T13:10:20"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X PUT "http://localhost:8000/api/v1/tags/76" \
        -H "Authorization: Bearer {access_token}" \
@@ -1307,18 +1437,22 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ### 删除标签
+
 - **路径**: `/api/v1/tags/{tag_id}`
 - **方法**: DELETE
 - **作用**: 删除指定ID的标签
 - **请求头**:
   - `Authorization`: Bearer {access_token}
 - **响应格式**:
+
   ```json
   {
     "message": "标签已成功删除"
   }
   ```
+
 - **使用示例**:
+
   ```bash
   curl -X DELETE "http://localhost:8000/api/v1/tags/76" \
        -H "Authorization: Bearer {access_token}"
@@ -1467,7 +1601,7 @@ async def read_post(
 ### 添加新的API端点
 
 1. 在 `app/api/endpoints/` 中创建或更新相应的路由文件
-2. 在 `app/api/responses/` 中定义相应的响应模型 
+2. 在 `app/api/responses/` 中定义相应的响应模型
 3. 在 `app/db/models/` 中更新数据库模型（如需要）
 4. 在 `app/schemas/` 中定义请求验证模式
 5. 在 `app/services/` 中实现业务逻辑
