@@ -8,12 +8,17 @@
 - 支持软删除和恢复
 """
 
+from sqlalchemy import select, and_, func, update
+from sqlalchemy import select, and_, func, update
 from sqlalchemy import select, and_, or_, func, update
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
 from .base_repository import BaseRepository
 from ..models import User, Post, Comment
+from ..database import async_get_db, AsyncSessionLocal
+from ..database import SessionLocal, async_get_db, AsyncSessionLocal
+from ..database import get_db, SessionLocal, AsyncSessionLocal
 from ..database import get_db, SessionLocal, async_get_db, AsyncSessionLocal
 
 class UserRepository(BaseRepository):
@@ -35,7 +40,6 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        from ..database import AsyncSessionLocal
         
         db = AsyncSessionLocal()
         try:

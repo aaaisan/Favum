@@ -11,10 +11,8 @@
 from fastapi import Request, HTTPException, status
 from functools import wraps
 from typing import List, Callable, TypeVar, Any
-import inspect
 # 移除直接导入，改为函数内导入
 # from ..auth import decode_token
-from ...core.exceptions import BusinessError
 from ...core.logging import get_logger
 from ...core.permissions import Permission, Role
 

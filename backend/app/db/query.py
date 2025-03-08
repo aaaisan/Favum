@@ -1,9 +1,11 @@
 from typing import Any, List, Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.expression import select
+from sqlalchemy import and_
 from sqlalchemy import and_, or_
 
 # 更新导入路径，改用models包
+from .models import User
 from .models import Base, User
 from ..core.exceptions import NotFoundError
 

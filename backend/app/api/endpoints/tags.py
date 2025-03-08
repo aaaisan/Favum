@@ -1,8 +1,7 @@
+from fastapi import APIRouter, HTTPException, Request
 from fastapi import APIRouter, HTTPException, Request, status
+from typing import List
 from typing import List, Optional
-from sqlalchemy.orm import Session
-import logging
-from ...core.permissions import Role
 from ...schemas import tag as tag_schema
 from ...schemas import post as post_schema
 from ...services.tag_service import TagService

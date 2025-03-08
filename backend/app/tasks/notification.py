@@ -1,5 +1,5 @@
+from typing import Optional
 from typing import List, Optional
-from sqlalchemy.orm import Session
 from ..core.celery_config import celery_app
 from ..db.database import SessionLocal
 from ..db.models import User, Post, Comment

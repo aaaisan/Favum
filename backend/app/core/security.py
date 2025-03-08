@@ -1,12 +1,17 @@
+from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
+from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Security, status
 from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt # type: ignore
 from passlib.context import CryptContext # type: ignore
-from pydantic import ValidationError
 from typing import Annotated
-import uuid
 from sqlalchemy.orm import Session
 from types import SimpleNamespace
 
@@ -14,8 +19,6 @@ from ..core.config import settings
 from ..schemas import auth as auth_schema
 from ..db.database import get_db
 from ..db.repositories.user_repository import UserRepository
-from ..core.enums import Role
-from ..core.permissions import get_role_permissions
 
 """
 安全相关功能模块

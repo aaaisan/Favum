@@ -8,6 +8,7 @@
 """
 
 # 重新导出限流函数
+from .limit import rate_limit
 from .limit import rate_limit, ip_rate_limit
 
 # 导入类型提示
@@ -16,7 +17,6 @@ from typing import Optional, Callable, Dict, Any
 from ..core.logging import get_logger
 from .auth import get_current_user
 from ..db.models import User
-from datetime import timedelta
 import hashlib
 
 # 重新导出缓存函数，兼容旧名称

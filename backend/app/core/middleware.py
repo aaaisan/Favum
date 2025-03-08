@@ -14,18 +14,17 @@
 所有中间件都支持异步处理，适用于高并发场景。
 """
 
-from datetime import timedelta
 from typing import Callable
 from fastapi import Request, Response, FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from starlette.types import ASGIApp
 import time
 
 from .config import settings
 from .exceptions import APIError
+from ..middlewares import RequestLoggingMiddleware
 from ..middlewares import RequestLoggingMiddleware, RateLimitMiddleware
 from ..core.logging import get_logger
 

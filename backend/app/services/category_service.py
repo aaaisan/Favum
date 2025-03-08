@@ -1,5 +1,4 @@
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
 import logging
 
 from ..db.repositories.category_repository import CategoryRepository

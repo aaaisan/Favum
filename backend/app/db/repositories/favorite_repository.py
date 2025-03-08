@@ -1,12 +1,11 @@
+from sqlalchemy import select, func, delete, text, insert, and_, or_, desc, asc, join
 from sqlalchemy import select, func, update, delete, text, insert, and_, or_, desc, asc, join
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime
+from typing import List, Dict, Any, Tuple, Union
 from typing import List, Optional, Dict, Any, Tuple, Union
 
 from ..models.post_favorite import PostFavorite
 from ..models.post import Post
-from ..models.user import User
 from .base_repository import BaseRepository
 from ...core.exceptions import BusinessException
 

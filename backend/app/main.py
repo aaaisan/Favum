@@ -16,7 +16,6 @@ from .core.cache import RedisClient, cache_manager
 from jose import jwt  # 导入jwt模块
 from .middlewares import add_error_handler
 from contextlib import asynccontextmanager
-from fastapi.middleware.cors import CORSMiddleware
 
 # 配置日志
 logging.basicConfig(

@@ -1,10 +1,14 @@
+from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
 from typing import List, Optional
 from ...schemas import user as user_schema
 from ...schemas import post as post_schema
-from ...schemas import auth as auth_schema
 from ...services.favorite_service import FavoriteService
+from ...dependencies import require_admin
+from ...dependencies import require_user, require_admin
+from ...dependencies import get_current_user, require_user
 from ...dependencies import get_current_user, require_user, require_admin
 from ...utils.api_decorators import (
     admin_endpoint,
@@ -12,19 +16,17 @@ from ...utils.api_decorators import (
     public_endpoint,
     owner_endpoint
 )
-from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import require_roles, owner_required
+from ...core.decorators.auth import require_permissions, require_roles, owner_required
+from ...core.decorators.auth import validate_token, require_permissions, owner_required
 from ...core.decorators.auth import validate_token, require_permissions, require_roles, owner_required
+from ...core.decorators.performance import cache
 from ...core.decorators.performance import rate_limit, cache
-from ...core.decorators.logging import log_execution_time
+from ...core.enums import Role
 from ...core.enums import Permission, Role
-from sqlalchemy.exc import SQLAlchemyError
-from ...db.query import UserQuery
-import logging
-from fastapi.responses import JSONResponse
 # 导入新的服务层
 from ...services.user_service import UserService  
 from ...core.exceptions import BusinessException
-from ...db.repositories.user_repository import UserRepository
 
 router = APIRouter()
 

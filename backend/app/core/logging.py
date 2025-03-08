@@ -28,7 +28,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-from .config import settings
 
 class JSONFormatter(logging.Formatter):
     """

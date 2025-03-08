@@ -1,10 +1,9 @@
+from fastapi import Request
 from fastapi import Request, Depends
 from typing import Optional, Callable, Any, Dict, TypeVar
-from datetime import timedelta
 import hashlib
 from ..core.cache import cache_manager
 from ..core.logging import get_logger
-from .auth import get_current_user
 
 logger = get_logger(__name__)
 T = TypeVar('T')

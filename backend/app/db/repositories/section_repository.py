@@ -1,5 +1,5 @@
+from sqlalchemy import select, func, delete, text, insert, and_, or_, desc, asc
 from sqlalchemy import select, func, update, delete, text, insert, and_, or_, desc, asc
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 

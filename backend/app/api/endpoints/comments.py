@@ -1,13 +1,13 @@
+from fastapi import APIRouter, HTTPException, Request
 from fastapi import APIRouter, HTTPException, status, Request
+from typing import List
 from typing import List, Optional
-import logging
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 
 from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService
-from ...core.permissions import Role
 from ...core.exceptions import BusinessException
+from ...utils.api_decorators import public_endpoint, admin_endpoint
 from ...utils.api_decorators import public_endpoint, admin_endpoint, owner_endpoint
 
 router = APIRouter()

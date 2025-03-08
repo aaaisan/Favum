@@ -11,11 +11,13 @@ API装饰器工具模块
 """
 
 import logging
+from typing import Optional, Any
 from typing import List, Optional, Any
 from functools import wraps
 
 from fastapi import HTTPException, Request
 from sqlalchemy.exc import SQLAlchemyError
+from ..core.enums import Role
 from ..core.enums import Role, Permission
 from ..core.decorators import (
     handle_exceptions,

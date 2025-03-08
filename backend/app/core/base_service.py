@@ -20,14 +20,12 @@
 """
 
 from __future__ import annotations
+from typing import Any, Dict, List, Optional, TypeVar, Callable, TypeVar, Awaitable
 from typing import Any, Dict, List, Optional, TypeVar, Generic, Callable, TypeVar, Awaitable
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from .logging import get_logger
 # 使用推迟的导入方式
-from ..db.database import Base
-from ..db.repositories.base_repository import BaseRepository
 
 logger = get_logger(__name__)
 

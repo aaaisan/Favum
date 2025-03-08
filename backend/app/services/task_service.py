@@ -10,7 +10,6 @@
 """
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 from celery.result import AsyncResult
 
 from ..db.repositories.task_repository import TaskRepository

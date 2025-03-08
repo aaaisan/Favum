@@ -10,13 +10,22 @@
 - 支持软删除和恢复
 """
 
+from sqlalchemy import select, and_, func, update, insert, delete, desc, asc
+from sqlalchemy import select, and_, func, update, insert, delete, desc, asc
 from sqlalchemy import select, and_, or_, func, update, insert, delete, desc, asc
+from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased
+from sqlalchemy.orm import joinedload, aliased
 from sqlalchemy.orm import selectinload, joinedload, aliased
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
+from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from typing import Dict, Any, List, Optional, Tuple, Union
 
 from .base_repository import BaseRepository
+from ..models import Post, post_tags, PostVote, VoteType, Section, User
+from ..models import Post, post_tags, PostVote, VoteType, Category, Section, User
+from ..models import Post, Tag, post_tags, PostVote, VoteType, Category, User
 from ..models import Post, Tag, post_tags, PostVote, VoteType, Category, Section, User
 from ...core.exceptions import BusinessError
 from ..database import AsyncSessionLocal

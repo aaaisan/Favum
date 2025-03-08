@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from typing import List
 from typing import Optional, List
 
 # 用户相关模型

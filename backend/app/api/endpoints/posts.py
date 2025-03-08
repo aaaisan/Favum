@@ -1,10 +1,9 @@
+from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi import APIRouter, HTTPException, status, Request, Response
-from fastapi.responses import JSONResponse
 from typing import List, Optional
-import logging
-from datetime import datetime
 
-from ...core.permissions import Role
 from ...schemas import post as post_schema
 from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService

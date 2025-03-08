@@ -4,6 +4,7 @@
 提供全局装饰器配置和默认值设置，使装饰器更加灵活和可配置。
 """
 
+from typing import Dict, Any, Optional, List
 from typing import Dict, Any, Optional, List, Union
 from pydantic import BaseModel, Field
 import logging

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta
+from typing import Annotated
 from typing import Annotated, Union
 import logging
 
@@ -17,8 +17,6 @@ from ...core.decorators.auth import validate_token
 from ...core.decorators.performance import rate_limit, cache
 from ...core.decorators.logging import log_execution_time
 from ...core.config import settings
-from ...db.database import get_db
-from ...db.models import User
 from ...utils.captcha import CaptchaValidator
 from ...schemas import auth as auth_schema
 from ...services.user_service import UserService

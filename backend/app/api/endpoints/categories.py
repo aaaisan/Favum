@@ -1,18 +1,12 @@
+from fastapi import APIRouter, HTTPException, Request
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
-from ...core.permissions import Role
-from ...core.decorators.error import handle_exceptions
+from ...core.decorators.auth import require_roles
 from ...core.decorators.auth import validate_token, require_roles
-from ...core.decorators.logging import log_execution_time
 from ...utils.api_decorators import admin_endpoint, public_endpoint
-from ...db.database import get_db
 from ...schemas import category as category_schema
 from ...services.category_service import CategoryService
 from ...core.exceptions import BusinessException
-import logging
-from fastapi import status
 
 router = APIRouter()
 

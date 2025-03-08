@@ -1,7 +1,8 @@
 from fastapi import Depends, HTTPException
+from ..db.models import User, Post, SectionModerator
 from ..db.models import User, Post, Section, SectionModerator
 from sqlalchemy.orm import Session
-from typing import Optional
+from .auth import require_user
 from .auth import get_current_user, require_user
 
 async def require_admin(current_user: User = Depends(require_user)):

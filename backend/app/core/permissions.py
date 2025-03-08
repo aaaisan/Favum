@@ -1,7 +1,9 @@
 from fastapi import HTTPException, Depends
 from sqlalchemy.orm import Session
+from typing import Dict, List, Set, Any, Tuple, TYPE_CHECKING, ForwardRef, Callable
 from typing import Optional, Dict, List, Set, Any, Tuple, TYPE_CHECKING, ForwardRef, Callable
 from collections import deque
+from ..db.models import Post, User, Section
 from ..db.models import UserRole, Post, User, Section
 from ..db.database import get_db
 # from .auth import get_current_active_user  # 不直接导入

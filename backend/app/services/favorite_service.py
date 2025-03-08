@@ -1,5 +1,5 @@
+from typing import Dict, Optional, Any, Tuple
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
 import logging
 
 from ..db.repositories.favorite_repository import FavoriteRepository

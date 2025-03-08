@@ -1,7 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-import logging
-from sqlalchemy.exc import SQLAlchemyError
 
 from ...utils.api_decorators import public_endpoint
 from ...core.exceptions import BusinessException
