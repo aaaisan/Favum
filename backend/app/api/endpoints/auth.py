@@ -4,13 +4,20 @@ from datetime import timedelta
 from typing import Annotated, Union
 import logging
 
+# 导入BusinessError
+from ...core.exceptions import BusinessError
+
 # 导入响应模型
 
 from ..responses import (
     TokenResponse,
     TokenDataResponse,
     LoginCheckResponse,
-    AuthErrorResponse
+    AuthErrorResponse,
+    PasswordResetRequestResponse,
+    PasswordResetResponse,
+    EmailVerificationResponse,
+    EmailVerificationRedirectResponse
 )
 
 from ...core.permissions import get_role_permissions, Role
@@ -328,3 +335,143 @@ async def swagger_login(
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/forgot-password", response_model=PasswordResetRequestResponse)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="请求密码重置失败", include_details=True)
+@rate_limit(limit=5, window=300)  # 每5分钟限制5次请求
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def request_password_reset(
+    request: Request,
+    reset_request: auth_schema.PasswordResetRequest
+):
+    """
+    请求密码重置
+    
+    发送一封包含重置链接的邮件到用户的注册邮箱
+    """
+    user_service = UserService()
+    
+    # 尝试发送重置邮件
+    success = await user_service.request_password_reset(reset_request.email)
+    
+    # 无论用户是否存在都返回相同的响应，以防止邮箱探测
+    return {
+        "message": "如果该邮箱已注册，我们已发送密码重置邮件。请检查您的邮箱。",
+        "success": success
+    }
+
+@router.post("/reset-password", response_model=PasswordResetResponse)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="密码重置失败", include_details=True)
+@rate_limit(limit=5, window=300)  # 每5分钟限制5次请求
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def reset_password(
+    request: Request,
+    reset_data: auth_schema.PasswordReset
+):
+    """
+    重置密码
+    
+    使用重置令牌验证用户身份并设置新密码
+    """
+    user_service = UserService()
+    
+    try:
+        # 验证令牌并重置密码
+        success = await user_service.reset_password(
+            reset_token=reset_data.token,
+            new_password=reset_data.new_password
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="密码重置失败"
+            )
+            
+        return {
+            "message": "密码已成功重置，请使用新密码登录"
+        }
+        
+    except BusinessError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.message
+        )
+
+@router.post("/verify-email", response_model=EmailVerificationResponse)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="邮箱验证失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def verify_email(
+    request: Request,
+    verification_data: auth_schema.EmailVerification
+):
+    """
+    验证用户邮箱
+    
+    验证邮箱后，用户账号将被激活
+    """
+    user_service = UserService()
+    
+    try:
+        # 验证邮箱
+        success = await user_service.verify_email(
+            email=verification_data.email,
+            token=verification_data.token
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邮箱验证失败"
+            )
+            
+        return {
+            "message": "邮箱验证成功，您的账号已激活"
+        }
+        
+    except BusinessError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.message
+        )
+
+@router.get("/verify-email/{token}", response_model=EmailVerificationRedirectResponse)
+@handle_exceptions(SQLAlchemyError, status_code=500, message="邮箱验证失败", include_details=True)
+@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+async def verify_email_get(
+    request: Request,
+    token: str,
+    email: str
+):
+    """
+    通过GET请求验证用户邮箱
+    
+    用于邮件中的验证链接跳转
+    """
+    user_service = UserService()
+    
+    try:
+        # 验证邮箱
+        success = await user_service.verify_email(
+            email=email,
+            token=token
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邮箱验证失败"
+            )
+            
+        # 重定向到前端的验证成功页面
+        frontend_url = settings.SITE_URL
+        return {
+            "message": "邮箱验证成功，您的账号已激活",
+            "redirect": f"{frontend_url}/verification-success"
+        }
+        
+    except BusinessError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.message
+        )

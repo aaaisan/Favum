@@ -45,3 +45,33 @@ class AuthErrorResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class PasswordResetRequestResponse(BaseModel):
+    """密码重置请求响应模型"""
+    message: str
+    success: bool
+    
+    class Config:
+        from_attributes = True
+
+class PasswordResetResponse(BaseModel):
+    """密码重置响应模型"""
+    message: str
+    
+    class Config:
+        from_attributes = True
+
+class EmailVerificationResponse(BaseModel):
+    """邮箱验证响应模型"""
+    message: str
+    
+    class Config:
+        from_attributes = True
+
+class EmailVerificationRedirectResponse(BaseModel):
+    """带重定向的邮箱验证响应模型"""
+    message: str
+    redirect: str
+    
+    class Config:
+        from_attributes = True

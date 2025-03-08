@@ -8,6 +8,8 @@
   - 用户注册、登录、注销
   - 基于角色的权限管理
   - 用户信息管理
+  - 邮箱验证功能
+  - 密码重置功能
   
 - 内容管理
   - 帖子发布、编辑、删除
@@ -168,6 +170,10 @@ npm run dev
 | `/register` | POST | 注册新用户 | 无 | UserRegister 对象 | TokenResponse 对象 |
 | `/login` | POST | 用户登录 | 无 | Login 对象 | TokenResponse 对象 |
 | `/test-token` | POST | 测试令牌有效性 | 有效令牌 | 无 | TokenDataResponse 对象 |
+| `/forgot-password` | POST | 请求密码重置邮件 | 无 | PasswordResetRequest 对象 | PasswordResetRequestResponse 对象 |
+| `/reset-password` | POST | 重置用户密码 | 无 | PasswordReset 对象 | PasswordResetResponse 对象 |
+| `/verify-email` | POST | 验证用户邮箱 | 无 | EmailVerification 对象 | EmailVerificationResponse 对象 |
+| `/verify-email/{token}` | GET | 通过链接验证邮箱 | 无 | 路径参数: token, 查询参数: email | EmailVerificationRedirectResponse 对象 |
 
 ### 用户 API (`/api/v1/users`)
 
@@ -341,6 +347,38 @@ curl -X POST "http://localhost:8000/api/v1/auth/login" \
     "password": "Password123!",
     "captcha_id": "def456",
     "captcha_code": "ABC789"
+  }'
+```
+
+### 请求密码重置
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/forgot-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com"
+  }'
+```
+
+### 重置密码
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/reset-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r",
+    "new_password": "NewPassword456!"
+  }'
+```
+
+### 验证邮箱
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/verify-email" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "token": "3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r"
   }'
 ```
 
@@ -1459,6 +1497,25 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
   ```
 
 ## 最近更新
+
+### 2024-04-10: 添加邮箱验证和密码重置功能
+
+- 实现了用户注册后的邮箱验证功能，提高账户安全性
+- 添加了密码重置功能，允许用户通过邮箱重置密码
+- 创建了精美的HTML邮件模板，支持验证和重置邮件
+- 使用Redis实现了安全的令牌存储和验证机制
+- 实现了防止邮箱探测的安全措施
+- 所有功能均支持异步处理，通过Celery任务队列发送邮件
+
+**相关API端点：**
+
+1. 邮箱验证：
+   - `POST /api/v1/auth/verify-email` - 通过POST请求验证邮箱
+   - `GET /api/v1/auth/verify-email/{token}?email={email}` - 通过邮件链接验证邮箱
+
+2. 密码重置：
+   - `POST /api/v1/auth/forgot-password` - 请求密码重置邮件
+   - `POST /api/v1/auth/reset-password` - 使用令牌重置密码
 
 ### 2024-04-01: 添加用户头像和简介字段
 

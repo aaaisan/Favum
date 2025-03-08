@@ -13,6 +13,8 @@ from sqlalchemy import select, and_, func, update
 from sqlalchemy import select, and_, or_, func, update
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
+import redis
+from ...core.config import settings
 
 from .base_repository import BaseRepository
 from ..models import User, Post, Comment
@@ -20,6 +22,19 @@ from ..database import async_get_db, AsyncSessionLocal
 from ..database import SessionLocal, async_get_db, AsyncSessionLocal
 from ..database import get_db, SessionLocal, AsyncSessionLocal
 from ..database import get_db, SessionLocal, async_get_db, AsyncSessionLocal
+
+# 创建Redis连接
+redis_client = redis.Redis(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    db=settings.REDIS_DB,
+    password=settings.REDIS_PASSWORD,
+    decode_responses=True  # 自动将bytes解码为str
+)
+
+# Redis键前缀
+VERIFICATION_TOKEN_PREFIX = "email_verification:"
+RESET_TOKEN_PREFIX = "password_reset:"
 
 class UserRepository(BaseRepository):
     """User实体的数据访问仓储类"""
@@ -330,4 +345,151 @@ class UserRepository(BaseRepository):
                 "deleted_at": item.deleted_at
             }
         finally:
-            await session.close() 
+            await session.close()
+    
+    async def set_verification_token(self, email: str, token: str, expires: int = 172800) -> bool:
+        """存储邮箱验证令牌到Redis
+        
+        Args:
+            email: 用户邮箱
+            token: 验证令牌
+            expires: 过期时间（秒），默认48小时
+            
+        Returns:
+            bool: 操作是否成功
+        """
+        key = f"{VERIFICATION_TOKEN_PREFIX}{email}"
+        try:
+            redis_client.setex(key, expires, token)
+            return True
+        except Exception as e:
+            # 此处应该记录日志
+            print(f"存储验证令牌失败: {str(e)}")
+            return False
+    
+    async def get_verification_token(self, email: str) -> Optional[str]:
+        """从Redis获取邮箱验证令牌
+        
+        Args:
+            email: 用户邮箱
+            
+        Returns:
+            Optional[str]: 验证令牌，不存在则返回None
+        """
+        key = f"{VERIFICATION_TOKEN_PREFIX}{email}"
+        try:
+            token = redis_client.get(key)
+            return token
+        except Exception as e:
+            # 此处应该记录日志
+            print(f"获取验证令牌失败: {str(e)}")
+            return None
+    
+    async def delete_verification_token(self, email: str) -> bool:
+        """从Redis删除邮箱验证令牌
+        
+        Args:
+            email: 用户邮箱
+            
+        Returns:
+            bool: 操作是否成功
+        """
+        key = f"{VERIFICATION_TOKEN_PREFIX}{email}"
+        try:
+            redis_client.delete(key)
+            return True
+        except Exception as e:
+            # 此处应该记录日志
+            print(f"删除验证令牌失败: {str(e)}")
+            return False
+    
+    async def set_reset_token(self, email: str, token: str, expires: int = 86400) -> bool:
+        """存储密码重置令牌到Redis
+        
+        Args:
+            email: 用户邮箱
+            token: 重置令牌
+            expires: 过期时间（秒），默认24小时
+            
+        Returns:
+            bool: 操作是否成功
+        """
+        email_key = f"{RESET_TOKEN_PREFIX}{email}"
+        token_key = f"token:{RESET_TOKEN_PREFIX}{token}"
+        try:
+            # 存储两条记录，便于双向查找
+            # 1. email -> token 映射
+            redis_client.setex(email_key, expires, token)
+            # 2. token -> email 映射
+            redis_client.setex(token_key, expires, email)
+            return True
+        except Exception as e:
+            # 此处应该记录日志
+            print(f"存储重置令牌失败: {str(e)}")
+            return False
+    
+    async def get_reset_token(self, email: str) -> Optional[str]:
+        """从Redis获取与邮箱关联的密码重置令牌
+        
+        Args:
+            email: 用户邮箱
+            
+        Returns:
+            Optional[str]: 重置令牌，不存在则返回None
+        """
+        key = f"{RESET_TOKEN_PREFIX}{email}"
+        try:
+            token = redis_client.get(key)
+            return token
+        except Exception as e:
+            # 此处应该记录日志
+            print(f"获取重置令牌失败: {str(e)}")
+            return None
+    
+    async def get_email_by_reset_token(self, token: str) -> Optional[str]:
+        """从Redis获取与令牌关联的邮箱
+        
+        Args:
+            token: 重置令牌
+            
+        Returns:
+            Optional[str]: 关联的邮箱，不存在则返回None
+        """
+        key = f"token:{RESET_TOKEN_PREFIX}{token}"
+        try:
+            email = redis_client.get(key)
+            return email
+        except Exception as e:
+            # 此处应该记录日志
+            print(f"通过令牌获取邮箱失败: {str(e)}")
+            return None
+    
+    async def delete_reset_token(self, email: str, token: str = None) -> bool:
+        """从Redis删除密码重置令牌
+        
+        Args:
+            email: 用户邮箱
+            token: 重置令牌(可选)，如果提供则同时删除token->email映射
+            
+        Returns:
+            bool: 操作是否成功
+        """
+        email_key = f"{RESET_TOKEN_PREFIX}{email}"
+        try:
+            # 如果没有提供token，先尝试获取
+            if not token:
+                token = redis_client.get(email_key)
+            
+            # 删除email->token映射
+            redis_client.delete(email_key)
+            
+            # 如果有token，删除token->email映射
+            if token:
+                token_key = f"token:{RESET_TOKEN_PREFIX}{token}"
+                redis_client.delete(token_key)
+                
+            return True
+        except Exception as e:
+            # 此处应该记录日志
+            print(f"删除重置令牌失败: {str(e)}")
+            return False 

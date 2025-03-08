@@ -306,6 +306,10 @@ class Settings(BaseSettings):
     MAIL_FROM_NAME: Optional[str] = None
     """发件人显示名称"""
     
+    # 站点URL配置
+    SITE_URL: str = "http://localhost:8080"
+    """站点URL，用于邮件中的链接"""
+    
     # 备份配置
     BACKUP_DIR: Path = Path("backups")
     """备份文件目录"""

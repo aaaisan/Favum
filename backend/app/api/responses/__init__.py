@@ -68,7 +68,11 @@ from .auth import (
     TokenResponse,
     TokenDataResponse,
     LoginCheckResponse,
-    AuthErrorResponse
+    AuthErrorResponse,
+    PasswordResetRequestResponse,
+    PasswordResetResponse,
+    EmailVerificationResponse,
+    EmailVerificationRedirectResponse
 )
 
 # 导出所有响应模型，方便导入
@@ -81,5 +85,6 @@ __all__ = [
     'CategoryResponse', 'CategoryDetailResponse', 'CategoryListResponse', 'CategoryTreeResponse',
     'SectionResponse', 'SectionDetailResponse', 'SectionListResponse',
     'TagResponse', 'TagListResponse', 'TagWithPostsResponse', 'TagCloudResponse',
-    'TokenResponse', 'TokenDataResponse', 'LoginCheckResponse', 'AuthErrorResponse'
+    'TokenResponse', 'TokenDataResponse', 'LoginCheckResponse', 'AuthErrorResponse',
+    'PasswordResetRequestResponse', 'PasswordResetResponse', 'EmailVerificationResponse', 'EmailVerificationRedirectResponse'
 ] 

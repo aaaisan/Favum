@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>欢迎加入论坛</title>
+    <style>
+        body {
+            font-family: Arial, 'Microsoft YaHei', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #4a69bd;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+        .content {
+            padding: 20px;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #777;
+            font-size: 12px;
+            border-top: 1px solid #eee;
+        }
+        .button {
+            display: inline-block;
+            background-color: #4a69bd;
+            color: white;
+            padding: 12px 25px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .highlight {
+            color: #4a69bd;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>欢迎加入我们的社区</h1>
+        </div>
+        <div class="content">
+            <h2>你好，<span class="highlight">{{ username }}</span>！</h2>
+            
+            <p>非常感谢您注册成为我们社区的一员！我们很高兴您能加入我们不断成长的社区。</p>
+            
+            <p>在我们的平台上，您可以：</p>
+            <ul>
+                <li>参与有趣的话题讨论</li>
+                <li>分享您的知识和经验</li>
+                <li>认识志同道合的朋友</li>
+                <li>获取最新的行业资讯</li>
+            </ul>
+            
+            <p>如需开始探索我们的社区，请点击下方按钮：</p>
+            
+            <div style="text-align: center;">
+                <a href="{{ site_url }}" class="button">开始探索</a>
+            </div>
+            
+            <p>如果您有任何问题或需要帮助，请随时联系我们的支持团队，我们将竭诚为您服务。</p>
+            
+            <p>再次感谢您的加入！</p>
+            
+            <p>
+                祝好，<br>
+                论坛团队
+            </p>
+        </div>
+        <div class="footer">
+            <p>此邮件由系统自动发送，请勿直接回复。</p>
+            <p>&copy; {{ current_year }} Forum论坛. 保留所有权利。</p>
+        </div>
+    </div>
+</body>
+</html> 
