@@ -7,8 +7,7 @@ from fastapi.responses import JSONResponse
 from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService
 from ...core.exceptions import BusinessException
-from ...utils.api_decorators import public_endpoint, admin_endpoint
-from ...utils.api_decorators import public_endpoint, admin_endpoint, owner_endpoint
+from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 
 router = APIRouter()
 

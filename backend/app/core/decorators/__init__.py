@@ -34,6 +34,12 @@
 - transaction: 数据库事务上下文
 - error_boundary: 错误边界上下文
 - request_context: 请求上下文
+
+API装饰器组合 (api_decorators.py):
+- admin_endpoint: 管理员端点装饰器组合
+- moderator_endpoint: 版主端点装饰器组合
+- public_endpoint: 公共端点装饰器组合
+- owner_endpoint: 资源所有者端点装饰器组合
 """
 
 # 为保持向后兼容性，从各个模块导入所有装饰器
@@ -75,6 +81,13 @@ from .context import (
     request_context
 )
 
+from .api_decorators import (
+    admin_endpoint,
+    moderator_endpoint,
+    public_endpoint,
+    owner_endpoint
+)
+
 # 导出所有公开API
 __all__ = [
     # 认证装饰器
@@ -93,5 +106,8 @@ __all__ = [
     'rate_limit', 'cache', 'endpoint_rate_limit',
     
     # 上下文管理器
-    'redis_pipeline', 'profiling', 'transaction', 'error_boundary', 'request_context'
+    'redis_pipeline', 'profiling', 'transaction', 'error_boundary', 'request_context',
+    
+    # API装饰器组合
+    'admin_endpoint', 'moderator_endpoint', 'public_endpoint', 'owner_endpoint'
 ] 

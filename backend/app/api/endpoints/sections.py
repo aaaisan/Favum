@@ -6,7 +6,7 @@ from ...schemas.section import SectionCreate, Section, SectionUpdate
 from ...schemas import post as post_schema
 from ...services.section_service import SectionService
 from ...core.exceptions import BusinessException
-from ...utils.api_decorators import public_endpoint, admin_endpoint
+from ...core.decorators import public_endpoint, admin_endpoint
 
 router = APIRouter()
 

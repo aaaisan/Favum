@@ -7,7 +7,7 @@ from typing import List, Optional
 from ...schemas import post as post_schema
 from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService
-from ...utils.api_decorators import public_endpoint, admin_endpoint
+from ...core.decorators import public_endpoint, admin_endpoint
 from ...services.favorite_service import FavoriteService
 from ...services import PostService
 from ...core.exceptions import BusinessException

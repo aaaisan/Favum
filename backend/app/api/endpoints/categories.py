@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Optional
 from ...core.decorators.auth import require_roles
 from ...core.decorators.auth import validate_token, require_roles
-from ...utils.api_decorators import admin_endpoint, public_endpoint
+from ...core.decorators import admin_endpoint, public_endpoint
 from ...schemas import category as category_schema
 from ...services.category_service import CategoryService
 from ...core.exceptions import BusinessException

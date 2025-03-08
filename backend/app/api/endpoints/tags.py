@@ -6,7 +6,7 @@ from ...schemas import tag as tag_schema
 from ...schemas import post as post_schema
 from ...services.tag_service import TagService
 from ...core.exceptions import BusinessException
-from ...utils.api_decorators import public_endpoint, admin_endpoint
+from ...core.decorators import public_endpoint, admin_endpoint
 
 router = APIRouter()
 

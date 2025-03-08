@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from ...utils.api_decorators import public_endpoint
+from ...core.decorators import public_endpoint
 from ...core.exceptions import BusinessException
 from ...services.captcha_service import CaptchaService
 

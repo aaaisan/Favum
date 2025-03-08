@@ -95,7 +95,6 @@ def init_db() -> None:
     - 创建初始数据（如果需要）
     """
     # 这里导入所有模型，确保它们被注册到Base的metadata中
-from .models import Post, Comment, Category, Tag, Section, SectionModerator, PostVote, PostFavorite
     from .models import User, Post, Comment, Category, Tag, Section, SectionModerator, PostVote, PostFavorite
     
     Base.metadata.create_all(bind=engine)

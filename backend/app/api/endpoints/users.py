@@ -10,12 +10,7 @@ from ...dependencies import require_admin
 from ...dependencies import require_user, require_admin
 from ...dependencies import get_current_user, require_user
 from ...dependencies import get_current_user, require_user, require_admin
-from ...utils.api_decorators import (
-    admin_endpoint,
-    moderator_endpoint,
-    public_endpoint,
-    owner_endpoint
-)
+from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.decorators.auth import require_roles, owner_required
 from ...core.decorators.auth import require_permissions, require_roles, owner_required
 from ...core.decorators.auth import validate_token, require_permissions, owner_required
