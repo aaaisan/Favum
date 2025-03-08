@@ -24,7 +24,13 @@ from .user import (
 # 帖子相关响应模型
 from .post import (
     PostResponse,
-    PostListResponse
+    PostDetailResponse,
+    PostListResponse,
+    PostCommentResponse,
+    PostStatsResponse,
+    PostDeleteResponse,
+    PostVoteResponse,
+    PostFavoriteResponse
 )
 
 # 评论相关响应模型
@@ -70,7 +76,7 @@ from .auth import (
 __all__ = [
     'BaseResponse', 'ErrorResponse', 'DataResponse', 'PaginatedResponse',
     'UserResponse', 'UserProfileResponse', 'UserInfoResponse', 'UserListResponse', 'UserDeleteResponse',
-    'PostResponse', 'PostListResponse',
+    'PostResponse', 'PostDetailResponse', 'PostListResponse', 'PostCommentResponse', 'PostStatsResponse', 'PostDeleteResponse', 'PostVoteResponse', 'PostFavoriteResponse',
     'CommentResponse', 'CommentListResponse', 'CommentDeleteResponse',
     'CategoryResponse', 'CategoryDetailResponse', 'CategoryListResponse', 'CategoryTreeResponse',
     'SectionResponse', 'SectionDetailResponse', 'SectionListResponse',

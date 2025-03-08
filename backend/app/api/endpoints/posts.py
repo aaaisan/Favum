@@ -1,6 +1,4 @@
-
 from fastapi import APIRouter, HTTPException, Request
-from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi import APIRouter, HTTPException, status, Request, Response
 from typing import List, Optional
@@ -12,7 +10,17 @@ from ...core.decorators import public_endpoint, admin_endpoint
 from ...services.favorite_service import FavoriteService
 from ...services import PostService
 from ...core.exceptions import BusinessException
-from ..responses.post import PostResponse, PostListResponse  # 导入新定义的响应模型
+from ..responses.post import (
+    PostResponse, 
+    PostDetailResponse,
+    PostListResponse,
+    PostCommentResponse,
+    PostStatsResponse,
+    PostDeleteResponse,
+    PostVoteResponse,
+    PostFavoriteResponse
+)
+from ..responses.comment import CommentResponse, CommentListResponse
 
 router = APIRouter()
 
@@ -205,7 +213,7 @@ async def read_posts(
     
     return response
 
-@router.get("/{post_id}", response_model=PostResponse)
+@router.get("/{post_id}", response_model=PostDetailResponse)
 @public_endpoint(rate_limit_count=1000, custom_message="获取帖子详情失败")
 async def read_post(
     request: Request,
@@ -311,7 +319,7 @@ async def update_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.delete("/{post_id}")
+@router.delete("/{post_id}", response_model=PostDeleteResponse)
 @public_endpoint(auth_required=True, custom_message="删除帖子失败")
 async def delete_post(
     request: Request,
@@ -369,7 +377,7 @@ async def delete_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/{post_id}/restore")
+@router.post("/{post_id}/restore", response_model=PostResponse)
 @admin_endpoint(custom_message="恢复帖子失败")
 async def restore_post(
     request: Request,
@@ -408,7 +416,7 @@ async def restore_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.patch("/{post_id}/visibility")
+@router.patch("/{post_id}/visibility", response_model=PostResponse)
 @public_endpoint(auth_required=True, custom_message="更改帖子可见性失败")
 async def toggle_post_visibility(
     request: Request,
@@ -480,7 +488,7 @@ async def toggle_post_visibility(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/{post_id}/vote", response_model=post_schema.VoteResponse)
+@router.post("/{post_id}/vote", response_model=PostVoteResponse)
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="点赞操作失败")
 async def vote_post(
     request: Request,
@@ -527,7 +535,7 @@ async def vote_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/{post_id}/votes", response_model=int)
+@router.get("/{post_id}/votes", response_model=PostStatsResponse)
 @public_endpoint(cache_ttl=10, custom_message="获取点赞数失败")
 async def get_post_votes(
     request: Request,
@@ -545,10 +553,7 @@ async def get_post_votes(
         post_id: 帖子ID
         
     Returns:
-        int: 帖子的点赞数
-        
-    Raises:
-        HTTPException: 当帖子不存在时抛出404错误
+        PostStatsResponse: 包含点赞数和帖子ID的响应
     """
     try:
         # 创建帖子服务实例
@@ -557,7 +562,10 @@ async def get_post_votes(
         # 获取点赞数
         count = await post_service.get_vote_count(post_id)
         
-        return count
+        return {
+            "post_id": post_id,
+            "vote_count": count
+        }
     except BusinessException as e:
         # 业务异常转换为HTTP异常
         raise HTTPException(
@@ -565,7 +573,7 @@ async def get_post_votes(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.post("/{post_id}/favorite", response_model=post_schema.FavoriteResponse)
+@router.post("/{post_id}/favorite", response_model=PostFavoriteResponse)
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="收藏操作失败")
 async def favorite_post(
     request: Request,
@@ -605,7 +613,7 @@ async def favorite_post(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.delete("/{post_id}/favorite", response_model=post_schema.FavoriteResponse)
+@router.delete("/{post_id}/favorite", response_model=PostFavoriteResponse)
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="取消收藏操作失败")
 async def unfavorite_post(
     request: Request,
@@ -678,7 +686,7 @@ async def check_favorite_status(
         # 如果出现任何错误，默认返回未收藏状态
         return False
 
-@router.get("/{post_id}/comments", response_model=List[comment_schema.Comment])
+@router.get("/{post_id}/comments", response_model=PostCommentResponse)
 @public_endpoint(cache_ttl=60, custom_message="获取帖子评论失败")
 async def read_post_comments(
     request: Request,
@@ -698,10 +706,7 @@ async def read_post_comments(
         limit: 每页数量，默认100
         
     Returns:
-        List[Comment]: 评论列表
-        
-    Raises:
-        HTTPException: 当帖子不存在或操作失败时抛出相应错误
+        PostCommentResponse: 包含评论列表和总数的响应
     """
     try:
         # 使用 Service 架构
@@ -712,14 +717,20 @@ async def read_post_comments(
         await post_service.get_post_detail(post_id)
         
         # 获取评论列表
-        comments_with_count = await comment_service.get_comments_by_post(
+        comments, total = await comment_service.get_comments_by_post(
             post_id=post_id, 
             skip=skip, 
             limit=limit
         )
         
-        # 返回评论列表
-        return comments_with_count[0]  # 返回列表部分，不返回总数
+        # 返回符合PostCommentResponse格式的响应
+        return {
+            "post_id": post_id,
+            "comments": comments,
+            "total": total,
+            "page": skip // limit + 1 if limit > 0 else 1,
+            "size": limit
+        }
     except BusinessException as e:
         # 将业务异常转换为HTTPException
         raise HTTPException(
