@@ -347,13 +347,13 @@ class UserRepository(BaseRepository):
         finally:
             await session.close()
     
-    async def set_verification_token(self, email: str, token: str, expires: int = 172800) -> bool:
+    async def set_verification_token(self, email: str, token: str, expires: int = 3600) -> bool:
         """存储邮箱验证令牌到Redis
         
         Args:
             email: 用户邮箱
             token: 验证令牌
-            expires: 过期时间（秒），默认48小时
+            expires: 过期时间（秒），默认1小时
             
         Returns:
             bool: 操作是否成功
@@ -403,13 +403,13 @@ class UserRepository(BaseRepository):
             print(f"删除验证令牌失败: {str(e)}")
             return False
     
-    async def set_reset_token(self, email: str, token: str, expires: int = 86400) -> bool:
+    async def set_reset_token(self, email: str, token: str, expires: int = 3600) -> bool:
         """存储密码重置令牌到Redis
         
         Args:
             email: 用户邮箱
             token: 重置令牌
-            expires: 过期时间（秒），默认24小时
+            expires: 过期时间（秒），默认1小时
             
         Returns:
             bool: 操作是否成功

@@ -127,7 +127,7 @@ class UserService(BaseService):
         verify_token = self._generate_token()
         
         # 存储令牌到Redis
-        await self.repository.set_verification_token(user_data.get("email"), verify_token, expires=172800)  # 48小时有效
+        await self.repository.set_verification_token(user_data.get("email"), verify_token, expires=3600)  # 1小时有效
         
         # 发送验证邮件
         try:
@@ -407,7 +407,7 @@ class UserService(BaseService):
         reset_token = self._generate_token()
         
         # 存储令牌到Redis
-        await self.repository.set_reset_token(email, reset_token, expires=86400)  # 24小时有效
+        await self.repository.set_reset_token(email, reset_token, expires=3600)  # 1小时有效
         
         # 发送重置密码邮件
         try:

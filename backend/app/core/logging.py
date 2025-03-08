@@ -27,6 +27,60 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
+import io
+
+
+class LineBufferHandler(logging.handlers.MemoryHandler):
+    """
+    行限制的日志处理器
+    
+    将日志记录存储在内存缓冲区中，当缓冲区达到容量时，
+    将最新的N行写入文件，丢弃旧的日志行。
+    
+    特性:
+    - 只保留最新的N行日志
+    - 定期刷新到实际的日志文件
+    - 避免日志文件过度增长
+    """
+    
+    def __init__(self, filename, max_lines=50, encoding='utf-8'):
+        """
+        初始化行限制处理器
+        
+        Args:
+            filename: 日志文件路径
+            max_lines: 保留的最大行数，默认50
+            encoding: 文件编码，默认utf-8
+        """
+        super().__init__(max_lines, flushLevel=logging.ERROR)
+        self.filename = filename
+        self.max_lines = max_lines
+        self.encoding = encoding
+        self.buffer = []
+        self.target = logging.FileHandler(filename, encoding=encoding)
+    
+    def emit(self, record):
+        """
+        发送日志记录到内存缓冲区
+        
+        Args:
+            record: 日志记录对象
+        """
+        self.buffer.append(record)
+        if len(self.buffer) > self.max_lines:
+            self.buffer.pop(0)  # 移除最旧的记录
+        self.flush()
+    
+    def flush(self):
+        """
+        将缓冲区中的记录写入文件
+        """
+        if self.buffer:
+            target_formatter = self.target.formatter or logging.Formatter()
+            with io.open(self.filename, 'w', encoding=self.encoding) as f:
+                for record in self.buffer:
+                    formatted_record = target_formatter.format(record)
+                    f.write(formatted_record + '\n')
 
 
 class JSONFormatter(logging.Formatter):
@@ -142,8 +196,8 @@ def setup_logging() -> None:
     2. 配置JSON格式化器
     3. 设置多个日志处理器：
        - 控制台输出
-       - 主日志文件（自动轮转）
-       - 错误日志文件（自动轮转）
+       - 主日志文件（只保留最新的50行）
+       - 错误日志文件（只保留最新的50行）
     4. 配置各个组件的日志记录器：
        - FastAPI
        - Uvicorn
@@ -151,7 +205,7 @@ def setup_logging() -> None:
        
     Notes:
         - 日志文件位于logs目录
-        - 主日志文件和错误日志文件都设置了大小限制和备份数量
+        - 主日志文件和错误日志文件都限制为最多50行
         - 所有日志都使用JSON格式
         - 只记录错误级别及以上的日志
     """
@@ -170,21 +224,19 @@ def setup_logging() -> None:
     console_handler.setFormatter(json_formatter)
     console_handler.setLevel(logging.ERROR)  # 只记录错误及以上级别
     
-    # 配置文件处理器
-    file_handler = logging.handlers.RotatingFileHandler(
+    # 配置行限制的文件处理器（限制为50行）
+    file_handler = LineBufferHandler(
         log_dir / "app.log",
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,
+        max_lines=50,
         encoding="utf-8"
     )
     file_handler.setFormatter(json_formatter)
     file_handler.setLevel(logging.ERROR)  # 只记录错误及以上级别
     
-    # 配置错误日志处理器
-    error_handler = logging.handlers.RotatingFileHandler(
+    # 配置行限制的错误日志处理器（限制为50行）
+    error_handler = LineBufferHandler(
         log_dir / "error.log",
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,
+        max_lines=50,
         encoding="utf-8"
     )
     error_handler.setFormatter(json_formatter)
