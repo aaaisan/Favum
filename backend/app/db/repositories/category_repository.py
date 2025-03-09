@@ -2,13 +2,10 @@ from sqlalchemy import select, func, delete, text, insert, and_, or_, desc, asc
 # from sqlalchemy import select, func, update, delete, text, insert, and_, or_, desc, asc
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-import logging
 
 from ..models.category import Category
 from .base_repository import BaseRepository
 from ...core.exceptions import BusinessException
-
-logger = logging.getLogger(__name__)
 
 class CategoryRepository(BaseRepository):
     """分类仓库

@@ -36,7 +36,7 @@
 1. 克隆项目
 
 ```bash
-git clone https://github.com/yourusername/forum.git
+git clone https://git.3ext.com:5585/aaaisan/forum.git
 cd forum
 ```
 
@@ -342,9 +342,25 @@ backend/
 
 ## API 请求示例
 
-### 用户注册
+以下是各API端点的完整使用示例：
 
-  ```bash
+### 认证相关API示例
+
+#### 检查用户名是否可用
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/auth/check-username/testuser"
+```
+
+#### 检查邮箱是否可用
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/auth/check-email/test@example.com"
+```
+
+#### 用户注册
+
+```bash
 curl -X POST "http://localhost:8000/api/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d '{
@@ -356,7 +372,7 @@ curl -X POST "http://localhost:8000/api/v1/auth/register" \
   }'
 ```
 
-### 用户登录
+#### 用户登录
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/auth/login" \
@@ -369,7 +385,14 @@ curl -X POST "http://localhost:8000/api/v1/auth/login" \
   }'
 ```
 
-### 请求密码重置
+#### 测试令牌有效性
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/test-token" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 请求密码重置
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/auth/forgot-password" \
@@ -379,7 +402,7 @@ curl -X POST "http://localhost:8000/api/v1/auth/forgot-password" \
   }'
 ```
 
-### 重置密码
+#### 重置密码
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/auth/reset-password" \
@@ -390,46 +413,550 @@ curl -X POST "http://localhost:8000/api/v1/auth/reset-password" \
   }'
 ```
 
-### 验证邮箱
+#### 发送邮箱验证链接
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/auth/verify-email" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "user@example.com",
-    "token": "3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r"
+    "email": "user@example.com"
   }'
 ```
 
-### 创建帖子
+#### 通过链接验证邮箱
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/auth/verify-email/EMAIL_VERIFICATION_TOKEN?email=user@example.com"
+```
+
+### 用户相关API示例
+
+#### 创建新用户(管理员权限)
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/users" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "newuser2",
+    "email": "newuser2@example.com",
+    "password": "Password123!",
+    "role": "user"
+  }'
+```
+
+#### 获取用户列表
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users?skip=0&limit=10&sort=created_at&order=desc" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 获取当前用户信息
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/me" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 获取特定用户信息
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/46" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 更新用户信息
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/users/46" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bio": "热爱编程，专注于后端开发",
+    "avatar_url": "https://example.com/avatars/user46.jpg"
+  }'
+```
+
+#### 删除用户
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/users/46" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 恢复已删除用户
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/users/46/restore" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 获取个人资料
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/me/profile" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 获取用户帖子
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/46/posts?skip=0&limit=10" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 获取当前用户收藏的帖子
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/me/favorites?skip=0&limit=10" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 获取指定用户收藏的帖子
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/46/favorites?skip=0&limit=10" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### 帖子相关API示例
+
+#### 创建新帖子
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/posts" \
-  -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{
-    "title": "示例帖子",
-    "content": "这是一个示例帖子的内容。",
-    "category_id": 1,
-    "tags": [1, 2, 3]
+    "title": "FastAPI学习笔记",
+    "content": "这是我学习FastAPI的一些心得体会...",
+    "section_id": 12,
+    "category_id": 28,
+    "tags": [61, 65]
   }'
 ```
 
-### 获取帖子列表
+#### 获取帖子列表
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_at&sort_order=desc"
+curl -X GET "http://localhost:8000/api/v1/posts?skip=0&limit=10&sort=created_at&order=desc"
 ```
 
-常见状态码：
+#### 获取帖子详情
 
-- 400: 请求参数错误
-- 401: 未认证
-- 403: 权限不足
-- 404: 资源不存在
-- 422: 请求数据验证失败
-- 429: 请求过于频繁
-- 500: 服务器内部错误
+```bash
+curl -X GET "http://localhost:8000/api/v1/posts/24"
+```
+
+#### 更新帖子
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/posts/24" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "更新后的标题",
+    "content": "更新后的内容...",
+    "category_id": 28,
+    "tags": [61, 65]
+  }'
+```
+
+#### 删除帖子
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/posts/24" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 恢复已删除帖子
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/posts/24/restore" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 更改帖子可见性
+
+```bash
+curl -X PATCH "http://localhost:8000/api/v1/posts/24/visibility" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "is_hidden": true
+  }'
+```
+
+#### 对帖子投票
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/posts/24/vote" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vote_type": "upvote"
+  }'
+```
+
+#### 获取帖子投票统计
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/posts/24/votes"
+```
+
+#### 收藏帖子
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/posts/24/favorite" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 取消收藏帖子
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/posts/24/favorite" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 获取收藏状态
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/posts/24/favorite/status" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 获取帖子评论
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/posts/24/comments?skip=0&limit=10"
+```
+
+### 评论相关API示例
+
+#### 创建评论
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/comments" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "这是一条评论",
+    "post_id": 24
+  }'
+```
+
+#### 获取评论详情
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/comments/18"
+```
+
+#### 更新评论
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/comments/18" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "更新后的评论内容"
+  }'
+```
+
+#### 删除评论
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/comments/18" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 恢复已删除评论
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/comments/18/restore" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 获取帖子的评论
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/comments/post/24?skip=0&limit=10"
+```
+
+### 分类相关API示例
+
+#### 创建分类
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/categories" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "前端技术",
+    "description": "前端技术相关讨论",
+    "parent_id": 28,
+    "order": 3
+  }'
+```
+
+#### 获取分类列表
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/categories?skip=0&limit=100"
+```
+
+#### 获取分类详情
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/categories/28"
+```
+
+#### 更新分类
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/categories/28" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "技术讨论",
+    "description": "关于编程与技术的讨论",
+    "order": 1
+  }'
+```
+
+#### 删除分类
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/categories/35" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 恢复已删除分类
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/categories/35/restore" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 重新排序分类
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/categories/reorder" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parent_id": 28,
+    "category_ids": [33, 34, 35]
+  }'
+```
+
+### 版块相关API示例
+
+#### 创建版块
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/sections" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "新版块",
+    "description": "新版块的描述"
+  }'
+```
+
+#### 获取版块列表
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/sections?skip=0&limit=100"
+```
+
+#### 获取版块详情
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/sections/12"
+```
+
+#### 更新版块
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/sections/12" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "技术区",
+    "description": "技术交流与分享"
+  }'
+```
+
+#### 删除版块
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/sections/15" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 恢复已删除版块
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/sections/15/restore" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 添加版主
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/sections/12/moderators/46" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 移除版主
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/sections/12/moderators/46" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 恢复版主
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/sections/12/moderators/46/restore" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 获取版块版主
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/sections/12/moderators"
+```
+
+#### 获取版块帖子
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/sections/12/posts?skip=0&limit=10"
+```
+
+### 标签相关API示例
+
+#### 创建标签
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/tags" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "React"
+  }'
+```
+
+#### 获取标签列表
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags?skip=0&limit=100"
+```
+
+#### 获取标签详情
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags/61"
+```
+
+#### 更新标签
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/tags/61" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Python"
+  }'
+```
+
+#### 删除标签
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/tags/76" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 恢复已删除标签
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/tags/76/restore" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 更新标签统计信息
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/tags/61/update-stats" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+#### 获取标签关联的帖子
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags/61/posts?skip=0&limit=10"
+```
+
+#### 获取关联标签
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags/61/related?limit=5"
+```
+
+#### 获取热门标签
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags/trending-list?days=7&limit=10"
+```
+
+#### 获取流行标签
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags/popular?limit=10"
+```
+
+#### 获取最近标签
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags/recent?limit=10"
+```
+
+#### 搜索标签
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/tags/search?q=py&skip=0&limit=10"
+```
+
+#### 获取标签推荐
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/tags/recommendations" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "keywords": ["python", "web"],
+    "user_id": 46
+  }'
+```
+
+### 验证码相关API示例
+
+#### 生成验证码
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/captcha/generate"
+```
+
+#### 验证验证码
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/captcha/verify/captcha123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "ABC123"
+  }'
+```
 
 ## 许可证
 
@@ -439,4 +966,4 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 
 项目维护者 - <aaaisan@gmail.com>
 
-项目链接: [https://github.com/yourusername/forum](https://github.com/yourusername/forum)
+项目链接: [https://git.3ext.com:5585/aaaisan/forum](https://git.3ext.com:5585/aaaisan/forum)
