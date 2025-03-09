@@ -77,7 +77,7 @@ cp .env.example .env
 # API配置
 API_V1_PREFIX=/api/v1
 PROJECT_NAME=Forum
-BACKEND_CORS_ORIGINS=["http://localhost:8080"]
+BACKEND_CORS_ORIGINS=["http://localhost:8000"]
 SECRET_KEY=your-secret-key
 
 # 数据库配置
@@ -155,127 +155,6 @@ npm run dev
 - Swagger UI: <http://localhost:8000/docs>
 - ReDoc: <http://localhost:8000/redoc>
 
-## API 接口概览
-
-### 基础 API 路径
-
-所有 API 路由都以 `/api/v1` 为前缀。
-
-### 认证 API (`/api/v1/auth`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/check-username/{username}` | GET | 检查用户名是否可用 | 无 | 路径参数: username | `{"message": "用户名可用"}` |
-| `/check-email/{email}` | GET | 检查邮箱是否可用 | 无 | 路径参数: email | `{"message": "邮箱可用"}` |
-| `/register` | POST | 注册新用户 | 无 | UserRegister 对象 | TokenResponse 对象 |
-| `/login` | POST | 用户登录 | 无 | Login 对象 | TokenResponse 对象 |
-| `/test-token` | POST | 测试令牌有效性 | 有效令牌 | 无 | TokenDataResponse 对象 |
-| `/forgot-password` | POST | 请求密码重置邮件 | 无 | PasswordResetRequest 对象 | PasswordResetRequestResponse 对象 |
-| `/reset-password` | POST | 重置用户密码 | 无 | PasswordReset 对象 | PasswordResetResponse 对象 |
-| `/verify-email` | POST | 验证用户邮箱 | 无 | EmailVerification 对象 | EmailVerificationResponse 对象 |
-| `/verify-email/{token}` | GET | 通过链接验证邮箱 | 无 | 路径参数: token, 查询参数: email | EmailVerificationRedirectResponse 对象 |
-
-### 用户 API (`/api/v1/users`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/` | POST | 创建新用户 | 无 | UserCreate 对象 | User 对象 |
-| `/` | GET | 获取所有用户列表 | 管理员 | 查询参数: skip, limit, sort_by, sort_order | User 对象列表 |
-| `/{user_id}` | GET | 获取指定用户详情 | 管理员或本人 | 路径参数: user_id | User 对象 |
-| `/{user_id}` | PUT | 更新用户信息 | 管理员或本人 | 路径参数: user_id, UserUpdate 对象 | User 对象 |
-| `/{user_id}` | DELETE | 删除(软删除)用户 | 管理员或本人 | 路径参数: user_id | 成功消息 |
-| `/{user_id}/restore` | POST | 恢复已删除用户 | 管理员 | 路径参数: user_id | 成功消息 |
-| `/me/profile` | GET | 获取当前用户资料 | 认证用户 | 无 | UserProfile 对象 |
-| `/{user_id}/posts` | GET | 获取用户的帖子 | 无 | 路径参数: user_id | Post 对象列表 |
-| `/me/favorites` | GET | 获取当前用户收藏 | 认证用户 | 查询参数: skip, limit | Post 对象列表 |
-| `/{user_id}/favorites` | GET | 获取指定用户收藏 | 无 | 路径参数: user_id, 查询参数: skip, limit | Post 对象列表 |
-
-### 帖子 API (`/api/v1/posts`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/` | POST | 创建新帖子 | 认证用户 | PostCreate 对象 | Post 对象 |
-| `/` | GET | 获取帖子列表 | 无 | 查询参数: skip, limit, sort_by, category_id, tag_id 等 | Post 对象列表 |
-| `/{post_id}` | GET | 获取帖子详情 | 无 | 路径参数: post_id | PostDetail 对象 |
-| `/{post_id}` | PUT | 更新帖子 | 作者或管理员 | 路径参数: post_id, PostUpdate 对象 | Post 对象 |
-| `/{post_id}` | DELETE | 删除帖子 | 作者或管理员 | 路径参数: post_id | 成功消息 |
-| `/{post_id}/restore` | POST | 恢复已删除帖子 | 作者或管理员 | 路径参数: post_id | 成功消息 |
-| `/{post_id}/comments` | GET | 获取帖子的评论 | 无 | 路径参数: post_id, 查询参数: skip, limit | Comment 对象列表 |
-| `/{post_id}/vote` | POST | 对帖子投票 | 认证用户 | 路径参数: post_id, Vote 对象 | 更新后的投票信息 |
-| `/{post_id}/votes` | GET | 获取帖子投票数 | 无 | 路径参数: post_id | 投票统计信息 |
-| `/{post_id}/favorite` | POST | 收藏帖子 | 认证用户 | 路径参数: post_id | 成功消息 |
-| `/{post_id}/unfavorite` | POST | 取消收藏帖子 | 认证用户 | 路径参数: post_id | 成功消息 |
-| `/{post_id}/visibility` | PUT | 切换帖子可见性 | 作者或管理员 | 路径参数: post_id | 更新后的帖子信息 |
-
-### 评论 API (`/api/v1/comments`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/` | POST | 创建新评论 | 认证用户 | CommentCreate 对象 | Comment 对象 |
-| `/{comment_id}` | GET | 获取评论详情 | 无 | 路径参数: comment_id | Comment 对象 |
-| `/{comment_id}` | PUT | 更新评论 | 作者或管理员 | 路径参数: comment_id, CommentUpdate 对象 | Comment 对象 |
-| `/{comment_id}` | DELETE | 删除评论 | 作者或管理员 | 路径参数: comment_id | 成功消息 |
-| `/{comment_id}/restore` | POST | 恢复已删除评论 | 作者或管理员 | 路径参数: comment_id | 成功消息 |
-| `/{comment_id}/vote` | POST | 对评论投票 | 认证用户 | 路径参数: comment_id, Vote 对象 | 更新后的投票信息 |
-| `/{comment_id}/votes` | GET | 获取评论投票数 | 无 | 路径参数: comment_id | 投票统计信息 |
-
-### 分类 API (`/api/v1/categories`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/` | POST | 创建新分类 | 管理员 | CategoryCreate 对象 | Category 对象 |
-| `/` | GET | 获取所有分类 | 无 | 查询参数: skip, limit | Category 对象列表 |
-| `/{category_id}` | GET | 获取分类详情 | 无 | 路径参数: category_id | Category 对象 |
-| `/{category_id}` | PUT | 更新分类 | 管理员 | 路径参数: category_id, CategoryUpdate 对象 | Category 对象 |
-| `/{category_id}` | DELETE | 删除分类 | 管理员 | 路径参数: category_id | 成功消息 |
-| `/{category_id}/posts` | GET | 获取分类下的帖子 | 无 | 路径参数: category_id, 查询参数: skip, limit | Post 对象列表 |
-
-### 板块 API (`/api/v1/sections`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/` | POST | 创建新板块 | 管理员 | SectionCreate 对象 | Section 对象 |
-| `/` | GET | 获取所有板块 | 无 | 查询参数: skip, limit | Section 对象列表 |
-| `/{section_id}` | GET | 获取板块详情 | 无 | 路径参数: section_id | Section 对象 |
-| `/{section_id}` | PUT | 更新板块 | 管理员 | 路径参数: section_id, SectionUpdate 对象 | Section 对象 |
-| `/{section_id}` | DELETE | 删除板块 | 管理员 | 路径参数: section_id | 成功消息 |
-| `/{section_id}/categories` | GET | 获取板块下的分类 | 无 | 路径参数: section_id | Category 对象列表 |
-
-### 标签 API (`/api/v1/tags`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/` | POST | 创建新标签 | 管理员 | TagCreate 对象 | Tag 对象 |
-| `/` | GET | 获取所有标签 | 无 | 查询参数: skip, limit | Tag 对象列表 |
-| `/{tag_id}` | GET | 获取标签详情 | 无 | 路径参数: tag_id | Tag 对象 |
-| `/{tag_id}` | PUT | 更新标签 | 管理员 | 路径参数: tag_id, TagUpdate 对象 | Tag 对象 |
-| `/{tag_id}` | DELETE | 删除标签 | 管理员 | 路径参数: tag_id | 成功消息 |
-| `/{tag_id}/posts` | GET | 获取标签下的帖子 | 无 | 路径参数: tag_id, 查询参数: skip, limit | Post 对象列表 |
-
-### 验证码 API (`/api/v1/captcha`)
-
-| 路径 | 方法 | 说明 | 权限要求 | 请求参数 | 返回数据 |
-|------|------|------|----------|----------|----------|
-| `/` | GET | 生成新验证码 | 无 | 无 | 包含验证码ID和图片的响应 |
-| `/{captcha_id}/verify` | POST | 验证验证码 | 无 | 路径参数: captcha_id, 请求体: code | 验证结果 |
-
-## 常见错误码
-
-| 错误码 | 状态码 | 说明 |
-|--------|--------|------|
-| `USER_NOT_FOUND` | 404 | 用户不存在 |
-| `POST_NOT_FOUND` | 404 | 帖子不存在 |
-| `COMMENT_NOT_FOUND` | 404 | 评论不存在 |
-| `CATEGORY_NOT_FOUND` | 404 | 分类不存在 |
-| `SECTION_NOT_FOUND` | 404 | 板块不存在 |
-| `TAG_NOT_FOUND` | 404 | 标签不存在 |
-| `USERNAME_TAKEN` | 400 | 用户名已被使用 |
-| `EMAIL_TAKEN` | 400 | 邮箱已被使用 |
-| `INVALID_CREDENTIALS` | 401 | 无效的认证信息 |
-| `INSUFFICIENT_PERMISSIONS` | 403 | 权限不足 |
-| `INVALID_CAPTCHA` | 400 | 验证码无效或已过期 |
-| `RATE_LIMIT_EXCEEDED` | 429 | 请求频率超过限制 |
-
 ## 目录结构
 
 ```txt
@@ -304,119 +183,13 @@ backend/
 └── requirements.txt    # 项目依赖
 ```
 
-## 主要依赖包
-
-```txt
-fastapi==0.104.1
-sqlalchemy==2.0.23
-pydantic==2.4.2
-alembic==1.12.1
-celery==5.3.4
-redis==5.0.1
-pymysql==1.1.0
-cryptography==41.0.5
-python-jose==3.3.0
-passlib==1.7.4
-python-multipart==0.0.6
-emails==0.6
-```
-
-## API 请求示例
-
-### 用户注册
-
-  ```bash
-curl -X POST "http://localhost:8000/api/v1/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "newuser",
-    "email": "newuser@example.com",
-    "password": "Password123!",
-    "captcha_id": "abc123",
-    "captcha_code": "XYZ123"
-  }'
-```
-
-### 用户登录
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "newuser",
-    "password": "Password123!",
-    "captcha_id": "def456",
-    "captcha_code": "ABC789"
-  }'
-```
-
-### 请求密码重置
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/auth/forgot-password" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com"
-  }'
-```
-
-### 重置密码
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/auth/reset-password" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r",
-    "new_password": "NewPassword456!"
-  }'
-```
-
-### 验证邮箱
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/auth/verify-email" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "token": "3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r"
-  }'
-```
-
-### 创建帖子
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/posts" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
-  -d '{
-    "title": "示例帖子",
-    "content": "这是一个示例帖子的内容。",
-    "category_id": 1,
-    "tags": [1, 2, 3]
-  }'
-```
-
-### 获取帖子列表
-
-```bash
-curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_at&sort_order=desc"
-```
-
-## 贡献指南
-
-1. Fork 该项目
-2. 创建您的功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交您的更改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 打开一个 Pull Request
-
 ## 许可证
 
 该项目基于 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
 
 ## 联系方式
 
-项目维护者 - <yourname@example.com>
+项目维护者 - <aaaisan@gmail.com>
 
 项目链接: [https://github.com/yourusername/forum](https://github.com/yourusername/forum)
 
@@ -577,6 +350,87 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 }
 ```
 
+## API 请求示例
+
+### 用户注册
+
+  ```bash
+curl -X POST "http://localhost:8000/api/v1/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "newuser",
+    "email": "newuser@example.com",
+    "password": "Password123!",
+    "captcha_id": "abc123",
+    "captcha_code": "XYZ123"
+  }'
+```
+
+### 用户登录
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "newuser",
+    "password": "Password123!",
+    "captcha_id": "def456",
+    "captcha_code": "ABC789"
+  }'
+```
+
+### 请求密码重置
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/forgot-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com"
+  }'
+```
+
+### 重置密码
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/reset-password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r",
+    "new_password": "NewPassword456!"
+  }'
+```
+
+### 验证邮箱
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/verify-email" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "token": "3a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p9q0r"
+  }'
+```
+
+### 创建帖子
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/posts" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "title": "示例帖子",
+    "content": "这是一个示例帖子的内容。",
+    "category_id": 1,
+    "tags": [1, 2, 3]
+  }'
+```
+
+### 获取帖子列表
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_at&sort_order=desc"
+```
+
 常见状态码：
 - 400: 请求参数错误
 - 401: 未认证
@@ -585,3 +439,5 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 - 422: 请求数据验证失败
 - 429: 请求过于频繁
 - 500: 服务器内部错误
+
+
