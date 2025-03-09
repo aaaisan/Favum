@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from fastapi import Depends, HTTPException, status, Request, Header
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from fastapi.security.utils import get_authorization_scheme_param
+# from fastapi.security.utils import get_authorization_scheme_param
 
 from .config import settings
 from ..schemas import auth as auth_schema

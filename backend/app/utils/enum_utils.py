@@ -7,7 +7,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypeVar, cast
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union, cast
+# from typing import Any, Dict, List, Optional, Type, TypeVar, Union, cast
 
 T = TypeVar('T', bound='Enum')
 

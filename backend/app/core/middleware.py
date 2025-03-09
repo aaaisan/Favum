@@ -25,7 +25,7 @@ import time
 from .config import settings
 from .exceptions import APIError
 from ..middlewares import RequestLoggingMiddleware
-from ..middlewares import RequestLoggingMiddleware, RateLimitMiddleware
+# from ..middlewares import RequestLoggingMiddleware, RateLimitMiddleware
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)

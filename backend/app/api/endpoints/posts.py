@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
-from fastapi import APIRouter, HTTPException, status, Request, Response
+# from fastapi import APIRouter, HTTPException, status, Request, Response
 from typing import List, Optional
 import json
 from datetime import datetime
 import traceback
 
 from ...schemas import post as post_schema
-from ...schemas import comment as comment_schema
+# from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService
 from ...core.decorators import public_endpoint, admin_endpoint
 from ...services.favorite_service import FavoriteService
@@ -23,7 +23,7 @@ from ..responses.post import (
     PostVoteResponse,
     PostFavoriteResponse
 )
-from ..responses.comment import CommentResponse, CommentListResponse
+# from ..responses.comment import CommentResponse, CommentListResponse
 from ...core.auth import get_current_user_optional, get_current_active_user
 from ...db.models import User, VoteType
 import logging

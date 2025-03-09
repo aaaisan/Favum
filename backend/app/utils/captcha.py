@@ -1,12 +1,12 @@
 import random
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-from fastapi import status
-from fastapi import HTTPException, status
-from typing import Union
-from typing import Tuple, Union
-from typing import List, Tuple
-from typing import List, Tuple, Union
+# from fastapi import status
+# from fastapi import HTTPException, status
+# from typing import Union
+# from typing import Tuple, Union
+# from typing import List, Tuple
+# from typing import List, Tuple, Union
 
 # 定义三种字体路径
 FONT_PATHS = [

@@ -4,6 +4,9 @@ from datetime import timedelta
 from typing import Annotated, Union
 import logging
 
+# 定义logger
+logger = logging.getLogger(__name__)
+
 # 导入BusinessError
 from ...core.exceptions import BusinessError
 

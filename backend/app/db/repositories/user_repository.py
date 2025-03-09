@@ -9,8 +9,8 @@
 """
 
 from sqlalchemy import select, and_, func, update
-from sqlalchemy import select, and_, func, update
-from sqlalchemy import select, and_, or_, func, update
+# from sqlalchemy import select, and_, func, update
+# from sqlalchemy import select, and_, or_, func, update
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import redis
@@ -19,9 +19,9 @@ from ...core.config import settings
 from .base_repository import BaseRepository
 from ..models import User, Post, Comment
 from ..database import async_get_db, AsyncSessionLocal
-from ..database import SessionLocal, async_get_db, AsyncSessionLocal
-from ..database import get_db, SessionLocal, AsyncSessionLocal
-from ..database import get_db, SessionLocal, async_get_db, AsyncSessionLocal
+# from ..database import SessionLocal, async_get_db, AsyncSessionLocal
+# from ..database import get_db, SessionLocal, AsyncSessionLocal
+# from ..database import get_db, SessionLocal, async_get_db, AsyncSessionLocal
 
 # 创建Redis连接
 redis_client = redis.Redis(
