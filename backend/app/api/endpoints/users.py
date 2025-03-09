@@ -134,6 +134,55 @@ async def read_users(
             detail="获取用户列表失败"
         )
 
+@router.get("/me", response_model=UserResponse)
+@public_endpoint(auth_required=True, custom_message="获取当前用户信息失败")
+async def read_current_user(
+    request: Request
+):
+    """获取当前登录用户的信息
+    
+    直接从请求中获取当前用户信息并返回。
+    
+    Args:
+        request: FastAPI请求对象
+        
+    Returns:
+        UserResponse: 当前用户信息
+        
+    Raises:
+        HTTPException: 当用户不存在或令牌无效时抛出相应错误
+    """
+    try:
+        # 获取当前用户ID
+        user_id = request.state.user.get("id")
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="未授权访问或用户不存在"
+            )
+            
+        # 创建用户服务实例
+        user_service = UserService()
+        
+        # 获取用户详情
+        user = await user_service.get_user_by_id(user_id)
+        
+        # 确保日期时间字段格式化为字符串
+        if user.get("created_at") and not isinstance(user.get("created_at"), str):
+            user["created_at"] = user["created_at"].isoformat()
+            
+        if user.get("updated_at") and not isinstance(user.get("updated_at"), str):
+            user["updated_at"] = user["updated_at"].isoformat()
+            
+        return user
+        
+    except Exception as e:
+        logger.error(f"获取当前用户信息失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取当前用户信息失败: {str(e)}"
+        )
+
 @router.get("/{user_id}", response_model=UserResponse)
 @public_endpoint(cache_ttl=60, custom_message="获取用户详情失败")
 async def read_user(

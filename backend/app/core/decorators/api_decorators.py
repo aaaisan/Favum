@@ -171,8 +171,17 @@ def public_endpoint(
     _message = custom_message if custom_message else "操作失败"
     
     def decorator(func):
-        # 应用基本装饰器：异常处理和执行时间日志
-        _decorated = handle_exceptions(
+        # 先保存原始函数引用
+        original_func = func
+        decorated_func = func
+        
+        # 1. 首先添加令牌验证（如果需要）
+        # 这必须是第一个应用的装饰器，因为其他装饰器可能依赖request.state.user
+        if auth_required:
+            decorated_func = validate_token(decorated_func)
+        
+        # 2. 应用异常处理和日志记录
+        decorated_func = handle_exceptions(
             *_exceptions, 
             status_code=500, 
             message=_message, 
@@ -181,26 +190,23 @@ def public_endpoint(
             log_execution_time(
                 level=logging.INFO, 
                 message="{function_name} 执行完成，用时 {execution_time:.3f}秒"
-            )(func)
+            )(decorated_func)
         )
         
-        # 如果需要认证，添加令牌验证
-        if auth_required:
-            _decorated = validate_token(_decorated)
-            
-            # 如果提供了所有权检查函数，添加所有权验证
-            if ownership_check_func:
-                _decorated = owner_required(get_owner_id_func=ownership_check_func)(_decorated)
+        # 3. 添加所有权检查（如果需要）
+        # 在validate_token之后应用，确保request.state.user已设置
+        if auth_required and ownership_check_func:
+            decorated_func = owner_required(get_owner_id_func=ownership_check_func)(decorated_func)
         
-        # 可选添加速率限制
+        # 4. 可选添加速率限制
         if rate_limit_count:
-            _decorated = rate_limit(limit=rate_limit_count, window=3600)(_decorated)
+            decorated_func = rate_limit(limit=rate_limit_count, window=3600)(decorated_func)
             
-        # 可选添加缓存
+        # 5. 可选添加缓存
         if cache_ttl:
-            _decorated = cache(expire=cache_ttl, include_query_params=True)(_decorated)
+            decorated_func = cache(expire=cache_ttl, include_query_params=True)(decorated_func)
             
-        return _decorated
+        return decorated_func
     
     return decorator
 

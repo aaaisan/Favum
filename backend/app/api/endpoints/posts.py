@@ -46,19 +46,39 @@ async def get_post_owner(post_id: int) -> int:
     Raises:
         HTTPException: 当帖子不存在时抛出404错误
     """
+    logger.debug(f"获取帖子 {post_id} 的作者ID")
     try:
         post_service = PostService()
         
         # 获取帖子详情
         post = await post_service.get_post_detail(post_id)
         if not post:
+            logger.warning(f"帖子 {post_id} 不存在")
             raise HTTPException(status_code=404, detail="帖子不存在")
-        return post.get("author_id")
+        
+        author_id = post.get("author_id")
+        if not author_id:
+            logger.warning(f"帖子 {post_id} 的作者ID为空")
+            raise HTTPException(status_code=500, detail="帖子数据不完整")
+        
+        logger.debug(f"帖子 {post_id} 的作者ID: {author_id}")
+        return author_id
     except BusinessException as e:
         # 业务异常转换为HTTP异常
+        logger.warning(f"获取帖子 {post_id} 作者ID时发生业务异常: {str(e)}")
         raise HTTPException(
             status_code=404 if e.error_code == "post_not_found" else 400,
-            detail={"message": e.message, "error_code": e.error_code}
+            detail=str(e)
+        )
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
+    except Exception as e:
+        # 其他未预期的异常
+        logger.error(f"获取帖子 {post_id} 作者ID时发生未预期异常: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取帖子作者信息失败: {str(e)}"
         )
 
 @router.post("", response_model=PostResponse)
@@ -331,7 +351,6 @@ async def read_post(
         )
 
 @router.put("/{post_id}", response_model=PostResponse)
-@public_endpoint(rate_limit_count=20, auth_required=True, custom_message="更新帖子失败", ownership_check_func=get_post_owner)
 async def update_post(
     request: Request,
     post_id: int,
@@ -353,30 +372,76 @@ async def update_post(
         HTTPException: 当帖子不存在或权限不足时抛出相应错误
     """
     try:
+        # 验证用户是否已登录
+        authorization = request.headers.get('Authorization')
+        if not authorization or not authorization.startswith('Bearer '):
+            raise HTTPException(
+                status_code=401,
+                detail="缺少有效的身份验证令牌",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        token = authorization.split(' ')[1]
+        
+        # 验证token
+        from ...core.auth import decode_token
+        token_data = decode_token(token)
+        if not token_data:
+            raise HTTPException(
+                status_code=401,
+                detail="令牌无效或已过期",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # 将用户信息存储在request.state中
+        request.state.user = token_data
+        
+        # 获取当前用户ID
+        current_user_id = request.state.user.get("id")
+        logger.info(f"用户 {current_user_id} 正在更新帖子 {post_id}")
+        
         # 创建帖子服务实例
         post_service = PostService()
         
         # 获取帖子详情，检查是否存在
         existing_post = await post_service.get_post_detail(post_id)
         if not existing_post:
-            raise HTTPException(status_code=404, detail="帖子不存在")
+            raise HTTPException(
+                status_code=404,
+                detail="帖子不存在"
+            )
         
-        # 检查权限
+        # 检查权限 - 确认当前用户是帖子作者或管理员
         user_role = request.state.user.get("role", "user")
-        user_id = request.state.user.get("id")
+        is_author = existing_post.get("author_id") == current_user_id
+        is_admin = user_role in ["admin", "moderator"]
         
-        # 如果是管理员或版主，直接允许访问
-        if user_role not in ["admin", "super_admin", "moderator"]:
-            # 检查是否为资源所有者
-            author_id = existing_post.get("author_id")
-            if str(author_id) != str(user_id):
-                raise HTTPException(
-                    status_code=403,
-                    detail="没有权限访问此资源"
-                )
+        if not (is_author or is_admin):
+            logger.warning(f"用户 {current_user_id} 无权限更新帖子 {post_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="没有权限更新此帖子"
+            )
+            
+        # 更新帖子内容
+        # 兼容不同版本的Pydantic，尝试使用dict()或model_dump()
+        try:
+            post_data = post.model_dump(exclude_unset=True)
+        except AttributeError:
+            try:
+                post_data = post.dict(exclude_unset=True)
+            except AttributeError:
+                post_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
         
-        # 更新帖子
-        updated_post = await post_service.update_post(post_id, post.model_dump(exclude_unset=True))
+        updated_post = await post_service.update_post(post_id, post_data)
+        
+        # 确保日期时间字段为字符串格式
+        if updated_post.get("created_at") and not isinstance(updated_post.get("created_at"), str):
+            updated_post["created_at"] = updated_post["created_at"].isoformat()
+            
+        if updated_post.get("updated_at") and not isinstance(updated_post.get("updated_at"), str):
+            updated_post["updated_at"] = updated_post["updated_at"].isoformat()
+        
         return updated_post
     except BusinessException as e:
         # 业务异常转换为HTTP异常

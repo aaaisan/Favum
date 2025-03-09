@@ -240,7 +240,8 @@ def owner_required(get_owner_id_func: Callable):
                 )
             
             # 检查用户是否已登录
-            if not hasattr(request.state, "user") or not request.state.user:
+            if not hasattr(request, "state") or not hasattr(request.state, "user") or not request.state.user:
+                logger.warning(f"用户未授权 - 尝试访问需要所有权的资源")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="需要登录才能访问"
@@ -249,6 +250,7 @@ def owner_required(get_owner_id_func: Callable):
             # 获取当前用户ID
             user_id = request.state.user.get("id")
             if not user_id:
+                logger.warning(f"无效的用户信息: {request.state.user}")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="无效的用户信息"
@@ -256,26 +258,39 @@ def owner_required(get_owner_id_func: Callable):
             
             # 管理员可以访问任何资源
             user_role = request.state.user.get("role", "user")
-            if user_role in ["admin", "super_admin"]:
+            if user_role in ["admin", "super_admin", "moderator"]:
+                logger.debug(f"管理员/版主 {user_id} 跳过所有权检查")
                 return await func(*args, **kwargs)
             
             # 获取资源所有者ID
             try:
                 owner_id = await get_owner_id_func(*args, **kwargs)
+                if owner_id is None:
+                    logger.warning(f"资源不存在或所有者ID为空")
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="资源不存在"
+                    )
+                logger.debug(f"资源所有者ID: {owner_id}, 当前用户ID: {user_id}")
+            except HTTPException:
+                # 重新抛出HTTP异常
+                raise
             except Exception as e:
-                logger.error(f"获取资源所有者ID失败: {str(e)}")
+                logger.error(f"获取资源所有者ID失败: {str(e)}", exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="无法确定资源所有权"
                 )
             
-            # 检查所有权
+            # 检查所有权 - 将两个ID转为字符串再比较，避免类型不匹配问题
             if str(user_id) != str(owner_id):
+                logger.warning(f"所有权检查失败: 用户 {user_id} 尝试访问用户 {owner_id} 的资源")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="无权访问此资源"
                 )
             
+            logger.debug(f"所有权检查通过: 用户 {user_id} 访问自己的资源")
             return await func(*args, **kwargs)
         
         return wrapper

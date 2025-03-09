@@ -9,12 +9,15 @@ from .config import settings
 from ..schemas import auth as auth_schema
 from ..db.repositories.user_repository import UserRepository
 from ..db.models import User
+import logging
+
+logger = logging.getLogger(__name__)
 
 # OAuth2密码流认证方案，指定token获取URL
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
 # 可选的OAuth2密码流，不自动抛出错误
-oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token", auto_error=False)
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
 def decode_token(token: str) -> Optional[Dict[str, Any]]:
     """解析JWT令牌
@@ -31,10 +34,16 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
         - 使用settings中配置的密钥和算法验证令牌
         - 如果令牌无效或过期，返回None而不是抛出异常
     """
+    logger.debug(f"开始解析JWT令牌: {token[:10] if token else None}...")
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        logger.debug(f"令牌解析成功，包含用户ID: {payload.get('sub', '未知')}")
         return payload
-    except JWTError:
+    except JWTError as e:
+        logger.warning(f"令牌解析失败: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"令牌解析过程中发生未预期的错误: {str(e)}", exc_info=True)
         return None
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -49,14 +58,21 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     Returns:
         str: 编码后的JWT令牌字符串
     """
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    logger.debug(f"开始创建访问令牌，用户ID: {data.get('sub', '未知')}")
+    try:
+        to_encode = data.copy()
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        to_encode.update({"exp": expire})
+        logger.debug(f"令牌将在 {expire} 过期")
+        encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        logger.debug("访问令牌创建成功")
+        return encoded_jwt
+    except Exception as e:
+        logger.error(f"创建访问令牌失败: {str(e)}", exc_info=True)
+        raise
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     """获取当前用户
@@ -72,6 +88,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
     Raises:
         HTTPException: 当令牌无效或用户不存在时抛出401错误
     """
+    logger.debug(f"开始验证用户令牌: {token[:10] if token else None}...")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="无效的凭证",
@@ -79,22 +96,40 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
     )
     
     if token is None:
+        logger.warning("未提供令牌，认证失败")
         raise credentials_exception
         
     try:
+        logger.debug("开始解码令牌")
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
+            logger.warning("令牌中未包含用户ID (sub)")
             raise credentials_exception
-    except JWTError:
+        logger.debug(f"令牌解码成功，用户ID: {username}")
+    except JWTError as e:
+        logger.warning(f"令牌解码失败: {str(e)}")
         raise credentials_exception
     
-    user_repository = UserRepository()
-    user = await user_repository.get_by_username(username=username)
-    if user is None:
-        raise credentials_exception
-    
-    return user
+    try:
+        logger.debug(f"查询用户信息: {username}")
+        user_repository = UserRepository()
+        user = await user_repository.get_by_username(username=username)
+        if user is None:
+            logger.warning(f"用户 {username} 不存在")
+            raise credentials_exception
+        
+        logger.info(f"用户 {username} 认证成功")
+        return user
+    except Exception as e:
+        if not isinstance(e, HTTPException):
+            logger.error(f"获取用户信息时发生错误: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"服务器错误: {str(e)}",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        raise
 
 async def get_current_active_user(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     """获取当前活跃用户（验证用户是否被禁用）
@@ -108,11 +143,18 @@ async def get_current_active_user(current_user: Dict[str, Any] = Depends(get_cur
     Raises:
         HTTPException: 用户被禁用时抛出401错误
     """
+    user_id = current_user.get("id", "未知")
+    username = current_user.get("username", "未知")
+    logger.debug(f"检查用户 ID:{user_id} ({username}) 是否处于活跃状态")
+    
     if not current_user.get("is_active", False):
+        logger.warning(f"用户 ID:{user_id} ({username}) 已被禁用，拒绝访问")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="账号已被禁用"
         )
+    
+    logger.debug(f"用户 ID:{user_id} ({username}) 处于活跃状态，允许访问")
     return current_user
 
 async def get_current_user_optional(token: str = Depends(oauth2_scheme_optional)) -> Optional[User]:
@@ -126,10 +168,20 @@ async def get_current_user_optional(token: str = Depends(oauth2_scheme_optional)
     Returns:
         Optional[User]: 当前用户，未认证时为None
     """
+    logger.debug(f"可选获取当前用户，令牌: {token[:10] if token else None}")
+    
     if not token:
+        logger.debug("未提供令牌，返回None")
         return None
     
     try:
-        return await get_current_user(token)
-    except HTTPException:
+        user = await get_current_user(token)
+        user_id = user.get("id", "未知") if user else "未知"
+        logger.debug(f"可选获取用户成功，用户ID: {user_id}")
+        return user
+    except HTTPException as e:
+        logger.debug(f"认证失败 (可选): {e.detail}")
+        return None
+    except Exception as e:
+        logger.error(f"可选获取用户时发生未预期的错误: {str(e)}", exc_info=True)
         return None 

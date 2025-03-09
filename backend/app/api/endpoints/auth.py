@@ -289,41 +289,73 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     Raises:
         HTTPException: 当用户名或密码错误时抛出401错误
     """
-    print(f"OAuth2授权请求: 用户名={form_data.username}")
+    logger.info(f"OAuth2授权请求: 用户名={form_data.username}")
     
-    user = await authenticate_user(form_data.username, form_data.password)
-    if not user:
+    try:
+        user = await authenticate_user(form_data.username, form_data.password)
+        if not user:
+            logger.warning(f"认证失败: 用户名或密码错误 (用户名={form_data.username})")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # 获取用户角色和权限
+        try:
+            role_obj = user.get("role", "user")  # 使用get方法安全地获取，默认为"user"
+            role_name = role_obj.value if hasattr(role_obj, 'value') else str(role_obj)
+            role = getattr(Role, role_name.upper(), Role.USER)
+            permissions = [p for p in get_role_permissions(role)]
+            
+            user_id = user.get("id", 0)
+            username = user.get("username", "unknown")
+            
+            logger.debug(f"用户认证成功: user_id={user_id}, username={username}, role={role_name}")
+            logger.debug(f"用户权限: {permissions}")
+            
+            # 生成访问令牌
+            access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            try:
+                access_token = create_access_token(
+                    data={
+                        "sub": username, 
+                        "id": user_id, 
+                        "role": role_name,
+                        "permissions": permissions
+                    },
+                    expires_delta=access_token_expires
+                )
+            except Exception as e:
+                logger.error(f"生成访问令牌失败: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="无法生成访问令牌",
+                )
+            
+            logger.info(f"OAuth2授权成功: user_id={user_id}, username={username}")
+        except KeyError as e:
+            logger.error(f"用户数据结构不完整，缺少关键字段: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="认证服务器内部错误：用户数据不完整",
+            )
+        
+        # 构建符合TokenResponse的返回结构
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        }
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
+    except Exception as e:
+        logger.error(f"OAuth2认证过程中发生未预期的错误: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="认证服务器错误",
         )
-    
-    # 获取用户角色和权限
-    role_name = user.role.value if hasattr(user.role, 'value') else str(user.role)
-    role = getattr(Role, role_name.upper(), Role.USER)
-    permissions = [p for p in get_role_permissions(role)]
-    
-    # 生成访问令牌
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={
-            "sub": user.username, 
-            "id": user.id, 
-            "role": role_name,
-            "permissions": permissions
-        },
-        expires_delta=access_token_expires
-    )
-    
-    print(f"OAuth2授权成功: user_id={user.id}, username={user.username}")
-    
-    # 构建符合TokenResponse的返回结构
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    }
 
 @router.post("/test-token", response_model=TokenDataResponse)
 @validate_token
@@ -331,23 +363,48 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def test_token(
     request: Request
 ):
-    """测试令牌有效性"""
+    """测试令牌有效性
+    
+    验证当前用户的JWT令牌是否有效，并返回令牌中的用户信息。
+    
+    Args:
+        request: HTTP请求对象，包含通过中间件验证的用户信息
+        
+    Returns:
+        TokenDataResponse: 包含用户信息的响应
+        
+    Raises:
+        HTTPException: 当令牌无效或验证失败时抛出相应的错误
+    """
     try:
         # 从请求中获取用户信息
         current_user = request.state.user
+        user_id = current_user.get("id")
+        username = current_user.get("sub")
+        
+        logger.info(f"验证令牌成功: user_id={user_id}, username={username}")
+        logger.debug(f"用户信息: {current_user}")
         
         # 构建符合TokenDataResponse的返回结构
         return {
-            "username": current_user.get("sub"),
-            "user_id": current_user.get("id"),
+            "username": username,
+            "user_id": user_id,
             "role": current_user.get("role"),
             "permissions": current_user.get("permissions", [])
         }
-    except Exception as e:
-        logger.error(f"验证令牌失败: {str(e)}")
+    except AttributeError as e:
+        # 请求中没有用户信息，可能是中间件未正确设置
+        logger.error(f"验证令牌失败: 请求中未包含用户信息，错误: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail={"message": "验证令牌失败", "error": str(e)}
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的令牌或令牌已过期",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        logger.error(f"验证令牌过程中发生未预期的错误: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="验证令牌过程中发生服务器错误",
         )
 
 @router.post("/swagger-login", include_in_schema=False)
