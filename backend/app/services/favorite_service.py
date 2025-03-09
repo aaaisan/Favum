@@ -17,13 +17,14 @@ class FavoriteService:
         """初始化收藏服务"""
         self.favorite_repository = FavoriteRepository()
     
-    async def get_user_favorites(self, user_id: int, skip: int = 0, limit: int = 100) -> Dict[str, Any]:
+    async def get_user_favorites(self, user_id: int, skip: int = 0, limit: int = 100, only_public: bool = False) -> Dict[str, Any]:
         """获取用户收藏的帖子列表
         
         Args:
             user_id: 用户ID
             skip: 跳过的记录数
             limit: 返回的最大记录数
+            only_public: 是否只返回公开内容
             
         Returns:
             Dict[str, Any]: 包含帖子列表和总数的字典
@@ -32,7 +33,7 @@ class FavoriteService:
             BusinessException: 当操作失败时抛出业务异常
         """
         try:
-            posts, total = await self.favorite_repository.get_user_favorites(user_id, skip, limit)
+            posts, total = await self.favorite_repository.get_user_favorites(user_id, skip, limit, only_public)
             return {
                 "posts": posts,
                 "total": total

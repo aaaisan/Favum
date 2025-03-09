@@ -1,14 +1,20 @@
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request, Header
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from fastapi.security.utils import get_authorization_scheme_param
+
 from .config import settings
 from ..schemas import auth as auth_schema
 from ..db.repositories.user_repository import UserRepository
+from ..db.models import User
 
 # OAuth2密码流认证方案，指定token获取URL
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token", auto_error=False)
+
+# 可选的OAuth2密码流，不自动抛出错误
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token", auto_error=False)
 
 def decode_token(token: str) -> Optional[Dict[str, Any]]:
     """解析JWT令牌
@@ -42,10 +48,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         
     Returns:
         str: 编码后的JWT令牌字符串
-        
-    Note:
-        - 令牌使用settings中配置的密钥和算法进行签名
-        - 如果未提供过期时间，则使用settings中的默认过期时间
     """
     to_encode = data.copy()
     if expires_delta:
@@ -56,7 +58,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     """获取当前用户
     
     从JWT令牌中解析用户信息，并验证用户是否存在。
@@ -65,7 +67,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         token: JWT令牌
         
     Returns:
-        User: 当前用户对象
+        Dict[str, Any]: 当前用户信息
         
     Raises:
         HTTPException: 当令牌无效或用户不存在时抛出401错误
@@ -75,38 +77,59 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         detail="无效的凭证",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    if token is None:
+        raise credentials_exception
+        
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
-        token_data = auth_schema.TokenData(username=username)
     except JWTError:
         raise credentials_exception
     
     user_repository = UserRepository()
-    user = await user_repository.get_by_username(username=token_data.username)
+    user = await user_repository.get_by_username(username=username)
     if user is None:
         raise credentials_exception
+    
     return user
 
-async def get_current_active_user(current_user = Depends(get_current_user)):
-    """获取当前活跃用户
-    
-    验证当前用户是否处于活跃状态。
+async def get_current_active_user(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """获取当前活跃用户（验证用户是否被禁用）
     
     Args:
-        current_user: 当前用户信息（通过依赖注入获取）
+        current_user: 当前认证用户信息
         
     Returns:
-        dict: 活跃用户的信息
+        Dict[str, Any]: 当前活跃用户信息
         
     Raises:
-        HTTPException: 当用户未激活时抛出400错误
-        
-    Note:
-        此函数通常用作FastAPI依赖项，用于需要活跃用户的路由
+        HTTPException: 用户被禁用时抛出401错误
     """
-    if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="用户未激活")
-    return current_user 
+    if not current_user.get("is_active", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="账号已被禁用"
+        )
+    return current_user
+
+async def get_current_user_optional(token: str = Depends(oauth2_scheme_optional)) -> Optional[User]:
+    """获取当前用户（可选）
+    
+    与get_current_user不同，此函数在未提供token时返回None而不是抛出异常
+    
+    Args:
+        token: JWT令牌，可选
+        
+    Returns:
+        Optional[User]: 当前用户，未认证时为None
+    """
+    if not token:
+        return None
+    
+    try:
+        return await get_current_user(token)
+    except HTTPException:
+        return None 

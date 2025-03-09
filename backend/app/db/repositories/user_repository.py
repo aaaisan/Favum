@@ -55,9 +55,9 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
+        from ..database import async_get_db
         
-        db = AsyncSessionLocal()
-        try:
+        async with async_get_db() as db:
             query = select(self.model).where(
                 and_(
                     self.model.email == email,
@@ -66,27 +66,7 @@ class UserRepository(BaseRepository):
             )
             result = await db.execute(query)
             item = result.scalar_one_or_none()
-            
-            if not item:
-                return None
-                
-            # 手动创建字典而不是使用to_dict方法
-            return {
-                "id": item.id,
-                "username": item.username,
-                "email": item.email,
-                "hashed_password": item.hashed_password,
-                "is_active": item.is_active,
-                "role": item.role,
-                "avatar_url": item.avatar_url,
-                "bio": item.bio,
-                "created_at": item.created_at,
-                "updated_at": item.updated_at,
-                "is_deleted": item.is_deleted,
-                "deleted_at": item.deleted_at
-            }
-        finally:
-            await db.close()
+            return item.to_dict() if item else None
     
     async def get_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """通过用户名查询用户
@@ -97,9 +77,6 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        from ..database import AsyncSessionLocal
-        
-        # 直接创建会话而不使用上下文管理器
         db = AsyncSessionLocal()
         try:
             query = select(self.model).where(
@@ -114,20 +91,14 @@ class UserRepository(BaseRepository):
             if not item:
                 return None
                 
-            # 手动创建字典而不是使用to_dict方法
+            # 返回一个简化的字典，只包含必要的字段
             return {
                 "id": item.id,
                 "username": item.username,
                 "email": item.email,
                 "hashed_password": item.hashed_password,
                 "is_active": item.is_active,
-                "role": item.role,
-                "avatar_url": item.avatar_url,
-                "bio": item.bio,
-                "created_at": item.created_at,
-                "updated_at": item.updated_at,
-                "is_deleted": item.is_deleted,
-                "deleted_at": item.deleted_at
+                "role": item.role
             }
         finally:
             await db.close()

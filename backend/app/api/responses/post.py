@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from datetime import datetime
+from enum import Enum
 
 # Import your schema definitions
 # from ...schemas.post import Post, PublicPost  # 导入现有的Post模式
@@ -9,108 +10,199 @@ from datetime import datetime
 from .user import UserInfoResponse
 from .tag import TagResponse
 from .category import CategoryResponse
-from .comment import CommentResponse
+# from .comment import CommentResponse
 
-# 确保嵌套对象包含所有必要字段
-# class TagResponse(BaseModel):
-#     id: int
-#     name: str
-#     created_at: datetime  # 添加创建时间字段
-
-# class CategoryResponse(BaseModel):
-#     id: int
-#     name: str
-#     created_at: datetime  # 添加创建时间字段
-
-# 修改帖子响应，确保嵌套对象使用上面定义的响应模型
-class PostResponse(BaseModel):
-    """帖子响应模型
+# 添加缺少的SectionResponse定义
+class SectionResponse(BaseModel):
+    """版块响应"""
+    id: int
+    name: str
     
-    用于API返回帖子对象的标准格式
-    """
+    model_config = {"extra": "ignore"}
+
+# 添加点赞类型枚举 - 与schemas保持一致
+class VoteType(str, Enum):
+    UPVOTE = "upvote"
+    DOWNVOTE = "downvote"
+
+# 基础帖子模型
+class PostBase(BaseModel):
+    title: str
+    content: str
+    category_id: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 创建帖子请求模型
+class PostCreate(PostBase):
+    author_id: int
+    section_id: int
+    tag_ids: Optional[List[int]] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 更新帖子请求模型
+class PostUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category_id: Optional[int] = None
+    tag_ids: Optional[List[int]] = None
+    is_hidden: Optional[bool] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 标准帖子响应模型
+class PostResponse(BaseModel):
+    """帖子响应"""
     id: int
     title: str
     content: str
     author_id: int
-    category_id: int
+    section_id: Optional[int] = None
+    category_id: Optional[int] = None
+    is_hidden: bool = False
+    created_at: str  # 使用字符串类型接收ISO格式的日期时间
+    updated_at: Optional[str] = None
+    is_deleted: bool = False
+    vote_count: int = 0
+    category: Optional[CategoryResponse] = None
+    section: Optional[SectionResponse] = None
+    tags: Optional[List[TagResponse]] = None
+    
+    model_config = {"extra": "ignore"}
+
+# 公开帖子信息，仅包含非敏感内容
+class PublicPostResponse(BaseModel):
+    id: int
+    title: str
+    content: str
+    is_hidden: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
-    vote_count: int = 0
-    comment_count: int = 0
-    is_published: bool = True
-    is_pinned: bool = False
+    vote_count: Optional[int] = 0
+    category_id: int
     
     model_config = ConfigDict(from_attributes=True)
 
+# 帖子详情响应模型
 class PostDetailResponse(PostResponse):
-    """帖子详情响应模型
+    """帖子详情响应，继承自PostResponse"""
+    author: Optional[UserInfoResponse] = None
+    view_count: Optional[int] = 0
+    favorite_count: Optional[int] = 0
     
-    包含完整的帖子信息，包括作者、类别和标签
-    """
-    author: UserInfoResponse
-    category: CategoryResponse
-    tags: List[TagResponse] = []
-    view_count: int = 0
-    favorite_count: int = 0
-    
-    model_config = ConfigDict(from_attributes=True)
+    model_config = {"extra": "ignore"}
 
+# 帖子列表响应模型
 class PostListResponse(BaseModel):
-    """帖子列表响应模型
-    
-    用于返回分页的帖子列表
-    """
-    posts: List[PostDetailResponse]
+    """帖子列表响应"""
+    posts: List[PostResponse]
     total: int
-    page: int = 1
-    size: int = 20
+    page: Optional[int] = 1
+    size: Optional[int] = 10
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = {"extra": "ignore"}
 
+# 帖子评论响应模型
 class PostCommentResponse(BaseModel):
-    """帖子评论响应模型
-    
-    用于返回帖子的评论列表
-    """
+    """帖子评论列表响应"""
     post_id: int
-    comments: List[CommentResponse]
+    comments: List
     total: int
-    page: int = 1
-    size: int = 20
+    page: int
+    size: int
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = {"extra": "ignore"}
 
+# 帖子统计响应模型
 class PostStatsResponse(BaseModel):
-    """帖子统计响应模型
-    
-    用于返回帖子的统计信息
-    """
+    """帖子统计响应"""
     post_id: int
-    view_count: int = 0
-    vote_count: int = 0
-    comment_count: int = 0
-    favorite_count: int = 0
-    
-    model_config = ConfigDict(from_attributes=True)
-
-class PostDeleteResponse(BaseModel):
-    """帖子删除响应模型"""
-    id: int
-    message: str = "帖子已成功删除"
-    
-class PostVoteResponse(BaseModel):
-    """帖子投票响应模型"""
-    post_id: int
-    vote_value: int
     vote_count: int
     
+    model_config = {"extra": "ignore"}
+
+# 帖子删除响应模型
+class PostDeleteResponse(BaseModel):
+    """帖子删除响应"""
+    message: str
+    post_id: int
+    
+    model_config = {"extra": "ignore"}
+
+# 帖子投票创建请求模型
+class PostVoteCreate(BaseModel):
+    vote_type: VoteType
+    
     model_config = ConfigDict(from_attributes=True)
 
-class PostFavoriteResponse(BaseModel):
-    """帖子收藏响应模型"""
+# 帖子投票记录模型
+class PostVote(BaseModel):
+    id: int
     post_id: int
-    favorited: bool
-    favorite_count: int
+    user_id: int
+    vote_type: str
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 帖子投票响应模型 - 保留特定字段以兼容现有代码
+class PostVoteResponse(BaseModel):
+    """帖子投票响应"""
+    post_id: int
+    upvotes: int
+    downvotes: int
+    score: int
+    user_vote: Optional[str] = None
+    action: str
+    
+    model_config = {"extra": "ignore"}
+
+# 点赞响应模型 - 与schema保持一致
+class VoteResponse(BaseModel):
+    success: bool
+    vote_count: int
+    message: str
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 收藏帖子请求模型
+class PostFavoriteCreate(BaseModel):
+    pass  # 不需要任何字段，post_id从URL路径获取，user_id从当前用户获取
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 帖子收藏记录模型
+class PostFavorite(BaseModel):
+    id: int
+    post_id: int
+    user_id: int
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 帖子收藏响应模型
+class PostFavoriteResponse(BaseModel):
+    """帖子收藏响应"""
+    post_id: int
+    user_id: int
+    status: str
+    favorite_id: Optional[int] = None
+    created_at: Optional[str] = None
+    
+    model_config = {"extra": "ignore"}
+
+# 收藏操作响应模型
+class FavoriteResponse(BaseModel):
+    success: bool
+    message: str
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# 用户收藏列表模型
+class PostFavoritesList(BaseModel):
+    posts: List[PostResponse]
+    total: int
     
     model_config = ConfigDict(from_attributes=True)
 

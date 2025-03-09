@@ -26,7 +26,11 @@ class BaseRepository:
         """
         result = {}
         for column in model_instance.__table__.columns:
-            result[column.name] = getattr(model_instance, column.name)
+            value = getattr(model_instance, column.name)
+            # 将日期时间对象转换为ISO格式字符串
+            if isinstance(value, datetime):
+                value = value.isoformat()
+            result[column.name] = value
         return result
     
     async def get_session(self) -> AsyncSession:

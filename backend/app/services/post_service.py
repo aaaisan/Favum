@@ -15,12 +15,14 @@ from typing import Dict, Any, List, Optional, Tuple
 from typing import Dict, Any, List, Optional, Tuple, Union
 from sqlalchemy import asc, select
 from sqlalchemy import desc, asc, select
+import logging
+from datetime import datetime
 
 from ..core.base_service import BaseService
-from ..db.models import Post
-from ..db.models import Post, Tag
+from ..db.models import Post, Tag, VoteType
 from ..db.repositories.post_repository import PostRepository
 from ..core.exceptions import BusinessException
+from ..services.favorite_service import FavoriteService
 
 class PostService(BaseService):
     """帖子业务逻辑服务"""
@@ -248,7 +250,7 @@ class PostService(BaseService):
         if not post:
             raise BusinessException(
                 status_code=404,
-                error_code="POST_NOT_FOUND",
+                code="POST_NOT_FOUND",
                 message="帖子不存在"
             )
             
@@ -261,38 +263,61 @@ class PostService(BaseService):
         if not success:
             raise BusinessException(
                 status_code=500,
-                error_code="TOGGLE_FAILED",
+                code="TOGGLE_FAILED",
                 message="切换帖子可见性失败"
             )
             
         # 获取并返回更新后的帖子信息
         return await self.get_post_detail(post_id, include_hidden=True)
     
-    async def vote_post(self, post_id: int, user_id: int, vote_type: str) -> Dict[str, Any]:
-        """对帖子进行投票
+    async def vote_post(self, post_id: int, user_id: int, vote_type: VoteType) -> Dict[str, Any]:
+        """为帖子投票
         
         Args:
             post_id: 帖子ID
             user_id: 用户ID
-            vote_type: 投票类型，'upvote'、'downvote'或'none'
+            vote_type: 投票类型，VoteType枚举
             
         Returns:
-            Dict[str, Any]: 包含操作结果和新投票计数的字典
+            Dict[str, Any]: 投票结果，包含投票计数和用户的投票状态
             
         Raises:
-            BusinessException: 当帖子不存在或投票类型无效时
+            BusinessException: 当帖子不存在或投票操作失败时
         """
-        # 验证投票类型
-        valid_vote_types = ["upvote", "downvote", "none"]
-        if vote_type not in valid_vote_types:
-            raise BusinessException(
-                status_code=400,
-                error_code="INVALID_VOTE_TYPE",
-                message="无效的投票类型"
-            )
+        try:
+            # 首先验证帖子是否存在
+            post = await self.get_post_detail(post_id)
+            if not post:
+                raise BusinessException(
+                    status_code=404,
+                    code="POST_NOT_FOUND",
+                    message="帖子不存在"
+                )
             
-        # 执行投票操作
-        return await self.repository.vote_post(post_id, user_id, vote_type)
+            # 执行投票操作
+            result = await self.repository.vote_post(post_id, user_id, vote_type)
+            if result is None:
+                raise BusinessException(
+                    status_code=404,
+                    code="POST_NOT_FOUND",
+                    message="帖子不存在"
+                )
+            
+            return result
+        except Exception as e:
+            # 记录错误
+            logging.error(f"投票失败: {str(e)}")
+            
+            # 如果是已知的业务异常，直接抛出
+            if isinstance(e, BusinessException):
+                raise e
+            
+            # 其他异常转换为业务异常
+            raise BusinessException(
+                status_code=500,
+                code="VOTE_FAILED",
+                message=f"投票失败: {str(e)}"
+            )
     
     async def get_user_vote(self, post_id: int, user_id: int) -> Optional[str]:
         """获取用户对帖子的投票状态
@@ -323,8 +348,74 @@ class PostService(BaseService):
         if not post:
             raise BusinessException(
                 message="帖子不存在",
-                error_code="POST_NOT_FOUND", 
+                code="POST_NOT_FOUND", 
                 status_code=404
             )
               
-        return await self.repository.get_vote_count(post_id) 
+        return await self.repository.get_vote_count(post_id)
+    
+    async def favorite_post(self, post_id: int, user_id: int) -> Dict[str, Any]:
+        """收藏帖子
+        
+        Args:
+            post_id: 帖子ID
+            user_id: 用户ID
+            
+        Returns:
+            Dict[str, Any]: 包含收藏操作结果的字典
+            
+        Raises:
+            BusinessException: 当帖子不存在或操作失败时
+        """
+        try:
+            # 首先验证帖子是否存在
+            post = await self.get_post_detail(post_id)
+            if not post:
+                raise BusinessException(
+                    status_code=404,
+                    code="POST_NOT_FOUND",
+                    message="帖子不存在"
+                )
+            
+            # 使用FavoriteService处理收藏逻辑
+            favorite_service = FavoriteService()
+            result = await favorite_service.add_favorite(post_id, user_id)
+            
+            # 更新帖子的收藏计数
+            try:
+                current_count = post.get("favorites_count", 0)
+                await self.repository.update(post_id, {"favorites_count": current_count + 1})
+            except Exception as e:
+                logging.warning(f"更新收藏计数失败: {str(e)}")
+            
+            return {
+                "post_id": post_id,
+                "user_id": user_id,
+                "status": "favorited",
+                "success": result.get("success", True),
+                "message": result.get("message", "收藏成功")
+            }
+        except Exception as e:
+            # 记录错误
+            logging.error(f"收藏帖子失败: {str(e)}")
+            
+            # 如果是已知的业务异常，直接抛出
+            if isinstance(e, BusinessException):
+                raise e
+            
+            # 其他异常转换为业务异常
+            raise BusinessException(
+                status_code=500,
+                code="FAVORITE_FAILED",
+                message=f"收藏帖子失败: {str(e)}"
+            )
+
+def get_post_service() -> PostService:
+    """创建PostService实例的依赖函数
+    
+    用于FastAPI依赖注入系统
+    
+    Returns:
+        PostService: 帖子服务实例
+    """
+    return PostService() 

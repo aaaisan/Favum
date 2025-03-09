@@ -1,5 +1,5 @@
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 
 class UserResponse(BaseModel):
@@ -14,11 +14,10 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = None
     is_active: bool
     role: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: str
+    updated_at: str
     
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "ignore"}
 
 class UserProfileResponse(UserResponse):
     """用户个人资料响应模型
@@ -27,13 +26,12 @@ class UserProfileResponse(UserResponse):
     """
     post_count: int
     comment_count: int
-    last_login: Optional[datetime] = None
-    join_date: datetime
+    last_login: Optional[str] = None
+    join_date: str
     reputation: int = 0
     badges: List[str] = []
     
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "ignore"}
 
 class UserInfoResponse(BaseModel):
     """简化的用户信息响应模型
@@ -45,18 +43,18 @@ class UserInfoResponse(BaseModel):
     avatar_url: Optional[str] = None
     role: str
     
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "ignore"}
 
 class UserListResponse(BaseModel):
     """用户列表响应模型"""
     users: List[UserResponse]
     total: int
     
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "ignore"}
 
 class UserDeleteResponse(BaseModel):
     """用户删除响应模型"""
     id: int
-    message: str = "用户已成功删除" 
+    message: str = "用户已成功删除"
+    
+    model_config = {"extra": "ignore"} 

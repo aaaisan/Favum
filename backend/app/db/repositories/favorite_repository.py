@@ -19,13 +19,14 @@ class FavoriteRepository(BaseRepository):
         """初始化收藏仓库"""
         super().__init__(PostFavorite)
     
-    async def get_user_favorites(self, user_id: int, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_user_favorites(self, user_id: int, skip: int = 0, limit: int = 100, only_public: bool = False) -> Tuple[List[Dict[str, Any]], int]:
         """获取用户收藏的帖子列表
         
         Args:
             user_id: 用户ID
             skip: 跳过的记录数
             limit: 返回的最大记录数
+            only_public: 是否只返回公开内容
             
         Returns:
             Tuple[List[Dict[str, Any]], int]: 收藏的帖子列表和总数

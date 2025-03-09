@@ -76,12 +76,8 @@ async def authenticate_user(username: str, password: str) -> Union[Dict[str, Any
     if not verify_password(password, user["hashed_password"]):
         return False
     
-    # 创建一个类似于User对象的字典，以保持与现有代码的兼容性
-    user_obj = SimpleNamespace()
-    for key, value in user.items():
-        setattr(user_obj, key, value)
-    
-    return user_obj
+    # 直接返回用户字典
+    return user
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -221,7 +217,7 @@ async def get_current_user(
         print(f"[Security] 用户不存在: {token_data.username}")
         raise credentials_exception
     
-    print(f"[Security] 用户验证成功: {user['username']}")
+    print(f"[Security] 用户验证成功: {user.username}")
     return token_data
 
 async def get_current_active_user(

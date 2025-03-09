@@ -307,6 +307,7 @@ class BusinessError(Exception):
         self.message = message
         self.status_code = status_code
         self.details = details or {}
+        self.error_code = code
         super().__init__(self.message)
         
     def to_dict(self) -> Dict[str, Any]:
