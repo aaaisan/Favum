@@ -183,16 +183,6 @@ backend/
 └── requirements.txt    # 项目依赖
 ```
 
-## 许可证
-
-该项目基于 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
-
-## 联系方式
-
-项目维护者 - <aaaisan@gmail.com>
-
-项目链接: [https://github.com/yourusername/forum](https://github.com/yourusername/forum)
-
 ## API文档
 
 本节提供了论坛系统所有API端点的完整文档，包括访问路径、方法、参数和用途。
@@ -432,6 +422,7 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 ```
 
 常见状态码：
+
 - 400: 请求参数错误
 - 401: 未认证
 - 403: 权限不足
@@ -440,4 +431,12 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 - 429: 请求过于频繁
 - 500: 服务器内部错误
 
+## 许可证
 
+该项目基于 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+
+## 联系方式
+
+项目维护者 - <aaaisan@gmail.com>
+
+项目链接: [https://github.com/yourusername/forum](https://github.com/yourusername/forum)
