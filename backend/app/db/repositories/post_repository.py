@@ -23,14 +23,17 @@ from typing import Dict, Any, List, Optional, Tuple
 # from typing import Dict, Any, List, Optional, Tuple, Union
 
 from .base_repository import BaseRepository
-from ..models import Post, post_tags, PostVote, VoteType, Section, User
+from ..models import Post, post_tags, PostVote, VoteType, Section, User, Tag
 # from ..models import Post, post_tags, PostVote, VoteType, Category, Section, User
 # from ..models import Post, Tag, post_tags, PostVote, VoteType, Category, User
 # from ..models import Post, Tag, post_tags, PostVote, VoteType, Category, Section, User掉了掉了
-from ...core.exceptions import BusinessError, BusinessException
-from ..database import AsyncSessionLocal
+from ...core.exceptions import BusinessError
+from ..database import AsyncSessionLocal, async_get_db
 import traceback
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 定义帖子相关异常
 class PostNotFoundError(BusinessError):
@@ -65,73 +68,79 @@ class PostRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 帖子数据字典，不存在则返回None
         """
-        db = AsyncSessionLocal()
         try:
-            # 构建查询条件
-            conditions = [self.model.id == post_id, self.model.is_deleted == False]
-            if not include_hidden:
-                conditions.append(self.model.is_hidden == False)
-            
-            # 构建查询，加载关联实体
-            query = (
-                select(self.model)
-                .options(
-                    joinedload(self.model.category),
-                    joinedload(self.model.section),
-                    joinedload(self.model.tags)
+            async with async_get_db() as db:
+                # 构建查询条件
+                conditions = [self.model.id == post_id, self.model.is_deleted == False]
+                if not include_hidden:
+                    conditions.append(self.model.is_hidden == False)
+                
+                # 构建查询，加载关联实体
+                query = (
+                    select(self.model)
+                    .options(
+                        joinedload(self.model.category),
+                        joinedload(self.model.section),
+                        joinedload(self.model.tags)
+                    )
+                    .where(and_(*conditions))
                 )
-                .where(and_(*conditions))
-            )
-            
-            # 执行查询
-            result = await db.execute(query)
-            post = result.unique().scalar_one_or_none()
-            
-            if not post:
-                return None
                 
-            # 手动创建字典
-            post_dict = {
-                "id": post.id,
-                "title": post.title,
-                "content": post.content,
-                "author_id": post.author_id,
-                "section_id": post.section_id,
-                "category_id": post.category_id,
-                "is_hidden": post.is_hidden,
-                "created_at": post.created_at,
-                "updated_at": post.updated_at,
-                "is_deleted": post.is_deleted,
-                "deleted_at": post.deleted_at,
-                "vote_count": post.vote_count
-            }
-            
-            # 添加关联实体信息
-            if post.category:
-                post_dict["category"] = {
-                    "id": post.category.id,
-                    "name": post.category.name,
-                    "created_at": post.category.created_at
+                # 执行查询
+                result = await db.execute(query)
+                post = result.unique().scalar_one_or_none()
+                
+                if not post:
+                    logger.warning(f"未找到帖子，ID: {post_id}")
+                    return None
+                    
+                # 手动创建字典
+                post_dict = {
+                    "id": post.id,
+                    "title": post.title,
+                    "content": post.content,
+                    "author_id": post.author_id,
+                    "section_id": post.section_id,
+                    "category_id": post.category_id,
+                    "is_hidden": post.is_hidden,
+                    "created_at": post.created_at,
+                    "updated_at": post.updated_at,
+                    "is_deleted": post.is_deleted,
+                    "deleted_at": post.deleted_at,
+                    "vote_count": post.vote_count
                 }
                 
-            if post.section:
-                post_dict["section"] = {
-                    "id": post.section.id,
-                    "name": post.section.name
-                }
+                # 添加关联实体信息
+                if post.category:
+                    post_dict["category"] = {
+                        "id": post.category.id,
+                        "name": post.category.name,
+                        "created_at": post.category.created_at
+                    }
+                    
+                if post.section:
+                    post_dict["section"] = {
+                        "id": post.section.id,
+                        "name": post.section.name
+                    }
+                    
+                # 确保标签列表始终存在
+                post_dict["tags"] = []
                 
-            if post.tags:
-                post_dict["tags"] = [
-                    {
-                        "id": tag.id, 
-                        "name": tag.name,
-                        "created_at": tag.created_at
-                    } for tag in post.tags
-                ]
-                
-            return post_dict
-        finally:
-            await db.close()
+                if post.tags:
+                    post_dict["tags"] = [
+                        {
+                            "id": tag.id, 
+                            "name": tag.name,
+                            "created_at": tag.created_at
+                        } for tag in post.tags
+                    ]
+                    logger.info(f"帖子 {post_id} 加载了 {len(post_dict['tags'])} 个标签")
+                    
+                return post_dict
+        except Exception as e:
+            logger.error(f"获取帖子关联信息失败，ID: {post_id}, 错误: {str(e)}", exc_info=True)
+            return None
     
     async def get_posts(
         self, 
@@ -346,20 +355,79 @@ class PostRepository(BaseRepository):
             bool: 操作是否成功
         """
         try:
-            # 首先删除所有现有的标签关联
-            delete_stmt = delete(post_tags).where(post_tags.c.post_id == post_id)
-            await self.db.execute(delete_stmt)
+            # 确保帖子存在
+            post = await self.get(post_id)
+            if not post:
+                logger.error(f"更新标签失败：帖子不存在，ID: {post_id}")
+                return False
             
-            # 然后插入新的标签关联
+            # 过滤掉无效的标签ID（必须是有效的整数）
+            filtered_tag_ids = []
             for tag_id in tag_ids:
-                insert_stmt = insert(post_tags).values(post_id=post_id, tag_id=tag_id)
-                await self.db.execute(insert_stmt)
+                try:
+                    filtered_tag_ids.append(int(tag_id))
+                except (ValueError, TypeError):
+                    logger.warning(f"忽略无效的标签ID: {tag_id}")
+            
+            logger.info(f"为帖子 {post_id} 更新标签: {filtered_tag_ids}")
+            
+            async with async_get_db() as db:
+                # 开始事务
+                async with db.begin():
+                    # 删除所有现有的标签关联
+                    delete_stmt = delete(post_tags).where(post_tags.c.post_id == post_id)
+                    await db.execute(delete_stmt)
+                    
+                    # 如果标签ID列表为空，只删除不添加
+                    if not filtered_tag_ids:
+                        logger.info(f"已清除帖子 {post_id} 的所有标签关联")
+                        return True
+                    
+                    # 插入新的标签关联
+                    success_count = 0
+                    for tag_id in filtered_tag_ids:
+                        try:
+                            # 验证标签是否存在
+                            tag_check = await db.execute(
+                                select(Tag).where(
+                                    (Tag.id == tag_id) & 
+                                    (Tag.is_deleted == False)
+                                )
+                            )
+                            tag = tag_check.scalar_one_or_none()
+                            
+                            if not tag:
+                                logger.warning(f"标签不存在或已删除，ID: {tag_id}")
+                                continue
+                            
+                            # 插入关联
+                            insert_stmt = insert(post_tags).values(post_id=post_id, tag_id=tag_id)
+                            await db.execute(insert_stmt)
+                            success_count += 1
+                            
+                            # 更新标签统计信息
+                            try:
+                                tag.post_count = tag.post_count + 1 if tag.post_count else 1
+                                tag.last_used_at = datetime.now()
+                                db.add(tag)
+                            except Exception as stats_error:
+                                logger.warning(f"更新标签统计信息失败: {str(stats_error)}")
+                                # 不影响主要流程
+                                
+                        except Exception as tag_error:
+                            logger.warning(f"插入标签 {tag_id} 关联失败: {str(tag_error)}")
+                            # 继续处理下一个标签
                 
-            await self.db.commit()
-            return True
+                if success_count > 0:
+                    logger.info(f"成功为帖子 {post_id} 关联 {success_count}/{len(filtered_tag_ids)} 个标签")
+                    return True
+                else:
+                    logger.warning(f"未能为帖子 {post_id} 关联任何标签")
+                    return False
+                
         except Exception as e:
-            await self.db.rollback()
-            raise e
+            logger.error(f"更新帖子标签失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
+            return False
     
     async def toggle_visibility(self, post_id: int, is_hidden: bool) -> bool:
         """切换帖子可见性
@@ -610,23 +678,28 @@ class PostRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        # 构建更新语句
-        stmt = (
-            update(self.model)
-            .where(self.model.id == post_id)
-            .values(
-                is_deleted=True,
-                deleted_at=datetime.now(),
-                updated_at=datetime.now()
-            )
-        )
-        
-        # 执行更新
-        result = await self.db.execute(stmt)
-        await self.db.commit()
-        
-        # 检查是否找到并更新了记录
-        return result.rowcount > 0
+        try:
+            async with async_get_db() as db:
+                # 构建更新语句
+                stmt = (
+                    update(self.model)
+                    .where(self.model.id == post_id)
+                    .values(
+                        is_deleted=True,
+                        deleted_at=datetime.now(),
+                        updated_at=datetime.now()
+                    )
+                )
+                
+                # 执行更新
+                result = await db.execute(stmt)
+                await db.commit()
+                
+                # 检查是否找到并更新了记录
+                return result.rowcount > 0
+        except Exception as e:
+            logger.error(f"软删除帖子失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
+            return False
     
     async def restore(self, post_id: int) -> bool:
         """恢复已删除的帖子
@@ -660,4 +733,100 @@ class PostRepository(BaseRepository):
         await self.db.commit()
         
         # 检查是否找到并更新了记录
-        return result.rowcount > 0 
+        return result.rowcount > 0
+    
+    async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """创建帖子
+        
+        覆盖基类的create方法，处理标签关联
+        
+        Args:
+            data: 帖子数据，可能包含tag_ids字段
+            
+        Returns:
+            Dict[str, Any]: 创建的帖子数据
+        """
+        # 提取标签ID列表，不是Post模型的直接字段
+        tag_ids = data.pop("tag_ids", []) if "tag_ids" in data else []
+        
+        # 确保tag_ids是列表且值为整数
+        if tag_ids is not None and not isinstance(tag_ids, list):
+            tag_ids = []
+        elif tag_ids:  # 如果有标签ID，确保都是整数
+            filtered_tag_ids = []
+            for tag_id in tag_ids:
+                try:
+                    filtered_tag_ids.append(int(tag_id))
+                except (ValueError, TypeError):
+                    logger.warning(f"忽略无效的标签ID: {tag_id}")
+            tag_ids = filtered_tag_ids
+            
+        logger.info(f"创建帖子，标签ID: {tag_ids}")
+        
+        # 创建帖子
+        async with async_get_db() as db:
+            try:
+                # 创建帖子实例
+                post = Post(**data)
+                db.add(post)
+                await db.flush()  # 刷新以获取ID
+                
+                post_id = post.id
+                logger.info(f"成功创建帖子，ID: {post_id}")
+                
+                # 关联标签
+                if tag_ids:
+                    success_count = 0
+                    for tag_id in tag_ids:
+                        try:
+                            # 验证标签是否存在
+                            tag_check = await db.execute(
+                                select(Tag).where(
+                                    (Tag.id == tag_id) & 
+                                    (Tag.is_deleted == False)
+                                )
+                            )
+                            tag = tag_check.scalar_one_or_none()
+                            
+                            if not tag:
+                                logger.warning(f"标签不存在或已删除，ID: {tag_id}")
+                                continue
+                            
+                            # 插入关联
+                            insert_stmt = insert(post_tags).values(post_id=post_id, tag_id=tag_id)
+                            await db.execute(insert_stmt)
+                            success_count += 1
+                            
+                            # 更新标签统计信息
+                            tag.post_count = tag.post_count + 1 if tag.post_count else 1
+                            tag.last_used_at = datetime.now()
+                            db.add(tag)
+                        except Exception as tag_error:
+                            logger.warning(f"插入标签 {tag_id} 关联失败: {str(tag_error)}")
+                            # 继续处理下一个标签
+                    
+                    logger.info(f"为帖子 {post_id} 关联了 {success_count}/{len(tag_ids)} 个标签")
+                
+                # 提交事务
+                await db.commit()
+                await db.refresh(post)
+                
+                # 获取完整的帖子信息，包含标签
+                post_dict = self.model_to_dict(post)
+                
+                # 添加标签信息
+                if tag_ids:
+                    post_with_tags = await self.get_with_relations(post_id)
+                    if post_with_tags and "tags" in post_with_tags:
+                        post_dict["tags"] = post_with_tags["tags"]
+                    else:
+                        post_dict["tags"] = []
+                else:
+                    post_dict["tags"] = []
+                
+                return post_dict
+                
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"创建帖子失败: {str(e)}", exc_info=True)
+                raise e 

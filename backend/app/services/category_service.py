@@ -16,7 +16,7 @@ class CategoryService:
         """初始化分类服务"""
         self.category_repository = CategoryRepository()
     
-    async def get_category_detail(self, category_id: int, include_deleted: bool = False) -> Dict[str, Any]:
+    async def get_category_detail(self, category_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
         """获取分类详情
         
         Args:
@@ -24,21 +24,14 @@ class CategoryService:
             include_deleted: 是否包含已删除的分类
             
         Returns:
-            Dict[str, Any]: 分类信息
-            
-        Raises:
-            BusinessException: 当分类不存在时抛出业务异常
+            Optional[Dict[str, Any]]: 分类信息，不存在或已删除（且不包含已删除）则返回None
         """
-        category = await self.category_repository.get_by_id(category_id, include_deleted)
-        
-        if not category:
-            raise BusinessException(
-                status_code=404,
-                error_code="CATEGORY_NOT_FOUND",
-                message="分类不存在"
-            )
-            
-        return category
+        try:
+            category = await self.category_repository.get_by_id(category_id, include_deleted)
+            return category
+        except Exception as e:
+            logger.error(f"获取分类详情失败，分类ID: {category_id}, 错误: {str(e)}", exc_info=True)
+            return None
     
     async def get_category_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """根据名称获取分类

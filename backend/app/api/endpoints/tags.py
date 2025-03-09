@@ -95,6 +95,49 @@ async def read_tags(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
+@router.get("/trending-list", response_model=TagCloudResponse)
+@public_endpoint(cache_ttl=300, custom_message="获取趋势标签失败")
+async def get_trending_tags(
+    request: Request,
+    days: int = 7,
+    limit: int = 10
+):
+    """获取趋势标签
+    
+    获取指定天数内使用增长最快的标签
+    
+    Args:
+        request: FastAPI请求对象
+        days: 统计的天数范围，默认7天
+        limit: 返回的标签数量，默认10个
+        
+    Returns:
+        TagCloudResponse: 趋势标签列表
+    """
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 获取趋势标签
+        trending_tags = await tag_service.get_trending_tags(days=days, limit=limit)
+        
+        # 构建符合TagCloudResponse的返回结构
+        return {
+            "tags": trending_tags
+        }
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
+    except Exception as e:
+        # 处理未预期的异常
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"获取趋势标签失败: {str(e)}", "error_code": "INTERNAL_ERROR"}
+        )
+
 @router.get("/popular", response_model=TagCloudResponse)
 @public_endpoint(cache_ttl=300, custom_message="获取热门标签失败")
 async def read_popular_tags(
@@ -450,4 +493,102 @@ async def search_tags(
         raise HTTPException(
             status_code=e.status_code,
             detail={"message": e.message, "error_code": e.error_code}
+        )
+
+@router.get("/{tag_id}/related", response_model=TagCloudResponse)
+@public_endpoint(cache_ttl=300, custom_message="获取关联标签失败")
+async def get_related_tags(
+    request: Request,
+    tag_id: int,
+    limit: int = 10
+):
+    """获取关联标签
+    
+    获取与指定标签共同出现在帖子中的其他标签
+    
+    Args:
+        request: FastAPI请求对象
+        tag_id: 标签ID
+        limit: 返回的标签数量，默认10个
+        
+    Returns:
+        TagCloudResponse: 关联标签列表
+    """
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 获取关联标签
+        related_tags = await tag_service.get_related_tags(tag_id=tag_id, limit=limit)
+        
+        # 构建符合TagCloudResponse的返回结构
+        return {
+            "tags": related_tags
+        }
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
+    except Exception as e:
+        # 处理未预期的异常
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"获取关联标签失败: {str(e)}", "error_code": "INTERNAL_ERROR"}
+        )
+
+@router.post("/recommendations", response_model=TagCloudResponse)
+@public_endpoint(auth_required=False, cache_ttl=300, custom_message="获取标签推荐失败")
+async def get_tag_recommendations(
+    request: Request,
+    data: tag_schema.TagRecommendationRequest,
+    limit: int = 10
+):
+    """获取标签推荐
+    
+    根据关键词和/或用户历史推荐标签
+    
+    Args:
+        request: FastAPI请求对象
+        data: 标签推荐请求模型，包含keywords和user_id
+        limit: 返回的标签数量，默认10个
+        
+    Returns:
+        TagCloudResponse: 推荐的标签列表
+    """
+    try:
+        # 使用Service架构
+        tag_service = TagService()
+        
+        # 从请求体中获取参数
+        keywords = data.keywords if data else None
+        user_id = data.user_id if data else None
+        
+        # 如果未提供user_id但用户已登录，使用当前用户ID
+        if not user_id and hasattr(request.state, 'user') and request.state.user:
+            user_id = request.state.user.get('id')
+        
+        # 获取标签推荐
+        recommended_tags = await tag_service.get_tag_recommendations(
+            keywords=keywords,
+            user_id=user_id,
+            limit=limit
+        )
+        
+        # 构建符合TagCloudResponse的返回结构
+        return {
+            "tags": recommended_tags
+        }
+    except BusinessException as e:
+        # 将业务异常转换为HTTPException
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
+    except Exception as e:
+        # 处理未预期的异常
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"获取标签推荐失败: {str(e)}", "error_code": "INTERNAL_ERROR"}
         ) 

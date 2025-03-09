@@ -306,50 +306,56 @@ class CategoryRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        async with self.session() as session:
-            # 查询分类
-            category = await session.get(Category, category_id)
-            if not category or category.is_deleted:
-                return False
-            
-            # 检查是否有子分类
-            children_query = select(func.count(Category.id)).where(
-                Category.parent_id == category_id,
-                Category.is_deleted == False
-            )
-            children_result = await session.execute(children_query)
-            children_count = children_result.scalar() or 0
-            
-            if children_count > 0:
-                raise BusinessException(
-                    status_code=400,
-                    error_code="HAS_CHILDREN",
-                    message="不能删除有子分类的分类"
+        try:
+            async with self.session() as session:
+                # 查询分类
+                category = await session.get(Category, category_id)
+                if not category or category.is_deleted:
+                    return False
+                
+                # 检查是否有子分类
+                children_query = select(func.count(Category.id)).where(
+                    Category.parent_id == category_id,
+                    Category.is_deleted == False
                 )
-            
-            # 检查是否有关联的帖子
-            posts_query = select(func.count("posts.id")).select_from(Category).join(
-                "posts"
-            ).where(
-                Category.id == category_id,
-                text("posts.is_deleted = false")
-            )
-            posts_result = await session.execute(posts_query)
-            posts_count = posts_result.scalar() or 0
-            
-            if posts_count > 0:
-                raise BusinessException(
-                    status_code=400,
-                    error_code="HAS_POSTS",
-                    message="不能删除有帖子的分类"
+                children_result = await session.execute(children_query)
+                children_count = children_result.scalar() or 0
+                
+                if children_count > 0:
+                    raise BusinessException(
+                        status_code=400,
+                        error_code="HAS_CHILDREN",
+                        message="不能删除有子分类的分类"
+                    )
+                
+                # 检查是否有关联的帖子 - 简化查询
+                from ..models.post import Post
+                posts_query = select(func.count(Post.id)).where(
+                    Post.category_id == category_id,
+                    Post.is_deleted == False
                 )
-            
-            # 软删除分类
-            category.is_deleted = True
-            category.deleted_at = datetime.now()
-            
-            await session.commit()
-            return True
+                posts_result = await session.execute(posts_query)
+                posts_count = posts_result.scalar() or 0
+                
+                if posts_count > 0:
+                    raise BusinessException(
+                        status_code=400,
+                        error_code="HAS_POSTS",
+                        message="不能删除有帖子的分类"
+                    )
+                
+                # 软删除分类
+                category.is_deleted = True
+                category.deleted_at = datetime.now()
+                
+                await session.commit()
+                return True
+        except BusinessException:
+            # 重新抛出业务异常
+            raise
+        except Exception as e:
+            logger.error(f"软删除分类失败，分类ID: {category_id}, 错误: {str(e)}", exc_info=True)
+            return False
     
     async def restore(self, category_id: int) -> Optional[Dict[str, Any]]:
         """恢复已删除的分类

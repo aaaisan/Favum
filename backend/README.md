@@ -420,1253 +420,168 @@ curl -X GET "http://localhost:8000/api/v1/posts?limit=10&skip=0&sort_by=created_
 
 项目链接: [https://github.com/yourusername/forum](https://github.com/yourusername/forum)
 
-## Forum API 文档
+## API文档
+
+本节提供了论坛系统所有API端点的完整文档，包括访问路径、方法、参数和用途。
+
+### 认证相关 API
+
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/auth/check-username/{username}` | GET | 检查用户名是否可用 | 公开 | 路径参数: username | 用户名状态 |
+| `/api/v1/auth/check-email/{email}` | GET | 检查邮箱是否可用 | 公开 | 路径参数: email | 邮箱状态 |
+| `/api/v1/auth/register` | POST | 注册新用户 | 公开 | 请求体: 用户信息 | 令牌信息 |
+| `/api/v1/auth/login` | POST | 用户登录 | 公开 | 请求体: 登录信息 | 令牌信息 |
+| `/api/v1/auth/token` | POST | 获取令牌 | 公开 | 请求体: 登录信息 | 令牌信息 |
+| `/api/v1/auth/test-token` | POST | 测试令牌有效性 | 授权用户 | 无 | 令牌数据 |
+| `/api/v1/auth/forgot-password` | POST | 发送密码重置邮件 | 公开 | 请求体: 邮箱 | 重置请求结果 |
+| `/api/v1/auth/reset-password` | POST | 重置密码 | 公开 | 请求体: 令牌和新密码 | 重置结果 |
+| `/api/v1/auth/verify-email` | POST | 发送邮箱验证链接 | 授权用户 | 请求体: 邮箱 | 验证请求结果 |
+| `/api/v1/auth/verify-email/{token}` | GET | 验证邮箱 | 公开 | 路径参数: token | 验证结果 |
+
+### 用户相关 API
+
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/users` | POST | 创建新用户 | 管理员 | 请求体: 用户信息 | 用户信息 |
+| `/api/v1/users` | GET | 获取用户列表 | 授权用户 | 查询参数: skip, limit, sort, order | 用户列表 |
+| `/api/v1/users/me` | GET | 获取当前用户信息 | 授权用户 | 无 | 用户信息 |
+| `/api/v1/users/{user_id}` | GET | 获取特定用户信息 | 授权用户 | 路径参数: user_id | 用户信息 |
+| `/api/v1/users/{user_id}` | PUT | 更新用户信息 | 用户本人/管理员 | 路径参数: user_id, 请求体: 更新信息 | 更新后的用户信息 |
+| `/api/v1/users/{user_id}` | DELETE | 删除用户 | 管理员 | 路径参数: user_id | 删除结果 |
+| `/api/v1/users/{user_id}/restore` | POST | 恢复已删除用户 | 管理员 | 路径参数: user_id | 恢复的用户信息 |
+| `/api/v1/users/me/profile` | GET | 获取个人资料 | 授权用户 | 无 | 用户资料 |
+| `/api/v1/users/{user_id}/posts` | GET | 获取用户的帖子 | 授权用户 | 路径参数: user_id, 查询参数: skip, limit | 帖子列表 |
+| `/api/v1/users/me/favorites` | GET | 获取当前用户收藏的帖子 | 授权用户 | 查询参数: skip, limit | 帖子列表 |
+| `/api/v1/users/{user_id}/favorites` | GET | 获取指定用户收藏的帖子 | 授权用户 | 路径参数: user_id, 查询参数: skip, limit | 帖子列表 |
+
+### 帖子相关 API
+
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/posts` | POST | 创建新帖子 | 授权用户 | 请求体: 帖子信息 | 创建的帖子 |
+| `/api/v1/posts` | GET | 获取帖子列表 | 公开 | 查询参数: skip, limit, filter, sort | 帖子列表 |
+| `/api/v1/posts/{post_id}` | GET | 获取帖子详情 | 公开 | 路径参数: post_id | 帖子详情 |
+| `/api/v1/posts/{post_id}` | PUT | 更新帖子 | 作者/管理员 | 路径参数: post_id, 请求体: 更新信息 | 更新后的帖子 |
+| `/api/v1/posts/{post_id}` | DELETE | 删除帖子 | 作者/管理员 | 路径参数: post_id | 删除结果 |
+| `/api/v1/posts/{post_id}/restore` | POST | 恢复已删除帖子 | 管理员 | 路径参数: post_id | 恢复的帖子 |
+| `/api/v1/posts/{post_id}/visibility` | PATCH | 更改帖子可见性 | 管理员 | 路径参数: post_id, 请求体: is_hidden | 更新后的帖子 |
+| `/api/v1/posts/{post_id}/vote` | POST | 对帖子投票 | 授权用户 | 路径参数: post_id, 请求体: vote_type | 投票结果 |
+| `/api/v1/posts/{post_id}/votes` | GET | 获取帖子投票统计 | 公开 | 路径参数: post_id | 投票统计 |
+| `/api/v1/posts/{post_id}/favorite` | POST | 收藏帖子 | 授权用户 | 路径参数: post_id | 收藏结果 |
+| `/api/v1/posts/{post_id}/favorite` | DELETE | 取消收藏帖子 | 授权用户 | 路径参数: post_id | 取消结果 |
+| `/api/v1/posts/{post_id}/favorite/status` | GET | 获取收藏状态 | 授权用户 | 路径参数: post_id | 是否已收藏 |
+| `/api/v1/posts/{post_id}/comments` | GET | 获取帖子评论 | 公开 | 路径参数: post_id, 查询参数: skip, limit | 评论列表 |
+
+### 评论相关 API
+
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/comments` | POST | 创建评论 | 授权用户 | 请求体: 评论信息 | 创建的评论 |
+| `/api/v1/comments/{comment_id}` | GET | 获取评论详情 | 公开 | 路径参数: comment_id | 评论详情 |
+| `/api/v1/comments/{comment_id}` | PUT | 更新评论 | 作者/管理员 | 路径参数: comment_id, 请求体: 更新内容 | 更新后的评论 |
+| `/api/v1/comments/{comment_id}` | DELETE | 删除评论 | 作者/管理员 | 路径参数: comment_id | 删除结果 |
+| `/api/v1/comments/{comment_id}/restore` | POST | 恢复已删除评论 | 管理员 | 路径参数: comment_id | 恢复的评论 |
+| `/api/v1/comments/post/{post_id}` | GET | 获取帖子的评论 | 公开 | 路径参数: post_id, 查询参数: skip, limit | 评论列表 |
+
+### 分类相关 API
+
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/categories` | POST | 创建分类 | 管理员 | 请求体: 分类信息 | 创建的分类 |
+| `/api/v1/categories` | GET | 获取分类列表 | 公开 | 查询参数: skip, limit | 分类列表 |
+| `/api/v1/categories/{category_id}` | GET | 获取分类详情 | 公开 | 路径参数: category_id | 分类详情 |
+| `/api/v1/categories/{category_id}` | PUT | 更新分类 | 管理员 | 路径参数: category_id, 请求体: 更新信息 | 更新后的分类 |
+| `/api/v1/categories/{category_id}` | DELETE | 删除分类 | 管理员 | 路径参数: category_id | 删除结果 |
+| `/api/v1/categories/{category_id}/restore` | POST | 恢复已删除分类 | 管理员 | 路径参数: category_id | 恢复的分类 |
+| `/api/v1/categories/reorder` | POST | 重新排序分类 | 管理员 | 请求体: category_ids, parent_id | 排序后的分类列表 |
+
+### 版块相关 API
+
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/sections` | POST | 创建版块 | 管理员 | 请求体: 版块信息 | 创建的版块 |
+| `/api/v1/sections` | GET | 获取版块列表 | 公开 | 查询参数: skip, limit | 版块列表 |
+| `/api/v1/sections/{section_id}` | GET | 获取版块详情 | 公开 | 路径参数: section_id | 版块详情 |
+| `/api/v1/sections/{section_id}` | PUT | 更新版块 | 管理员 | 路径参数: section_id, 请求体: 更新信息 | 更新后的版块 |
+| `/api/v1/sections/{section_id}` | DELETE | 删除版块 | 管理员 | 路径参数: section_id | 删除结果 |
+| `/api/v1/sections/{section_id}/restore` | POST | 恢复已删除版块 | 管理员 | 路径参数: section_id | 恢复的版块 |
+| `/api/v1/sections/{section_id}/moderators/{user_id}` | POST | 添加版主 | 管理员 | 路径参数: section_id, user_id | 操作结果 |
+| `/api/v1/sections/{section_id}/moderators/{user_id}` | DELETE | 移除版主 | 管理员 | 路径参数: section_id, user_id | 操作结果 |
+| `/api/v1/sections/{section_id}/moderators/{user_id}/restore` | POST | 恢复版主 | 管理员 | 路径参数: section_id, user_id | 操作结果 |
+| `/api/v1/sections/{section_id}/moderators` | GET | 获取版块版主 | 公开 | 路径参数: section_id | 用户列表 |
+| `/api/v1/sections/{section_id}/posts` | GET | 获取版块帖子 | 公开 | 路径参数: section_id, 查询参数: skip, limit | 帖子列表 |
+
+### 标签相关 API
+
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/tags` | POST | 创建标签 | 管理员 | 请求体: 标签信息 | 创建的标签 |
+| `/api/v1/tags` | GET | 获取标签列表 | 公开 | 查询参数: skip, limit | 标签列表 |
+| `/api/v1/tags/{tag_id}` | GET | 获取标签详情 | 公开 | 路径参数: tag_id | 标签详情 |
+| `/api/v1/tags/{tag_id}` | PUT | 更新标签 | 管理员 | 路径参数: tag_id, 请求体: 更新信息 | 更新后的标签 |
+| `/api/v1/tags/{tag_id}` | DELETE | 删除标签 | 管理员 | 路径参数: tag_id | 删除结果 |
+| `/api/v1/tags/{tag_id}/restore` | POST | 恢复已删除标签 | 管理员 | 路径参数: tag_id | 恢复的标签 |
+| `/api/v1/tags/{tag_id}/update-stats` | POST | 更新标签统计信息 | 管理员 | 路径参数: tag_id | 更新后的标签 |
+| `/api/v1/tags/{tag_id}/posts` | GET | 获取标签关联的帖子 | 公开 | 路径参数: tag_id, 查询参数: skip, limit | 帖子列表 |
+| `/api/v1/tags/{tag_id}/related` | GET | 获取关联标签 | 公开 | 路径参数: tag_id, 查询参数: limit | 标签列表 |
+| `/api/v1/tags/trending-list` | GET | 获取热门标签 | 公开 | 查询参数: days, limit | 标签列表 |
+| `/api/v1/tags/popular` | GET | 获取流行标签 | 公开 | 查询参数: limit | 标签列表 |
+| `/api/v1/tags/recent` | GET | 获取最近标签 | 公开 | 查询参数: limit | 标签列表 |
+| `/api/v1/tags/search` | GET | 搜索标签 | 公开 | 查询参数: q, skip, limit | 标签列表 |
+| `/api/v1/tags/recommendations` | POST | 获取标签推荐 | 公开 | 请求体: keywords, user_id | 标签列表 |
 
-## 概述
+### 验证码相关 API
 
-本文档提供了Forum API的所有端点信息，包括路径、作用和使用方法。
+| 端点 | 方法 | 描述 | 权限 | 参数 | 返回 |
+|-----|-----|------|-----|-----|-----|
+| `/api/v1/captcha/generate` | GET | 生成验证码 | 公开 | 无 | 验证码信息 |
+| `/api/v1/captcha/verify/{captcha_id}` | POST | 验证验证码 | 公开 | 路径参数: captcha_id, 请求体: 验证码 | 验证结果 |
 
-## 目录
+### API认证
 
-- [认证相关](#认证相关)
-- [用户相关](#用户相关)
-- [帖子相关](#帖子相关)
-- [评论相关](#评论相关)
-- [分类相关](#分类相关)
-- [版块相关](#版块相关)
-- [标签相关](#标签相关)
+大多数API需要认证，认证使用JWT令牌实现。获取令牌的流程如下：
 
-## 认证相关
+1. 调用 `/api/v1/auth/login` 或 `/api/v1/auth/register` 获取访问令牌
+2. 在后续请求的头部添加认证信息：`Authorization: Bearer {token}`
 
-### 登录获取令牌
+### 权限级别
 
-- **路径**: `/api/v1/auth/token`
-- **方法**: POST
-- **作用**: 获取JWT访问令牌，用于后续请求的认证
-- **请求参数**:
-  - `username`: 用户名
-  - `password`: 密码
-- **响应格式**:
+系统定义了以下权限级别：
 
-  ```json
-  {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "token_type": "bearer"
-  }
-  ```
+- **公开**: 无需认证即可访问
+- **授权用户**: 需要有效的认证令牌
+- **用户本人**: 只能操作自己的资源
+- **管理员**: 需要管理员权限
+- **作者/管理员**: 资源作者或管理员
 
-- **使用示例**:
+### 通用查询参数
 
-  ```bash
-  curl -X POST "http://localhost:8000/api/v1/auth/token" \
-       -H "Content-Type: application/x-www-form-urlencoded" \
-       -d "username=admin&password=admin123"
-  ```
+- `skip`: 分页起始位置，默认0
+- `limit`: 每页记录数，默认因API而异
+- `sort`: 排序字段
+- `order`: 排序方向，asc(升序)或desc(降序)
 
-### 刷新令牌
+### 错误处理
 
-- **路径**: `/api/v1/auth/refresh`
-- **方法**: POST
-- **作用**: 使用刷新令牌获取新的访问令牌
-- **请求头**:
-  - `Authorization`: Bearer {refresh_token}
-- **响应格式**:
-
-  ```json
-  {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "token_type": "bearer"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X POST "http://localhost:8000/api/v1/auth/refresh" \
-       -H "Authorization: Bearer {refresh_token}"
-  ```
-
-## 用户相关
-
-### 获取当前用户信息
-
-- **路径**: `/api/v1/users/me`
-- **方法**: GET
-- **作用**: 获取当前认证用户的信息
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **响应格式**:
-
-  ```json
-  {
-    "id": 46,
-    "username": "admin",
-    "email": "admin@example.com",
-    "is_active": true,
-    "role": "admin",
-    "created_at": "2025-03-05T16:15:30",
-    "updated_at": "2025-03-05T16:15:30"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/users/me" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-### 获取当前用户资料
-
-- **路径**: `/api/v1/users/me/profile`
-- **方法**: GET
-- **作用**: 获取当前认证用户的详细资料
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **响应格式**:
-
-  ```json
-  {
-    "id": 46,
-    "username": "admin",
-    "email": "admin@example.com",
-    "is_active": true,
-    "role": "admin",
-    "bio": "系统管理员，负责论坛维护工作",
-    "avatar_url": "https://example.com/avatars/admin.jpg",
-    "created_at": "2025-03-05T16:15:30",
-    "updated_at": "2025-03-05T16:15:30",
-    "profile": {
-      "bio": "系统管理员",
-      "avatar_url": "https://example.com/avatar.jpg",
-      "location": "北京"
-    }
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/users/me/profile" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-### 获取特定用户的帖子
-
-- **路径**: `/api/v1/users/{user_id}/posts`
-- **方法**: GET
-- **作用**: 获取指定用户发布的帖子列表
-- **请求参数**:
-  - `skip` (可选): 跳过的记录数，默认为0
-  - `limit` (可选): 返回的最大记录数，默认为20
-- **响应格式**:
-
-  ```json
-  [
-    {
-      "id": 24,
-      "title": "使用FastAPI构建高性能API",
-      "content": "FastAPI是一个现代、快速（高性能）的Web框架...",
-      "author_id": 46,
-      "category_id": 28,
-      "created_at": "2025-02-20T22:27:05",
-      "updated_at": "2025-02-20T22:27:05",
-      "vote_count": 48
-    },
-    // 更多帖子...
-  ]
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/users/46/posts?skip=0&limit=10" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-### 更新用户信息
-
-- **路径**: `/api/v1/users/{user_id}`
-- **方法**: PUT
-- **作用**: 更新指定ID的用户信息
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "username": "更新后的用户名",
-    "email": "newemail@example.com",
-    "bio": "用户的个人简介信息",
-    "avatar_url": "https://example.com/avatars/new_avatar.jpg"
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 46,
-    "username": "更新后的用户名",
-    "email": "newemail@example.com",
-    "bio": "用户的个人简介信息",
-    "avatar_url": "https://example.com/avatars/new_avatar.jpg",
-    "is_active": true,
-    "role": "user",
-    "created_at": "2025-02-20T22:27:05",
-    "updated_at": "2025-03-08T11:50:15"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X PUT "http://localhost:8000/api/v1/users/46" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{
-            "bio": "用户的个人简介信息",
-            "avatar_url": "https://example.com/avatars/new_avatar.jpg"
-          }'
-  ```
-
-## 帖子相关
-
-### 获取所有帖子
-
-- **路径**: `/api/v1/posts`
-- **方法**: GET
-- **作用**: 获取所有帖子列表
-- **请求参数**:
-  - `skip` (可选): 跳过的记录数，默认为0
-  - `limit` (可选): 返回的最大记录数，默认为20
-  - `category_id` (可选): 按分类ID筛选
-  - `tag_id` (可选): 按标签ID筛选
-  - `sort` (可选): 排序方式，可选值为`created_at`、`vote_count`等
-  - `order` (可选): 排序顺序，可选值为`asc`、`desc`
-- **响应格式**:
-
-  ```json
-  {
-    "posts": [
-      {
-        "id": 28,
-        "title": "程序员如何有效提升沟通能力",
-        "content": "作为程序员，技术能力很重要，但沟通能力同样不可或缺...",
-        "author_id": 50,
-        "category_id": 30,
-        "created_at": "2025-03-05T16:20:45",
-        "updated_at": "2025-03-05T16:20:45",
-        "vote_count": 15,
-        "category": {
-          "id": 30,
-          "name": "职业发展",
-          "created_at": "2025-03-05T18:16:28"
-        },
-        "tags": [
-          {
-            "id": 70,
-            "name": "求职",
-            "created_at": "2025-03-05T18:16:28"
-          },
-          {
-            "id": 75,
-            "name": "产品管理",
-            "created_at": "2025-03-05T18:16:28"
-          }
-        ]
-      },
-      // 更多帖子...
-    ]
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/posts?skip=0&limit=10&sort=created_at&order=desc"
-  ```
-
-### 获取特定帖子
-
-- **路径**: `/api/v1/posts/{post_id}`
-- **方法**: GET
-- **作用**: 获取指定ID的帖子详情
-- **响应格式**:
-
-  ```json
-  {
-    "id": 24,
-    "title": "使用FastAPI构建高性能API",
-    "content": "FastAPI是一个现代、快速（高性能）的Web框架...",
-    "author_id": 46,
-    "category_id": 28,
-    "created_at": "2025-02-20T22:27:05",
-    "updated_at": "2025-02-20T22:27:05",
-    "vote_count": 48,
-    "author": {
-      "id": 46,
-      "username": "admin"
-    },
-    "category": {
-      "id": 28,
-      "name": "技术讨论"
-    },
-    "tags": [
-      {
-        "id": 61,
-        "name": "Python"
-      },
-      {
-        "id": 65,
-        "name": "FastAPI"
-      }
-    ]
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/posts/24"
-  ```
-
-### 发帖
-
-- **路径**: `/api/v1/posts`
-- **方法**: POST
-- **作用**: 创建新帖子
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "title": "新帖子标题",
-    "content": "帖子内容...",
-    "category_id": 28,
-    "tags": [61, 65]
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 29,
-    "title": "新帖子标题",
-    "content": "帖子内容...",
-    "author_id": 46,
-    "category_id": 28,
-    "created_at": "2025-03-08T11:45:30",
-    "updated_at": "2025-03-08T11:45:30",
-    "vote_count": 0
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X POST "http://localhost:8000/api/v1/posts" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{
-            "title": "新帖子标题",
-            "content": "帖子内容...",
-            "category_id": 28,
-            "tags": [61, 65]
-          }'
-  ```
-
-### 更新帖子
-
-- **路径**: `/api/v1/posts/{post_id}`
-- **方法**: PUT
-- **作用**: 更新指定ID的帖子
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "title": "更新后的标题",
-    "content": "更新后的内容...",
-    "category_id": 28,
-    "tags": [61, 65]
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 24,
-    "title": "更新后的标题",
-    "content": "更新后的内容...",
-    "author_id": 46,
-    "category_id": 28,
-    "created_at": "2025-02-20T22:27:05",
-    "updated_at": "2025-03-08T11:50:15",
-    "vote_count": 48
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X PUT "http://localhost:8000/api/v1/posts/24" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{
-            "title": "更新后的标题",
-            "content": "更新后的内容...",
-            "category_id": 28,
-            "tags": [61, 65]
-          }'
-  ```
-
-### 删除帖子
-
-- **路径**: `/api/v1/posts/{post_id}`
-- **方法**: DELETE
-- **作用**: 删除指定ID的帖子
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **响应格式**:
-
-  ```json
-  {
-    "message": "帖子已成功删除"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X DELETE "http://localhost:8000/api/v1/posts/24" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-## 评论相关
-
-### 获取帖子的评论
-
-- **路径**: `/api/v1/posts/{post_id}/comments`
-- **方法**: GET
-- **作用**: 获取指定帖子的所有评论
-- **请求参数**:
-  - `skip` (可选): 跳过的记录数，默认为0
-  - `limit` (可选): 返回的最大记录数，默认为20
-- **响应格式**:
-
-  ```json
-  [
-    {
-      "id": 18,
-      "content": "FastAPI的性能确实比Flask好很多，而且类型提示很方便。",
-      "author_id": 46,
-      "post_id": 24,
-      "created_at": "2025-02-21T15:30:45"
-    },
-    {
-      "id": 17,
-      "content": "请问FastAPI和Flask相比有什么优势？",
-      "author_id": 49,
-      "post_id": 24,
-      "created_at": "2025-02-21T14:25:10"
-    }
-  ]
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/posts/24/comments?skip=0&limit=10"
-  ```
-
-### 创建评论
-
-- **路径**: `/api/v1/posts/{post_id}/comments`
-- **方法**: POST
-- **作用**: 为指定帖子创建新评论
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "content": "这是一条新评论"
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 19,
-    "content": "这是一条新评论",
-    "author_id": 46,
-    "post_id": 24,
-    "created_at": "2025-03-08T12:05:20"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X POST "http://localhost:8000/api/v1/posts/24/comments" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{"content": "这是一条新评论"}'
-  ```
-
-### 更新评论
-
-- **路径**: `/api/v1/comments/{comment_id}`
-- **方法**: PUT
-- **作用**: 更新指定ID的评论
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "content": "更新后的评论内容"
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 18,
-    "content": "更新后的评论内容",
-    "author_id": 46,
-    "post_id": 24,
-    "created_at": "2025-02-21T15:30:45",
-    "updated_at": "2025-03-08T12:10:30"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X PUT "http://localhost:8000/api/v1/comments/18" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{"content": "更新后的评论内容"}'
-  ```
-
-### 删除评论
-
-- **路径**: `/api/v1/comments/{comment_id}`
-- **方法**: DELETE
-- **作用**: 删除指定ID的评论
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **响应格式**:
-
-  ```json
-  {
-    "message": "评论已成功删除"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X DELETE "http://localhost:8000/api/v1/comments/18" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-## 分类相关
-
-### 获取所有分类
-
-- **路径**: `/api/v1/categories`
-- **方法**: GET
-- **作用**: 获取所有分类列表，包括层级结构
-- **响应格式**:
-
-  ```json
-  [
-    {
-      "id": 28,
-      "name": "技术讨论",
-      "description": "关于编程、软件开发和技术相关的讨论",
-      "parent_id": null,
-      "order": 1,
-      "created_at": "2025-03-05T18:16:28",
-      "children": [
-        {
-          "id": 33,
-          "name": "前端开发",
-          "description": "前端技术讨论",
-          "parent_id": 28,
-          "order": 1,
-          "created_at": "2025-03-05T18:16:28",
-          "children": []
-        },
-        {
-          "id": 34,
-          "name": "后端开发",
-          "description": "后端技术讨论",
-          "parent_id": 28,
-          "order": 2,
-          "created_at": "2025-03-05T18:16:28",
-          "children": []
-        }
-      ]
-    },
-    // 更多分类...
-  ]
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/categories"
-  ```
-
-### 获取特定分类
-
-- **路径**: `/api/v1/categories/{category_id}`
-- **方法**: GET
-- **作用**: 获取指定ID的分类详情
-- **响应格式**:
-
-  ```json
-  {
-    "id": 28,
-    "name": "技术讨论",
-    "description": "关于编程、软件开发和技术相关的讨论",
-    "parent_id": null,
-    "order": 1,
-    "created_at": "2025-03-05T18:16:28",
-    "children": [
-      {
-        "id": 33,
-        "name": "前端开发",
-        "description": "前端技术讨论",
-        "parent_id": 28,
-        "order": 1,
-        "created_at": "2025-03-05T18:16:28"
-      },
-      {
-        "id": 34,
-        "name": "后端开发",
-        "description": "后端技术讨论",
-        "parent_id": 28,
-        "order": 2,
-        "created_at": "2025-03-05T18:16:28"
-      }
-    ]
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/categories/28"
-  ```
-
-### 创建分类
-
-- **路径**: `/api/v1/categories`
-- **方法**: POST
-- **作用**: 创建新分类
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "name": "新分类",
-    "description": "新分类的描述",
-    "parent_id": null,
-    "order": 6
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 35,
-    "name": "新分类",
-    "description": "新分类的描述",
-    "parent_id": null,
-    "order": 6,
-    "created_at": "2025-03-08T12:25:10"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X POST "http://localhost:8000/api/v1/categories" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{
-            "name": "新分类",
-            "description": "新分类的描述",
-            "parent_id": null,
-            "order": 6
-          }'
-  ```
-
-### 更新分类
-
-- **路径**: `/api/v1/categories/{category_id}`
-- **方法**: PUT
-- **作用**: 更新指定ID的分类
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "name": "更新后的分类名",
-    "description": "更新后的描述",
-    "parent_id": null,
-    "order": 6
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 35,
-    "name": "更新后的分类名",
-    "description": "更新后的描述",
-    "parent_id": null,
-    "order": 6,
-    "created_at": "2025-03-08T12:25:10",
-    "updated_at": "2025-03-08T12:30:20"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X PUT "http://localhost:8000/api/v1/categories/35" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{
-            "name": "更新后的分类名",
-            "description": "更新后的描述",
-            "parent_id": null,
-            "order": 6
-          }'
-  ```
-
-### 删除分类
-
-- **路径**: `/api/v1/categories/{category_id}`
-- **方法**: DELETE
-- **作用**: 删除指定ID的分类
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **响应格式**:
-
-  ```json
-  {
-    "message": "分类已成功删除"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X DELETE "http://localhost:8000/api/v1/categories/35" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-## 版块相关
-
-### 获取所有版块
-
-- **路径**: `/api/v1/sections`
-- **方法**: GET
-- **作用**: 获取所有版块列表
-- **响应格式**:
-
-  ```json
-  [
-    {
-      "id": 12,
-      "name": "技术区",
-      "description": "技术相关讨论",
-      "created_at": "2025-03-05T18:16:28"
-    },
-    {
-      "id": 13,
-      "name": "交流区",
-      "description": "生活、职场交流",
-      "created_at": "2025-03-05T18:16:28"
-    },
-    {
-      "id": 14,
-      "name": "创意区",
-      "description": "创意、灵感分享",
-      "created_at": "2025-03-05T18:16:28"
-    }
-  ]
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/sections"
-  ```
-
-### 获取特定版块
-
-- **路径**: `/api/v1/sections/{section_id}`
-- **方法**: GET
-- **作用**: 获取指定ID的版块详情
-- **响应格式**:
-
-  ```json
-  {
-    "id": 12,
-    "name": "技术区",
-    "description": "技术相关讨论",
-    "created_at": "2025-03-05T18:16:28",
-    "categories": [
-      {
-        "id": 28,
-        "name": "技术讨论",
-        "description": "关于编程、软件开发和技术相关的讨论"
-      },
-      // 更多分类...
-    ]
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/sections/12"
-  ```
-
-### 创建版块
-
-- **路径**: `/api/v1/sections`
-- **方法**: POST
-- **作用**: 创建新版块
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "name": "新版块",
-    "description": "新版块的描述"
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 15,
-    "name": "新版块",
-    "description": "新版块的描述",
-    "created_at": "2025-03-08T12:45:30"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X POST "http://localhost:8000/api/v1/sections" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{
-            "name": "新版块",
-            "description": "新版块的描述"
-          }'
-  ```
-
-### 更新版块
-
-- **路径**: `/api/v1/sections/{section_id}`
-- **方法**: PUT
-- **作用**: 更新指定ID的版块
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "name": "更新后的版块名",
-    "description": "更新后的描述"
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 15,
-    "name": "更新后的版块名",
-    "description": "更新后的描述",
-    "created_at": "2025-03-08T12:45:30",
-    "updated_at": "2025-03-08T12:50:15"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X PUT "http://localhost:8000/api/v1/sections/15" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{
-            "name": "更新后的版块名",
-            "description": "更新后的描述"
-          }'
-  ```
-
-### 删除版块
-
-- **路径**: `/api/v1/sections/{section_id}`
-- **方法**: DELETE
-- **作用**: 删除指定ID的版块
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **响应格式**:
-
-  ```json
-  {
-    "message": "版块已成功删除"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X DELETE "http://localhost:8000/api/v1/sections/15" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-## 标签相关
-
-### 获取所有标签
-
-- **路径**: `/api/v1/tags`
-- **方法**: GET
-- **作用**: 获取所有标签列表
-- **响应格式**:
-
-  ```json
-  [
-    {
-      "id": 61,
-      "name": "Python",
-      "created_at": "2025-03-05T18:16:28"
-    },
-    {
-      "id": 62,
-      "name": "JavaScript",
-      "created_at": "2025-03-05T18:16:28"
-    },
-    // 更多标签...
-  ]
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/tags"
-  ```
-
-### 获取特定标签
-
-- **路径**: `/api/v1/tags/{tag_id}`
-- **方法**: GET
-- **作用**: 获取指定ID的标签详情
-- **响应格式**:
-
-  ```json
-  {
-    "id": 61,
-    "name": "Python",
-    "created_at": "2025-03-05T18:16:28",
-    "post_count": 5
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X GET "http://localhost:8000/api/v1/tags/61"
-  ```
-
-### 创建标签
-
-- **路径**: `/api/v1/tags`
-- **方法**: POST
-- **作用**: 创建新标签
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "name": "新标签"
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 76,
-    "name": "新标签",
-    "created_at": "2025-03-08T13:05:45"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X POST "http://localhost:8000/api/v1/tags" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{"name": "新标签"}'
-  ```
-
-### 更新标签
-
-- **路径**: `/api/v1/tags/{tag_id}`
-- **方法**: PUT
-- **作用**: 更新指定ID的标签
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **请求体**:
-
-  ```json
-  {
-    "name": "更新后的标签名"
-  }
-  ```
-
-- **响应格式**:
-
-  ```json
-  {
-    "id": 76,
-    "name": "更新后的标签名",
-    "created_at": "2025-03-08T13:05:45",
-    "updated_at": "2025-03-08T13:10:20"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X PUT "http://localhost:8000/api/v1/tags/76" \
-       -H "Authorization: Bearer {access_token}" \
-       -H "Content-Type: application/json" \
-       -d '{"name": "更新后的标签名"}'
-  ```
-
-### 删除标签
-
-- **路径**: `/api/v1/tags/{tag_id}`
-- **方法**: DELETE
-- **作用**: 删除指定ID的标签
-- **请求头**:
-  - `Authorization`: Bearer {access_token}
-- **响应格式**:
-
-  ```json
-  {
-    "message": "标签已成功删除"
-  }
-  ```
-
-- **使用示例**:
-
-  ```bash
-  curl -X DELETE "http://localhost:8000/api/v1/tags/76" \
-       -H "Authorization: Bearer {access_token}"
-  ```
-
-## 最近更新
-
-### 2024-04-10: 添加邮箱验证和密码重置功能
-
-- 实现了用户注册后的邮箱验证功能，提高账户安全性
-- 添加了密码重置功能，允许用户通过邮箱重置密码
-- 创建了精美的HTML邮件模板，支持验证和重置邮件
-- 使用Redis实现了安全的令牌存储和验证机制
-- 实现了防止邮箱探测的安全措施
-- 所有功能均支持异步处理，通过Celery任务队列发送邮件
-
-**相关API端点：**
-
-1. 邮箱验证：
-   - `POST /api/v1/auth/verify-email` - 通过POST请求验证邮箱
-   - `GET /api/v1/auth/verify-email/{token}?email={email}` - 通过邮件链接验证邮箱
-
-2. 密码重置：
-   - `POST /api/v1/auth/forgot-password` - 请求密码重置邮件
-   - `POST /api/v1/auth/reset-password` - 使用令牌重置密码
-
-### 2024-04-01: 添加用户头像和简介字段
-
-- 在用户数据库模型中添加了`avatar_url`和`bio`字段
-- 更新了用户相关的API端点，支持头像和简介信息的获取和更新
-- 创建了数据库迁移脚本，用于将新字段添加到现有数据库中
-- 修复了BaseRepository中的to_dict方法问题，添加了model_to_dict方法
-- 更新了UserService中的update_user方法，添加了current_user_id参数
-- 修改了用户API端点中的update_user方法，将update_data参数改为user_data
-
-**用户头像和简介字段说明：**
-
-- `avatar_url`: 用户头像的URL地址，类型为VARCHAR(255)，可为空
-- `bio`: 用户个人简介，类型为TEXT，可为空
-
-**相关API端点：**
-
-1. 获取用户资料：`GET /api/v1/users/me/profile` - 返回包含头像和简介的用户资料
-2. 更新用户信息：`PUT /api/v1/users/{user_id}` - 支持更新头像和简介信息
-
-**示例请求：**
-
-```bash
-# 更新用户头像和简介
-curl -X PUT "http://localhost:8000/api/v1/users/46" \
-     -H "Authorization: Bearer {access_token}" \
-     -H "Content-Type: application/json" \
-     -d '{
-          "bio": "热爱技术，专注于Web开发和人工智能",
-          "avatar_url": "https://example.com/avatars/user46.jpg"
-        }'
-```
-
-**示例响应：**
+所有API使用统一的错误响应格式：
 
 ```json
 {
-  "username": "admin",
-  "email": "admin@example.com",
-  "bio": "热爱技术，专注于Web开发和人工智能",
-  "avatar_url": "https://example.com/avatars/user46.jpg",
-  "id": 46,
-  "is_active": true,
-  "role": "admin",
-  "created_at": "2025-03-05T18:16:28",
-  "updated_at": "2025-03-08T04:12:39"
+  "error": {
+    "code": "错误代码",
+    "message": "错误描述",
+    "status_code": 状态码,
+    "details": {} // 可选的详细信息
+  }
 }
 ```
 
-**获取用户资料示例：**
-
-```bash
-# 获取当前用户资料
-curl -X GET "http://localhost:8000/api/v1/users/me/profile" \
-     -H "Authorization: Bearer {access_token}"
-```
-
-**响应示例：**
-
-```json
-{
-  "username": "admin",
-  "email": "admin@example.com",
-  "bio": "系统管理员，负责论坛维护工作",
-  "avatar_url": "https://example.com/avatars/admin.jpg",
-  "id": 46,
-  "is_active": true,
-  "role": "admin",
-  "created_at": "2025-03-05T18:16:28",
-  "updated_at": "2025-03-08T04:12:39",
-  "post_count": 1,
-  "comment_count": 1,
-  "last_login": null,
-  "join_date": "2025-03-05T18:16:28",
-  "reputation": 0,
-  "badges": []
-}
-```
-
-## 响应模型结构
-
-项目使用了模块化的响应模型结构，每种资源类型都有独立的响应模型文件：
-
-- `app/api/responses/base.py` - 基础响应模型
-- `app/api/responses/auth.py` - 认证相关响应
-- `app/api/responses/user.py` - 用户相关响应
-- `app/api/responses/post.py` - 帖子相关响应
-- `app/api/responses/comment.py` - 评论相关响应
-- `app/api/responses/category.py` - 分类相关响应
-- `app/api/responses/section.py` - 板块相关响应
-- `app/api/responses/tag.py` - 标签相关响应
-
-## 装饰器系统
-
-项目实现了一套强大的装饰器系统，用于简化API开发：
-
-- `rate_limit` - 请求速率限制
-- `cache_response` - 响应缓存
-- `validate_permissions` - 权限验证
-- `log_activity` - 活动日志记录
-- `error_handler` - 统一错误处理
-- `transaction` - 数据库事务管理
-
-### 装饰器示例
-
-```python
-@router.get("/{post_id}", response_model=post_schema.Post)
-@rate_limit(limit=100, window=60)  # 每60秒限制100次请求
-@cache_response(expire=300)        # 缓存结果5分钟
-@log_activity("查看帖子")          # 记录用户活动
-async def read_post(
-    post_id: int,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional)
-):
-    # 业务逻辑...
-```
-
-## 性能优化
-
-本项目实现了多种性能优化措施：
-
-1. **响应缓存**: 使用Redis缓存API响应，减少数据库负载。
-2. **速率限制**: 使用装饰器对API请求进行速率限制，防止滥用。
-3. **异步处理**: 对耗时操作使用异步任务处理。
-4. **连接池**: 数据库和Redis使用连接池管理资源。
-5. **延迟加载**: ORM模型使用延迟加载优化查询性能。
-
-## 安全措施
-
-1. **JWT认证**: 使用JWT进行API认证。
-2. **密码哈希**: 使用Argon2或Bcrypt进行密码哈希。
-3. **CORS保护**: 配置合适的CORS策略。
-4. **速率限制**: 防止暴力破解攻击。
-5. **中间件保护**: 使用多层安全中间件。
-6. **CAPTCHA验证**: 防止自动化工具滥用。
-
-## 开发指南
-
-### 添加新的API端点
-
-1. 在 `app/api/endpoints/` 中创建或更新相应的路由文件
-2. 在 `app/api/responses/` 中定义相应的响应模型
-3. 在 `app/db/models/` 中更新数据库模型（如需要）
-4. 在 `app/schemas/` 中定义请求验证模式
-5. 在 `app/services/` 中实现业务逻辑
-6. 在 `app/api/router.py` 中注册新的路由
-
-### 代码风格
-
-- 使用 Black 格式化代码
-- 使用 isort 排序导入
-- 使用 flake8 检查代码质量
-- 使用 mypy 进行类型检查
+常见状态码：
+- 400: 请求参数错误
+- 401: 未认证
+- 403: 权限不足
+- 404: 资源不存在
+- 422: 请求数据验证失败
+- 429: 请求过于频繁
+- 500: 服务器内部错误

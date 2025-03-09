@@ -7,7 +7,11 @@ from ..models.tag import Tag
 from ..models.post import Post
 from ..models.post_tag import post_tags
 from .base_repository import BaseRepository
+from ..database import async_get_db
 from ...core.exceptions import BusinessException
+import logging
+
+logger = logging.getLogger(__name__)
 
 class TagRepository(BaseRepository):
     """标签仓库
@@ -375,58 +379,117 @@ class TagRepository(BaseRepository):
         Raises:
             BusinessException: 当标签不存在时抛出业务异常
         """
-        async with self.session() as session:
-            # 检查标签是否存在
-            tag = await session.get(Tag, tag_id)
-            if not tag or tag.is_deleted:
+        try:
+            logger.info(f"开始查询标签 {tag_id} 的帖子，跳过: {skip}, 限制: {limit}")
+            
+            # 首先检查标签是否存在
+            tag = await self.get_by_id(tag_id)
+            if not tag:
                 raise BusinessException(
                     status_code=404,
                     error_code="TAG_NOT_FOUND",
                     message="标签不存在"
                 )
                 
-            # 查询带有此标签的帖子
-            query = (
-                select(Post)
-                .join(post_tags, Post.id == post_tags.c.post_id)
-                .where(
-                    post_tags.c.tag_id == tag_id,
-                    Post.is_deleted == False
+            async with async_get_db() as session:
+                # 构建查询 - 使用left join确保能获取到帖子的所有相关标签
+                query = (
+                    select(Post)
+                    .join(post_tags, Post.id == post_tags.c.post_id)
+                    .where(
+                        post_tags.c.tag_id == tag_id,
+                        Post.is_deleted == False
+                    )
+                    .order_by(desc(Post.created_at))
+                    .offset(skip)
+                    .limit(limit)
                 )
-                .order_by(desc(Post.created_at))
-                .offset(skip)
-                .limit(limit)
-            )
-            
-            result = await session.execute(query)
-            posts = result.scalars().all()
-            
-            # 查询总数
-            count_query = (
-                select(func.count(Post.id))
-                .join(post_tags, Post.id == post_tags.c.post_id)
-                .where(
-                    post_tags.c.tag_id == tag_id,
-                    Post.is_deleted == False
-                )
-            )
-            count_result = await session.execute(count_query)
-            total = count_result.scalar() or 0
-            
-            # 处理结果
-            posts_list = []
-            for post in posts:
-                post_dict = {
-                    "id": post.id,
-                    "title": post.title,
-                    "content": post.content[:200] + "..." if len(post.content) > 200 else post.content,
-                    "created_at": post.created_at,
-                    "updated_at": post.updated_at,
-                    "author_id": post.author_id
-                }
-                posts_list.append(post_dict)
                 
-            return posts_list, total
+                result = await session.execute(query)
+                posts = result.scalars().all()
+                
+                logger.info(f"查询到 {len(posts)} 篇帖子")
+                
+                # 查询总数
+                count_query = (
+                    select(func.count(Post.id.distinct()))
+                    .select_from(Post)
+                    .join(post_tags, Post.id == post_tags.c.post_id)
+                    .where(
+                        post_tags.c.tag_id == tag_id,
+                        Post.is_deleted == False
+                    )
+                )
+                count_result = await session.execute(count_query)
+                total = count_result.scalar() or 0
+                
+                # 处理结果
+                posts_list = []
+                for post in posts:
+                    try:
+                        # 获取帖子的基本信息
+                        post_dict = {
+                            "id": post.id,
+                            "title": post.title,
+                            "content": post.content[:200] + "..." if len(post.content) > 200 else post.content,
+                            "author_id": post.author_id,
+                            "created_at": post.created_at.isoformat() if hasattr(post.created_at, 'isoformat') else post.created_at,
+                            "updated_at": post.updated_at.isoformat() if hasattr(post.updated_at, 'isoformat') else post.updated_at,
+                            "vote_count": post.vote_count if hasattr(post, 'vote_count') else 0,
+                            "tags": []
+                        }
+                        
+                        # 添加可选字段
+                        if hasattr(post, 'section_id'):
+                            post_dict["section_id"] = post.section_id
+                        if hasattr(post, 'category_id'):
+                            post_dict["category_id"] = post.category_id
+                        if hasattr(post, 'is_hidden'):
+                            post_dict["is_hidden"] = post.is_hidden
+                        if hasattr(post, 'is_deleted'):
+                            post_dict["is_deleted"] = post.is_deleted
+                        
+                        # 获取帖子的所有标签
+                        try:
+                            tag_query = (
+                                select(Tag)
+                                .join(post_tags, Tag.id == post_tags.c.tag_id)
+                                .where(
+                                    post_tags.c.post_id == post.id,
+                                    Tag.is_deleted == False
+                                )
+                            )
+                            tag_result = await session.execute(tag_query)
+                            tags = tag_result.scalars().all()
+                            
+                            post_dict["tags"] = []
+                            for t in tags:
+                                tag_dict = {"id": t.id, "name": t.name}
+                                if hasattr(t, 'created_at'):
+                                    tag_dict["created_at"] = t.created_at.isoformat() if hasattr(t.created_at, 'isoformat') else t.created_at
+                                post_dict["tags"].append(tag_dict)
+                                
+                        except Exception as tag_error:
+                            logger.warning(f"获取帖子 {post.id} 的标签失败: {str(tag_error)}")
+                        
+                        posts_list.append(post_dict)
+                    except Exception as post_error:
+                        logger.warning(f"处理帖子 {post.id if hasattr(post, 'id') else '未知'} 失败: {str(post_error)}")
+                        continue
+                
+                logger.info(f"成功处理 {len(posts_list)}/{len(posts)} 篇帖子")
+                return posts_list, total
+            
+        except BusinessException:
+            # 直接抛出业务异常
+            raise
+        except Exception as e:
+            logger.error(f"查询标签帖子失败: {str(e)}", exc_info=True)
+            raise BusinessException(
+                status_code=500,
+                error_code="GET_TAG_POSTS_ERROR",
+                message="获取标签帖子失败"
+            )
     
     async def search_tags(self, query: str, skip: int = 0, limit: int = 20) -> Tuple[List[Dict[str, Any]], int]:
         """搜索标签
@@ -477,4 +540,220 @@ class TagRepository(BaseRepository):
             # 处理结果
             tags_list = [self.model_to_dict(tag) for tag in tags]
                 
-            return tags_list, total 
+            return tags_list, total
+    
+    async def get_related_tags(self, tag_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取关联标签
+        
+        查找与指定标签共同出现在帖子中的其他标签
+        
+        Args:
+            tag_id: 标签ID
+            limit: 返回的标签数量
+            
+        Returns:
+            List[Dict[str, Any]]: 关联标签列表
+        """
+        try:
+            async with async_get_db() as session:
+                # 使用SQL子查询找出包含该标签的所有帖子
+                posts_with_tag_subquery = (
+                    select(post_tags.c.post_id)
+                    .where(post_tags.c.tag_id == tag_id)
+                    .distinct()
+                    .subquery()
+                )
+                
+                # 找出这些帖子中出现的其他标签
+                query = (
+                    select(Tag, func.count(post_tags.c.post_id).label("common_posts"))
+                    .join(post_tags, Tag.id == post_tags.c.tag_id)
+                    .where(
+                        post_tags.c.post_id.in_(select(posts_with_tag_subquery.c.post_id)),
+                        Tag.id != tag_id,  # 排除自身
+                        Tag.is_deleted == False
+                    )
+                    .group_by(Tag.id)
+                    .order_by(desc("common_posts"))
+                    .limit(limit)
+                )
+                
+                result = await session.execute(query)
+                related_tags = result.all()
+                
+                # 处理结果
+                return [
+                    {
+                        "id": tag.id,
+                        "name": tag.name,
+                        "post_count": tag.post_count,
+                        "common_posts": common_count,
+                        "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at
+                    }
+                    for tag, common_count in related_tags
+                ]
+        except Exception as e:
+            logger.error(f"获取关联标签失败: {str(e)}", exc_info=True)
+            return []
+        
+    async def search_tags_by_keywords(self, keywords: List[str], limit: int = 10) -> Tuple[List[Dict[str, Any]], int]:
+        """根据关键词列表搜索标签
+        
+        Args:
+            keywords: 关键词列表
+            limit: 返回的最大标签数量
+            
+        Returns:
+            Tuple[List[Dict[str, Any]], int]: 标签列表和总数
+        """
+        try:
+            async with async_get_db() as session:
+                # 构建OR条件，匹配任一关键词
+                conditions = []
+                for keyword in keywords:
+                    conditions.append(Tag.name.ilike(f"%{keyword}%"))
+                
+                # 查询标签
+                query = (
+                    select(Tag)
+                    .where(
+                        or_(*conditions),
+                        Tag.is_deleted == False
+                    )
+                    .order_by(desc(Tag.post_count))
+                    .limit(limit)
+                )
+                
+                result = await session.execute(query)
+                tags = result.scalars().all()
+                
+                # 查询总数
+                count_query = (
+                    select(func.count(Tag.id))
+                    .where(
+                        or_(*conditions),
+                        Tag.is_deleted == False
+                    )
+                )
+                count_result = await session.execute(count_query)
+                total = count_result.scalar() or 0
+                
+                # 处理结果
+                return [self.model_to_dict(tag) for tag in tags], total
+        except Exception as e:
+            logger.error(f"关键词搜索标签失败: {str(e)}", exc_info=True)
+            return [], 0
+        
+    async def get_tags_by_user_history(self, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取用户历史中使用的标签
+        
+        Args:
+            user_id: 用户ID
+            limit: 返回的最大标签数量
+            
+        Returns:
+            List[Dict[str, Any]]: 标签列表
+        """
+        try:
+            async with async_get_db() as session:
+                # 找出用户发布的所有帖子
+                user_posts_subquery = (
+                    select(Post.id)
+                    .where(
+                        Post.author_id == user_id,
+                        Post.is_deleted == False
+                    )
+                    .subquery()
+                )
+                
+                # 找出这些帖子中使用的标签
+                query = (
+                    select(Tag, func.count(post_tags.c.post_id).label("usage_count"))
+                    .join(post_tags, Tag.id == post_tags.c.tag_id)
+                    .where(
+                        post_tags.c.post_id.in_(select(user_posts_subquery.c.id)),
+                        Tag.is_deleted == False
+                    )
+                    .group_by(Tag.id)
+                    .order_by(desc("usage_count"), desc(Tag.last_used_at))
+                    .limit(limit)
+                )
+                
+                result = await session.execute(query)
+                user_tags = result.all()
+                
+                # 处理结果
+                return [
+                    {
+                        "id": tag.id,
+                        "name": tag.name,
+                        "post_count": tag.post_count,
+                        "user_usage_count": usage_count,
+                        "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at
+                    }
+                    for tag, usage_count in user_tags
+                ]
+        except Exception as e:
+            logger.error(f"获取用户历史标签失败: {str(e)}", exc_info=True)
+            return []
+        
+    async def get_trending_tags(self, days: int = 7, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取趋势标签
+        
+        获取指定天数内使用增长最快的标签
+        
+        Args:
+            days: 天数范围
+            limit: 返回的标签数量
+            
+        Returns:
+            List[Dict[str, Any]]: 趋势标签列表
+        """
+        try:
+            async with async_get_db() as session:
+                # 计算日期范围
+                from datetime import datetime, timedelta
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=days)
+                
+                # 找出这段时间内创建的帖子
+                recent_posts_subquery = (
+                    select(Post.id)
+                    .where(
+                        Post.created_at >= start_date,
+                        Post.created_at <= end_date,
+                        Post.is_deleted == False
+                    )
+                    .subquery()
+                )
+                
+                # 查询这些帖子中使用的标签
+                query = (
+                    select(Tag, func.count(post_tags.c.post_id).label("recent_count"))
+                    .join(post_tags, Tag.id == post_tags.c.tag_id)
+                    .where(
+                        post_tags.c.post_id.in_(select(recent_posts_subquery.c.id)),
+                        Tag.is_deleted == False
+                    )
+                    .group_by(Tag.id)
+                    .order_by(desc("recent_count"))
+                    .limit(limit)
+                )
+                
+                result = await session.execute(query)
+                trending_tags = result.all()
+                
+                # 处理结果
+                return [
+                    {
+                        "id": tag.id,
+                        "name": tag.name,
+                        "post_count": tag.post_count,
+                        "recent_posts": recent_count,
+                        "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at
+                    }
+                    for tag, recent_count in trending_tags
+                ]
+        except Exception as e:
+            logger.error(f"获取趋势标签失败: {str(e)}", exc_info=True)
+            return [] 

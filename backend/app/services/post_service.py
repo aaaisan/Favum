@@ -24,6 +24,8 @@ from ..db.repositories.post_repository import PostRepository
 from ..core.exceptions import BusinessException
 from ..services.favorite_service import FavoriteService
 
+logger = logging.getLogger(__name__)
+
 class PostService(BaseService):
     """帖子业务逻辑服务"""
     
@@ -47,7 +49,20 @@ class PostService(BaseService):
         Returns:
             Optional[Dict[str, Any]]: 帖子详情，不存在则返回None
         """
-        return await self.repository.get_with_relations(post_id, include_hidden)
+        try:
+            post = await self.repository.get_with_relations(post_id, include_hidden)
+            if post:
+                # 确保返回的帖子有一个标签列表
+                if "tags" not in post:
+                    post["tags"] = []
+            return post
+        except Exception as e:
+            logger.error(f"获取帖子详情失败，帖子ID: {post_id}, 错误: {str(e)}")
+            # 如果出现异常，使用基本get方法获取基本信息
+            basic_post = await self.get(post_id)
+            if basic_post:
+                basic_post["tags"] = []
+            return basic_post
     
     async def get_posts(
         self, 
@@ -105,20 +120,46 @@ class PostService(BaseService):
         Raises:
             BusinessException: 当必要字段缺失或验证失败时
         """
-        # 提取标签ID列表，不是Post模型的直接字段
-        tag_ids = post_data.pop("tag_ids", []) if "tag_ids" in post_data else []
-        
-        # 创建帖子基本信息
-        created_post = await self.create(post_data)
-        
-        # 如果有标签，创建标签关联
-        if tag_ids:
-            await self.repository.update_tags(created_post["id"], tag_ids)
+        try:
+            logger.info(f"开始创建帖子: {post_data.get('title', '无标题')}")
             
-            # 重新获取帖子信息，包含标签
-            return await self.get_post_detail(created_post["id"])
+            # 验证必要字段
+            required_fields = ['title', 'content', 'author_id']
+            for field in required_fields:
+                if field not in post_data or not post_data[field]:
+                    logger.error(f"创建帖子失败: 缺少必要字段 {field}")
+                    raise BusinessException(
+                        status_code=400,
+                        error_code="MISSING_REQUIRED_FIELD",
+                        message=f"缺少必要字段: {field}"
+                    )
             
-        return created_post
+            # 使用repository的create方法创建帖子
+            # 该方法已被覆盖，能够处理标签关联
+            logger.info(f"准备创建帖子: {post_data}")
+            created_post = await self.repository.create(post_data)
+            
+            if not created_post:
+                logger.error("创建帖子失败")
+                raise BusinessException(
+                    status_code=500,
+                    error_code="CREATE_POST_FAILED",
+                    message="创建帖子失败"
+                )
+            
+            logger.info(f"成功创建帖子，ID: {created_post.get('id')}")
+            return created_post
+        except BusinessException as be:
+            # 直接传递业务异常
+            logger.error(f"创建帖子时遇到业务异常: {be.message}")
+            raise
+        except Exception as e:
+            logger.error(f"创建帖子失败: {str(e)}", exc_info=True)
+            raise BusinessException(
+                status_code=500,
+                error_code="CREATE_POST_ERROR",
+                message="创建帖子时发生错误"
+            )
     
     async def update_post(self, post_id: int, post_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """更新帖子

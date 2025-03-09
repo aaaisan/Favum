@@ -330,4 +330,101 @@ class TagService:
                 status_code=500,
                 error_code="SEARCH_FAILED",
                 message="搜索标签失败"
-            ) 
+            )
+    
+    async def get_related_tags(self, tag_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取关联标签
+        
+        查找与指定标签共同出现在帖子中的其他标签
+        
+        Args:
+            tag_id: 标签ID
+            limit: 返回的标签数量
+            
+        Returns:
+            List[Dict[str, Any]]: 关联标签列表
+            
+        Raises:
+            BusinessException: 当标签不存在时抛出业务异常
+        """
+        try:
+            # 首先确认标签存在
+            tag = await self.get_tag_detail(tag_id)
+            if not tag:
+                raise BusinessException(
+                    status_code=404,
+                    error_code="TAG_NOT_FOUND",
+                    message="标签不存在"
+                )
+                
+            # 查询关联标签
+            related_tags = await self.tag_repository.get_related_tags(tag_id, limit)
+            return related_tags
+        except BusinessException as e:
+            # 直接抛出业务异常
+            raise
+        except Exception as e:
+            logger.error(f"获取关联标签失败: {str(e)}", exc_info=True)
+            raise BusinessException(
+                status_code=500,
+                error_code="GET_RELATED_TAGS_ERROR",
+                message="获取关联标签失败"
+            )
+        
+    async def get_tag_recommendations(self, keywords: Optional[List[str]] = None, user_id: Optional[int] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取标签推荐
+        
+        根据关键词和/或用户历史推荐标签
+        
+        Args:
+            keywords: 关键词列表
+            user_id: 用户ID，用于基于用户历史的推荐
+            limit: 返回的标签数量
+            
+        Returns:
+            List[Dict[str, Any]]: 推荐的标签列表
+        """
+        try:
+            # 优先根据关键词推荐
+            if keywords and len(keywords) > 0:
+                # 清理关键词
+                cleaned_keywords = [k.strip().lower() for k in keywords if k and k.strip()]
+                if cleaned_keywords:
+                    logger.info(f"根据关键词推荐标签: {cleaned_keywords}")
+                    keyword_tags = await self.tag_repository.search_tags_by_keywords(cleaned_keywords, limit=limit)
+                    if keyword_tags and len(keyword_tags) > 0:
+                        return keyword_tags[0]  # 返回列表和计数中的列表部分
+                    
+            # 如果提供了用户ID，尝试根据用户历史推荐
+            if user_id:
+                logger.info(f"根据用户 {user_id} 历史推荐标签")
+                user_tags = await self.tag_repository.get_tags_by_user_history(user_id, limit=limit)
+                if user_tags and len(user_tags) > 0:
+                    return user_tags
+                    
+            # 如果以上都没有结果，返回热门标签
+            logger.info("回退到热门标签推荐")
+            return await self.get_popular_tags(limit)
+        except Exception as e:
+            logger.error(f"获取标签推荐失败: {str(e)}", exc_info=True)
+            # 出错时返回空列表而不是抛出异常，避免影响用户体验
+            return []
+        
+    async def get_trending_tags(self, days: int = 7, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取趋势标签
+        
+        获取指定天数内使用增长最快的标签
+        
+        Args:
+            days: 天数范围
+            limit: 返回的标签数量
+            
+        Returns:
+            List[Dict[str, Any]]: 趋势标签列表
+        """
+        try:
+            return await self.tag_repository.get_trending_tags(days, limit)
+        except Exception as e:
+            logger.error(f"获取趋势标签失败: {str(e)}", exc_info=True)
+            # 出错时返回空列表
+            return [] 

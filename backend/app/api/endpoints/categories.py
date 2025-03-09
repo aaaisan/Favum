@@ -101,8 +101,7 @@ async def read_category(
 ):
     """获取分类详情
     
-    获取指定分类的详细信息。
-    此接口对所有用户开放。
+    获取指定分类的详细信息，包括其子分类。
     
     Args:
         request: FastAPI请求对象
@@ -112,14 +111,20 @@ async def read_category(
         CategoryDetailResponse: 分类详细信息
         
     Raises:
-        HTTPException: 当分类不存在时抛出404错误
+        HTTPException: 当分类不存在或已删除时抛出404错误
     """
     try:
         # 使用Service架构
         category_service = CategoryService()
         
-        # 获取分类详情
-        category = await category_service.get_category_detail(category_id)
+        # 获取分类详情（不包括已删除的分类）
+        category = await category_service.get_category_detail(category_id, include_deleted=False)
+        if not category:
+            raise HTTPException(
+                status_code=404, 
+                detail={"message": "分类不存在或已被删除", "error_code": "CATEGORY_NOT_FOUND"}
+            )
+            
         return category
     except BusinessException as e:
         # 将业务异常转换为HTTPException

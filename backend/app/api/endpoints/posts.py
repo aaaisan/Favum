@@ -4,6 +4,7 @@ from typing import List, Optional
 import json
 from datetime import datetime
 import traceback
+import logging
 
 from ...schemas import post as post_schema
 # from ...schemas import comment as comment_schema
@@ -26,7 +27,7 @@ from ..responses.post import (
 # from ..responses.comment import CommentResponse, CommentListResponse
 from ...core.auth import get_current_user_optional, get_current_active_user
 from ...db.models import User, VoteType
-import logging
+#import logging
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ async def get_post_owner(post_id: int) -> int:
         )
 
 @router.post("", response_model=PostResponse)
-@public_endpoint(rate_limit_count=10, auth_required=True, custom_message="创建帖子失败")
+@public_endpoint(auth_required=True, custom_message="创建帖子失败")
 async def create_post(
     request: Request,
     post: post_schema.PostCreate
@@ -92,9 +93,8 @@ async def create_post(
     创建新的帖子记录，需要用户认证。
     
     包含以下特性：
-    1. 速率限制：每小时最多创建10篇帖子
-    2. 用户认证：需要有效的访问令牌
-    3. 标签处理：自动处理帖子与标签的关联
+    1. 用户认证：需要有效的访问令牌
+    2. 标签处理：自动处理帖子与标签的关联
     
     Args:
         request: FastAPI请求对象
@@ -106,28 +106,41 @@ async def create_post(
     Raises:
         HTTPException: 当权限不足或数据验证失败时抛出相应错误
     """
-    # 创建帖子服务实例
-    post_service = PostService()
-    
-    # 从token获取当前用户ID
-    current_user_id = request.state.user.get("id")
-    
-    # 准备帖子数据
-    post_data = post.model_dump()
-    
-    # 如果未提供作者ID，使用当前用户ID
-    if "author_id" not in post_data or not post_data["author_id"]:
-        post_data["author_id"] = current_user_id
-    
-    # 创建帖子
     try:
+        # 创建帖子服务实例
+        post_service = PostService()
+        
+        # 从token获取当前用户ID
+        current_user_id = request.state.user.get("id")
+        
+        # 准备帖子数据
+        post_data = post.model_dump()
+        
+        # 如果未提供作者ID，使用当前用户ID
+        if "author_id" not in post_data or not post_data["author_id"]:
+            post_data["author_id"] = current_user_id
+            logger.info(f"使用当前用户ID作为作者: {current_user_id}")
+        
+        # 使用PostService的create_post方法创建帖子，包括处理标签关联
+        logger.info(f"创建帖子: {post_data.get('title')}, 标签: {post_data.get('tag_ids', [])}")
         created_post = await post_service.create_post(post_data)
+        logger.info(f"成功创建帖子: {created_post.get('id')}")
+        
         return created_post
     except BusinessException as e:
         # 业务异常转换为HTTP异常
+        logger.error(f"业务异常: {e.message}, 状态码: {e.status_code}")
         raise HTTPException(
             status_code=e.status_code,
             detail={"message": e.message, "error_code": e.error_code}
+        )
+    except Exception as e:
+        # 处理所有其他异常
+        logger.error(f"创建帖子失败: {str(e)}", exc_info=True)
+        
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "创建帖子失败", "error_code": "INTERNAL_ERROR"}
         )
 
 # @router.post("/test", response_model=PostResponse)
