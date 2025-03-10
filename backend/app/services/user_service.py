@@ -23,7 +23,7 @@ from ..db.models import User
 from ..db.repositories.user_repository import UserRepository
 from ..db.repositories.post_repository import PostRepository
 from ..core.security import get_password_hash, verify_password
-from ..core.exceptions import BusinessError
+from ..core.exceptions import BusinessError, BusinessException
 from ..core.logging import get_logger
 from ..core.config import settings
 # 导入邮件任务
@@ -101,12 +101,12 @@ class UserService(BaseService):
         # 检查用户名是否已存在
         existing_user = await self.repository.get_by_username(user_data.get("username"))
         if existing_user:
-            raise BusinessError(message="用户名已存在", code="username_exists")
+            raise BusinessException(message="用户名已存在", code="username_exists")
             
         # 检查邮箱是否已存在
         existing_email = await self.repository.get_by_email(user_data.get("email"))
         if existing_email:
-            raise BusinessError(message="邮箱已被注册", code="email_exists")
+            raise BusinessException(message="邮箱已被注册", code="email_exists")
             
         # 处理密码 - 转换为哈希密码
         if "password" in user_data:
@@ -181,12 +181,12 @@ class UserService(BaseService):
         # 从Redis中获取与邮箱关联的验证令牌
         stored_token = await self.repository.get_verification_token(email)
         if not stored_token or stored_token != token:
-            raise BusinessError(message="无效或已过期的验证令牌", code="invalid_token")
+            raise BusinessException(message="无效或已过期的验证令牌", code="invalid_token")
         
         # 获取用户信息
         user = await self.repository.get_by_email(email)
         if not user:
-            raise BusinessError(message="用户不存在", code="user_not_found")
+            raise BusinessException(message="用户不存在", code="user_not_found")
         
         # 激活用户
         await self.repository.update(user["id"], {"is_active": True})
@@ -222,7 +222,7 @@ class UserService(BaseService):
         if "email" in user_data and user_data["email"] != user["email"]:
             existing = await self.repository.get_by_email(user_data["email"])
             if existing and existing["id"] != user_id:
-                raise BusinessError(message="邮箱已被其他用户使用", code="email_exists")
+                raise BusinessException(message="邮箱已被其他用户使用", code="email_exists")
                 
         # 处理密码更新
         if "password" in user_data:
@@ -307,7 +307,7 @@ class UserService(BaseService):
         # 检查用户是否存在
         user = await self.get(user_id)
         if not user:
-            raise BusinessError(message="用户不存在", code="user_not_found")
+            raise BusinessException(message="用户不存在", code="user_not_found")
             
         # 如果用户已经是删除状态，返回成功
         if user.get("is_deleted"):
@@ -331,12 +331,12 @@ class UserService(BaseService):
         # 检查用户是否存在
         user = await self.repository.get_by_id(user_id, include_deleted=True)
         if not user:
-            raise BusinessError(message="用户不存在", detail="找不到指定ID的用户", error_code="USER_NOT_FOUND")
+            raise BusinessException(message="用户不存在", detail="找不到指定ID的用户", error_code="USER_NOT_FOUND")
             
         # 恢复用户
         success = await self.repository.restore(user_id)
         if not success:
-            raise BusinessError(message="恢复用户失败", detail="无法恢复用户，可能用户不存在或已经被恢复", error_code="USER_RESTORE_FAILED")
+            raise BusinessException(message="恢复用户失败", detail="无法恢复用户，可能用户不存在或已经被恢复", error_code="USER_RESTORE_FAILED")
             
         # 获取恢复后的用户信息
         restored_user = await self.repository.get_by_id(user_id)
@@ -359,7 +359,7 @@ class UserService(BaseService):
         user_profile = await self.repository.get_user_profile(user_id)
         
         if not user_profile:
-            raise BusinessError(
+            raise BusinessException(
                 message="用户不存在",
                 detail=f"未找到ID为{user_id}的用户",
                 error_code="USER_NOT_FOUND"
@@ -442,12 +442,12 @@ class UserService(BaseService):
         
         # 如果找不到关联的邮箱，说明令牌无效或已过期
         if not email:
-            raise BusinessError(message="无效或已过期的重置令牌", code="invalid_token")
+            raise BusinessException(message="无效或已过期的重置令牌", code="invalid_token")
         
         # 获取用户信息
         user = await self.repository.get_by_email(email)
         if not user:
-            raise BusinessError(message="用户不存在", code="user_not_found")
+            raise BusinessException(message="用户不存在", code="user_not_found")
         
         # 更新密码
         hashed_password = get_password_hash(new_password)
