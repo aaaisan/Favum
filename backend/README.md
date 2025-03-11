@@ -1,6 +1,6 @@
-# Forum 论坛系统
+# Favum backend
 
-一个基于 FastAPI 和 SQLAlchemy 构建的现代化论坛系统。
+一个基于 FastAPI 和 SQLAlchemy 构建的现代化论坛API后端系统。
 
 ## 功能特点
 

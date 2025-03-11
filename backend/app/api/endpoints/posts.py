@@ -1071,9 +1071,9 @@ async def read_post_comments(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("/debug-test", response_model=None)
-async def test_endpoint():
-    """
-    测试端点，返回简单的数据
-    """
-    return {"message": "测试成功", "status": "ok"}
+# @router.get("/debug-test", response_model=None)
+# async def test_endpoint():
+#     """
+#     测试端点，返回简单的数据
+#     """
+#     return {"message": "测试成功", "status": "ok"}

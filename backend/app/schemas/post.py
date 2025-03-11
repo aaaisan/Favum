@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from .tag import Tag
 from .category import Category
+from .comment import Comment
 from enum import Enum
 
 # 添加点赞类型枚举
@@ -34,6 +35,7 @@ class Post(PostBase):
     is_hidden: bool = False
     created_at: datetime
     updated_at: datetime
+    comments: Optional[List[Comment]] = None
     vote_count: Optional[int] = 0  # 修改为可选字段
     category: Optional[Category] = None
     tags: List[Tag] = []

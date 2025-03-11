@@ -10,15 +10,16 @@ from enum import Enum
 from .user import UserInfoResponse
 from .tag import TagResponse
 from .category import CategoryResponse
-# from .comment import CommentResponse
+from .section import SectionResponse
+from .comment import CommentListResponse
 
-# 添加缺少的SectionResponse定义
-class SectionResponse(BaseModel):
-    """版块响应"""
-    id: int
-    name: str
+# # 添加缺少的SectionResponse定义
+# class SectionResponse(BaseModel):
+#     """版块响应"""
+#     id: int
+#     name: str
     
-    model_config = {"extra": "ignore"}
+#     model_config = {"extra": "ignore"}
 
 # 添加点赞类型枚举 - 与schemas保持一致
 class VoteType(str, Enum):
@@ -68,7 +69,7 @@ class PostResponse(BaseModel):
     category: Optional[CategoryResponse] = None
     section: Optional[SectionResponse] = None
     tags: Optional[List[TagResponse]] = None
-    
+    comments: Optional[CommentListResponse] = None
     model_config = {"extra": "ignore"}
 
 # 公开帖子信息，仅包含非敏感内容
