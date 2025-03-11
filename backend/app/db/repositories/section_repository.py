@@ -54,7 +54,7 @@ class SectionRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 版块列表和总数
         """
-        async with self.async_get_db() as db:
+        async with self.session() as session:
             # 查询版块，不包括已删除的
             query = (
                 select(Section)
@@ -63,12 +63,12 @@ class SectionRepository(BaseRepository):
                 .limit(limit)
             )
             
-            result = await db.execute(query)
+            result = await session.execute(query)
             sections = result.scalars().all()
             
             # 查询总数
             count_query = select(func.count(Section.id)).where(Section.is_deleted == False)
-            count_result = await db.execute(count_query)
+            count_result = await session.execute(count_query)
             total = count_result.scalar() or 0
             
             # 处理结果
@@ -85,13 +85,13 @@ class SectionRepository(BaseRepository):
         Returns:
             Dict[str, Any]: 创建的版块
         """
-        async with self.async_get_db() as db:
+        async with self.session() as session:
             # 检查版块名称是否已存在
             name_query = select(Section).where(
                 Section.name == section_data["name"],
                 Section.is_deleted == False
             )
-            name_result = await db.execute(name_query)
+            name_result = await session.execute(name_query)
             existing = name_result.scalar_one_or_none()
             
             if existing is not None:
@@ -103,9 +103,9 @@ class SectionRepository(BaseRepository):
             
             # 创建版块
             section = Section(**section_data)
-            db.add(section)
-            await db.commit()
-            await db.refresh(section)
+            session.add(section)
+            await session.commit()
+            await session.refresh(section)
             
             # 返回创建的版块
             return self.model_to_dict(section)

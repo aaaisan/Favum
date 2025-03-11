@@ -11,22 +11,12 @@
 """
 
 from sqlalchemy import select, and_, func, update, insert, delete, desc, asc
-# from sqlalchemy import select, and_, func, update, insert, delete, desc, asc
-# from sqlalchemy import select, and_, or_, func, update, insert, delete, desc, asc
-# from sqlalchemy.orm import joinedload
-# from sqlalchemy.orm import joinedload, aliased
 from sqlalchemy.orm import joinedload, aliased
-# from sqlalchemy.orm import selectinload, joinedload, aliased
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
-# from typing import Dict, Any, List, Optional, Tuple
-# from typing import Dict, Any, List, Optional, Tuple, Union
 
 from .base_repository import BaseRepository
 from ..models import Post, post_tags, PostVote, VoteType, Section, User, Tag
-# from ..models import Post, post_tags, PostVote, VoteType, Category, Section, User
-# from ..models import Post, Tag, post_tags, PostVote, VoteType, Category, User
-# from ..models import Post, Tag, post_tags, PostVote, VoteType, Category, Section, User掉了掉了
 from ...core.exceptions import BusinessError
 from ..database import AsyncSessionLocal, async_get_db
 import traceback
@@ -105,7 +95,6 @@ class PostRepository(BaseRepository):
                 
                 if post.tags:
                     post_dict["tags"] = [self.model_to_dict(tag) for tag in post.tags]
-                    logger.info(f"帖子 {post_id} 加载了 {len(post_dict['tags'])} 个标签")
                     
                 return post_dict
         except Exception as e:
