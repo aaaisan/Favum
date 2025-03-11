@@ -55,7 +55,6 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        from ..database import async_get_db
         
         async with async_get_db() as db:
             query = select(self.model).where(

@@ -35,16 +35,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 定义帖子相关异常
-class PostNotFoundError(BusinessError):
-    """当指定的帖子不存在时抛出"""
-    
-    def __init__(self, message: str = "帖子不存在"):
-        super().__init__(
-            code="post_not_found",
-            message=message,
-            status_code=404
-        )
+
 
 class PostRepository(BaseRepository):
     """Post实体的数据访问仓储类"""
@@ -94,56 +85,26 @@ class PostRepository(BaseRepository):
                     logger.warning(f"未找到帖子，ID: {post_id}")
                     return None
                     
-                # 手动创建字典
-                post_dict = {
-                    "id": post.id,
-                    "title": post.title,
-                    "content": post.content,
-                    "author_id": post.author_id,
-                    "section_id": post.section_id,
-                    "category_id": post.category_id,
-                    "is_hidden": post.is_hidden,
-                    "created_at": post.created_at,
-                    "updated_at": post.updated_at,
-                    "is_deleted": post.is_deleted,
-                    "deleted_at": post.deleted_at,
-                    "vote_count": post.vote_count
-                }
+                # 使用model_to_dict替代手动创建字典
+                post_dict = self.model_to_dict(post)
                 
                 # 添加关联实体信息
                 if post.category:
-                    post_dict["category"] = {
-                        "id": post.category.id,
-                        "name": post.category.name,
-                        "created_at": post.category.created_at
-                    }
+                    post_dict["category"] = self.model_to_dict(post.category)
                     
                 if post.section:
-                    post_dict["section"] = {
-                        "id": post.section.id,
-                        "name": post.section.name
-                    }
+                    post_dict["section"] = self.model_to_dict(post.section)
 
                 if post.comments:
                     post_dict["comments"] = [
-                        {
-                            "id": comment.id,
-                            "content": comment.content,
-                            "created_at": comment.created_at
-                        } for comment in post.comments
+                        self.model_to_dict(comment) for comment in post.comments
                     ]
                     
                 # 确保标签列表始终存在
                 post_dict["tags"] = []
                 
                 if post.tags:
-                    post_dict["tags"] = [
-                        {
-                            "id": tag.id, 
-                            "name": tag.name,
-                            "created_at": tag.created_at
-                        } for tag in post.tags
-                    ]
+                    post_dict["tags"] = [self.model_to_dict(tag) for tag in post.tags]
                     logger.info(f"帖子 {post_id} 加载了 {len(post_dict['tags'])} 个标签")
                     
                 return post_dict
@@ -231,6 +192,8 @@ class PostRepository(BaseRepository):
                 user = user_result.scalar_one_or_none()
                 
                 if user:
+                    post_dict["author"] = self.model_to_dict(user)
+                    # 只保留需要的字段
                     post_dict["author"] = {
                         "id": user.id,
                         "username": user.username,

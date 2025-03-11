@@ -473,5 +473,15 @@ class ServiceUnavailableError(BusinessError):
             details=details
         )
 
+class PostNotFoundError(BusinessError):
+    """当指定的帖子不存在时抛出"""
+    
+    def __init__(self, message: str = "帖子不存在"):
+        super().__init__(
+            code="post_not_found",
+            message=message,
+            status_code=404
+        )
+        
 # 为了兼容性，将BusinessException定义为BusinessError的别名
 BusinessException = BusinessError 
