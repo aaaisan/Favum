@@ -123,6 +123,15 @@ class PostRepository(BaseRepository):
                         "id": post.section.id,
                         "name": post.section.name
                     }
+
+                if post.comments:
+                    post_dict["comments"] = [
+                        {
+                            "id": comment.id,
+                            "content": comment.content,
+                            "created_at": comment.created_at
+                        } for comment in post.comments
+                    ]
                     
                 # 确保标签列表始终存在
                 post_dict["tags"] = []
@@ -143,204 +152,130 @@ class PostRepository(BaseRepository):
             return None
     
     async def get_posts(
-        self, 
-        skip: int = 0, 
-        limit: int = 100, 
-        include_hidden: bool = False,
-        category_id: Optional[int] = None,
-        section_id: Optional[int] = None,
-        author_id: Optional[int] = None,
-        tag_ids: Optional[List[int]] = None,
-        sort_field: Optional[str] = None,
+        self,
+        skip: int = 0,
+        limit: int = 20,
+        filter_options: Optional[Dict[str, Any]] = None,
+        sort_by: Optional[str] = "created_at",
         sort_order: Optional[str] = "desc"
     ) -> Tuple[List[Dict[str, Any]], int]:
         """获取帖子列表
         
-        支持多种过滤条件和排序
-        
         Args:
-            skip: 分页偏移
-            limit: 每页数量
-            include_hidden: 是否包含隐藏的帖子
-            category_id: 按分类ID筛选
-            section_id: 按版块ID筛选
-            author_id: 按作者ID筛选
-            tag_ids: 按标签ID列表筛选
-            sort_field: 排序字段
-            sort_order: 排序顺序("asc"或"desc")
+            skip: 跳过的记录数
+            limit: 返回的最大记录数
+            filter_options: 过滤选项
+            sort_by: 排序字段
+            sort_order: 排序方向
             
         Returns:
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
-        try:
-            with open("logs/posts_repository_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 开始get_posts: skip={skip}, limit={limit}, include_hidden={include_hidden}\n")
+        async with async_get_db() as db:
+            # 构建查询
+            query = select(Post)
             
-            session = await self.get_session()
-            try:
-                # 构建基础查询条件
-                conditions = [self.model.is_deleted == False]
-                if not include_hidden:
-                    conditions.append(self.model.is_hidden == False)
+            # 应用过滤条件
+            if filter_options:
+                if "author_id" in filter_options:
+                    query = query.where(Post.author_id == filter_options["author_id"])
+                
+                if "category_id" in filter_options:
+                    query = query.where(Post.category_id == filter_options["category_id"])
+                
+                if "section_id" in filter_options:
+                    query = query.where(Post.section_id == filter_options["section_id"])
+                
+                # 只获取未删除的帖子，除非特别指定
+                if filter_options.get("include_deleted", False) is False:
+                    query = query.where(Post.is_deleted == False)
+                
+                # 只获取未隐藏的帖子，除非特别指定
+                if filter_options.get("include_hidden", False) is False:
+                    query = query.where(Post.is_hidden == False)
+            else:
+                # 默认只获取未删除和未隐藏的帖子
+                query = query.where(Post.is_deleted == False)
+                query = query.where(Post.is_hidden == False)
+            
+            # 应用排序
+            if sort_by:
+                if hasattr(Post, sort_by):
+                    sort_column = getattr(Post, sort_by)
+                    if sort_order and sort_order.lower() == "asc":
+                        query = query.order_by(asc(sort_column))
+                    else:
+                        query = query.order_by(desc(sort_column))
+            
+            # 获取总记录数
+            count_query = select(func.count()).select_from(query.subquery())
+            count_result = await db.execute(count_query)
+            total = count_result.scalar() or 0
+            
+            # 应用分页
+            query = query.offset(skip).limit(limit)
+            
+            # 执行查询
+            result = await db.execute(query)
+            posts = result.scalars().all()
+            
+            # 转换为字典
+            post_dicts = []
+            for post in posts:
+                post_dict = self.model_to_dict(post)
+                
+                # 获取作者信息
+                from ..models.user import User
+                user_query = select(User).where(User.id == post.author_id)
+                user_result = await db.execute(user_query)
+                user = user_result.scalar_one_or_none()
+                
+                if user:
+                    post_dict["author"] = {
+                        "id": user.id,
+                        "username": user.username,
+                        "avatar_url": user.avatar_url if hasattr(user, "avatar_url") else None
+                    }
+                
+                # 获取分类信息
+                from ..models.category import Category
+                category_query = select(Category).where(Category.id == post.category_id)
+                category_result = await db.execute(category_query)
+                category = category_result.scalar_one_or_none()
+                
+                if category:
+                    post_dict["category"] = self.model_to_dict(category)
+                
+                # 获取版块信息
+                from ..models.section import Section
+                if post.section_id:
+                    section_query = select(Section).where(Section.id == post.section_id)
+                    section_result = await db.execute(section_query)
+                    section = section_result.scalar_one_or_none()
                     
-                # 添加筛选条件
-                if category_id:
-                    conditions.append(self.model.category_id == category_id)
-                if section_id:
-                    conditions.append(self.model.section_id == section_id)
-                if author_id:
-                    conditions.append(self.model.author_id == author_id)
-                    
-                # 构建查询，加载关联实体
-                query = (
-                    select(self.model)
-                    .options(
-                        joinedload(self.model.category),
-                        joinedload(self.model.section),
-                        joinedload(self.model.tags)
-                    )
-                    .where(and_(*conditions))
+                    if section:
+                        post_dict["section"] = self.model_to_dict(section)
+                
+                # 获取标签信息
+                from ..models.tag import Tag
+                from ..models.post_tag import PostTag
+                
+                tag_query = select(Tag).join(
+                    PostTag, PostTag.tag_id == Tag.id
+                ).where(
+                    PostTag.post_id == post.id
                 )
                 
-                with open("logs/posts_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 构建查询: {str(query)}\n")
+                tag_result = await db.execute(tag_query)
+                tags = tag_result.scalars().all()
                 
-                # 处理标签筛选
-                if tag_ids:
-                    # 使用exists子查询检查帖子是否包含指定标签
-                    for tag_id in tag_ids:
-                        subquery = (
-                            select(post_tags.c.post_id)
-                            .where(
-                                and_(
-                                    post_tags.c.post_id == self.model.id,
-                                    post_tags.c.tag_id == tag_id
-                                )
-                            )
-                            .exists()
-                        )
-                        query = query.where(subquery)
-                        
-                # 处理排序
-                if sort_field:
-                    sort_attr = getattr(self.model, sort_field, self.model.created_at)
-                    query = query.order_by(desc(sort_attr) if sort_order == "desc" else asc(sort_attr))
-                else:
-                    # 默认按创建时间降序排列
-                    query = query.order_by(desc(self.model.created_at))
-                    
-                # 添加分页
-                query = query.offset(skip).limit(limit)
+                if tags:
+                    post_dict["tags"] = [self.model_to_dict(tag) for tag in tags]
                 
-                # 执行查询
-                with open("logs/posts_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 执行查询\n")
-                
-                result = await session.execute(query)
-                posts = result.unique().scalars().all()
-                
-                with open("logs/posts_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 查询结果: 获取到 {len(posts)} 条记录\n")
-                
-                # 构建计数查询
-                count_query = (
-                    select(func.count())
-                    .select_from(self.model)
-                    .where(and_(*conditions))
-                )
-                
-                # 处理标签筛选
-                if tag_ids:
-                    for tag_id in tag_ids:
-                        subquery = (
-                            select(post_tags.c.post_id)
-                            .where(
-                                and_(
-                                    post_tags.c.post_id == self.model.id,
-                                    post_tags.c.tag_id == tag_id
-                                )
-                            )
-                            .exists()
-                        )
-                        count_query = count_query.where(subquery)
-                        
-                # 执行计数查询
-                count_result = await session.execute(count_query)
-                total = count_result.scalar_one()
-                
-                with open("logs/posts_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 计数结果: total={total}\n")
-                
-                # 处理结果
-                posts_data = []
-                for post in posts:
-                    try:
-                        post_dict = post.to_dict(include_relations=True) if hasattr(post, 'to_dict') else {
-                            "id": post.id,
-                            "title": post.title,
-                            "content": post.content,
-                            "author_id": post.author_id,
-                            "section_id": post.section_id,
-                            "category_id": post.category_id,
-                            "is_hidden": post.is_hidden,
-                            "created_at": post.created_at,
-                            "updated_at": post.updated_at,
-                            "is_deleted": post.is_deleted,
-                            "vote_count": post.vote_count,
-                            "category": {
-                                "id": post.category.id, 
-                                "name": post.category.name,
-                                "created_at": post.category.created_at
-                            } if post.category else None,
-                            "section": {"id": post.section.id, "name": post.section.name} if post.section else None,
-                            "tags": [{
-                                "id": tag.id, 
-                                "name": tag.name,
-                                "created_at": tag.created_at
-                            } for tag in post.tags]
-                        }
-                        
-                        # 将datetime对象转换为ISO格式字符串，避免JSON序列化问题
-                        if "created_at" in post_dict and post_dict["created_at"]:
-                            post_dict["created_at"] = post_dict["created_at"].isoformat()
-                        if "updated_at" in post_dict and post_dict["updated_at"]:
-                            post_dict["updated_at"] = post_dict["updated_at"].isoformat()
-                        
-                        if "category" in post_dict and post_dict["category"] and "created_at" in post_dict["category"]:
-                            if post_dict["category"]["created_at"]:
-                                post_dict["category"]["created_at"] = post_dict["category"]["created_at"].isoformat()
-                        
-                        if "tags" in post_dict:
-                            for tag in post_dict["tags"]:
-                                if "created_at" in tag and tag["created_at"]:
-                                    tag["created_at"] = tag["created_at"].isoformat()
-                        
-                        posts_data.append(post_dict)
-                    except Exception as e:
-                        with open("logs/posts_repository_debug.log", "a") as f:
-                            f.write(f"{datetime.now().isoformat()} - 处理帖子数据错误, id={post.id}: {str(e)}\n")
-                            f.write(f"错误堆栈: {traceback.format_exc()}\n")
-                
-                # 记录第一条数据的结构
-                if posts_data and len(posts_data) > 0:
-                    with open("logs/posts_repository_debug.log", "a") as f:
-                        f.write(f"{datetime.now().isoformat()} - 第一条帖子数据结构:\n")
-                        f.write(json.dumps(posts_data[0], ensure_ascii=False, indent=2) + "\n")
-                
-                return posts_data, total
-            except Exception as e:
-                error_msg = f"获取帖子列表失败: {str(e)}"
-                with open("logs/posts_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 错误: {error_msg}\n")
-                    f.write(f"错误堆栈: {traceback.format_exc()}\n")
-                raise
-            finally:
-                await session.close()
-        except Exception as e:
-            with open("logs/posts_repository_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - get_posts发生异常: {str(e)}\n")
-                f.write(f"错误堆栈: {traceback.format_exc()}\n")
-            raise
+                # 添加到结果列表
+                post_dicts.append(post_dict)
+            
+            return post_dicts, total
     
     async def update_tags(self, post_id: int, tag_ids: List[int]) -> bool:
         """更新帖子的标签关联
