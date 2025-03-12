@@ -111,21 +111,7 @@ class UserRepository(BaseRepository):
                 print(f"获取用户失败: {str(e)}")
                 return None
             
-            # if not item:
-            #     return None
-            # return type(item)
-            # user_dict = self.model_to_dict(user) if user else None
             return self.model_to_dict(user) if user else None
-            # return model_to_dict(user) if item else None
-            # 返回一个简化的字典，只包含必要的字段
-            # return {
-            #     "id": item.id,
-            #     "username": item.username,
-            #     "email": item.email,
-            #     "hashed_password": item.hashed_password,
-            #     "is_active": item.is_active,
-            #     "role": item.role
-            # }
     
     async def get_user_posts(
         self, 
@@ -166,20 +152,6 @@ class UserRepository(BaseRepository):
             except Exception as e:
                 print(f"获取帖子失败: {str(e)}")
                 return None
-                # 手动处理帖子数据
-                # post_data = {
-                #     "id": post.id,
-                #     "title": post.title,
-                #     "content": post.content,
-                #     "author_id": post.author_id,
-                #     "created_at": post.created_at,
-                #     "updated_at": post.updated_at,
-                #     "is_hidden": post.is_hidden,
-                #     "is_deleted": post.is_deleted,
-                #     "category_id": post.category_id,
-                #     "section_id": post.section_id
-                # }
-                # posts.append(post_data)
             
             # 查询总数
             try:
