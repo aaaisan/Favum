@@ -46,6 +46,26 @@ class UserRepository(BaseRepository):
         """
         super().__init__(User)
     
+    # 重写model_to_dict方法，排除敏感字段
+    def model_to_dict(self, model) -> Dict[str, Any]:
+        """将用户模型对象转换为字典，排除敏感字段
+        
+        Args:
+            model: 用户模型对象
+            
+        Returns:
+            Dict[str, Any]: 不包含敏感信息的字典
+        """
+        result = super().model_to_dict(model)
+        
+        # 从结果中移除敏感字段
+        sensitive_fields = ["hashed_password", "password_reset_token", "verification_token"]
+        for field in sensitive_fields:
+            if field in result:
+                del result[field]
+                
+        return result
+    
     async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """通过邮箱查询用户
         
@@ -64,8 +84,8 @@ class UserRepository(BaseRepository):
                 )
             )
             result = await db.execute(query)
-            item = result.scalar_one_or_none()
-            return item.to_dict() if item else None
+            user = result.scalar_one_or_none()
+            return self.model_to_dict(user) if user else None
     
     async def get_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """通过用户名查询用户
@@ -76,31 +96,36 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        db = AsyncSessionLocal()
-        try:
+        async with async_get_db() as db:
+      
             query = select(self.model).where(
                 and_(
                     self.model.username == username,
                     self.model.is_deleted == False
                 )
             )
-            result = await db.execute(query)
-            item = result.scalar_one_or_none()
-            
-            if not item:
+            try:
+                result = await db.execute(query)
+                user = result.scalar_one_or_none()
+            except Exception as e:
+                print(f"获取用户失败: {str(e)}")
                 return None
-                
+            
+            # if not item:
+            #     return None
+            # return type(item)
+            # user_dict = self.model_to_dict(user) if user else None
+            return self.model_to_dict(user) if user else None
+            # return model_to_dict(user) if item else None
             # 返回一个简化的字典，只包含必要的字段
-            return {
-                "id": item.id,
-                "username": item.username,
-                "email": item.email,
-                "hashed_password": item.hashed_password,
-                "is_active": item.is_active,
-                "role": item.role
-            }
-        finally:
-            await db.close()
+            # return {
+            #     "id": item.id,
+            #     "username": item.username,
+            #     "email": item.email,
+            #     "hashed_password": item.hashed_password,
+            #     "is_active": item.is_active,
+            #     "role": item.role
+            # }
     
     async def get_user_posts(
         self, 
@@ -119,9 +144,8 @@ class UserRepository(BaseRepository):
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
         # 获取数据库会话
-        session = await self.get_session()
+        async with async_get_db() as db:
         
-        try:
             # 查询帖子
             query = select(Post).where(
                 and_(
@@ -129,38 +153,51 @@ class UserRepository(BaseRepository):
                     Post.is_deleted == False
                 )
             ).order_by(Post.created_at.desc()).offset(skip).limit(limit)
-            
-            result = await session.execute(query)
+            try:
+                result = await db.execute(query)
+            except Exception as e:
+                print(f"获取帖子失败: {str(e)}")
+                return None
             posts = []
-            for post in result.scalars().all():
+            try:
+                for post in result.scalars().all():
+
+                    posts.append(self.model_to_dict(post))
+            except Exception as e:
+                print(f"获取帖子失败: {str(e)}")
+                return None
                 # 手动处理帖子数据
-                post_data = {
-                    "id": post.id,
-                    "title": post.title,
-                    "content": post.content,
-                    "author_id": post.author_id,
-                    "created_at": post.created_at,
-                    "updated_at": post.updated_at,
-                    "is_hidden": post.is_hidden,
-                    "is_deleted": post.is_deleted,
-                    "category_id": post.category_id,
-                    "section_id": post.section_id
-                }
-                posts.append(post_data)
+                # post_data = {
+                #     "id": post.id,
+                #     "title": post.title,
+                #     "content": post.content,
+                #     "author_id": post.author_id,
+                #     "created_at": post.created_at,
+                #     "updated_at": post.updated_at,
+                #     "is_hidden": post.is_hidden,
+                #     "is_deleted": post.is_deleted,
+                #     "category_id": post.category_id,
+                #     "section_id": post.section_id
+                # }
+                # posts.append(post_data)
             
             # 查询总数
-            count_query = select(func.count()).where(
-                and_(
-                    Post.author_id == user_id,
-                    Post.is_deleted == False
+            try:
+                count_query = select(func.count()).where(
+                    and_(
+                        Post.author_id == user_id,
+                        Post.is_deleted == False
+                    )
                 )
-            )
-            count_result = await session.execute(count_query)
-            total = count_result.scalar_one()
+                count_result = await db.execute(count_query)
+                total = count_result.scalar_one()
+            except Exception as e:
+                print(f"获取帖子总数失败: {str(e)}")
+                return None
             
             return posts, total
-        finally:
-            await session.close()
+        # finally:
+        #     await session.close()
         
     async def soft_delete(self, user_id: int) -> bool:
         """软删除用户
@@ -185,12 +222,17 @@ class UserRepository(BaseRepository):
         )
         
         # 执行更新
-        result = await self.db.execute(stmt)
-        await self.db.commit()
+        async with async_get_db() as db:
+            try:
+                result = await db.execute(stmt)
+                await db.commit()
+            except Exception as e:
+                print(f"软删除用户失败: {str(e)}")
+                return False
         
         # 检查是否找到并更新了记录
-        return result.rowcount > 0
-    
+        # return result.rowcount > 0
+        return True
     async def restore(self, user_id: int) -> bool:
         """恢复软删除的用户
         
@@ -200,16 +242,20 @@ class UserRepository(BaseRepository):
         Returns:
             bool: 操作成功返回True，失败返回False
         """
-        async with self.db.begin() as session:
+        async with async_get_db() as db:
             update_stmt = update(self.model).where(
                 self.model.id == user_id
             ).values(
                 is_deleted=False,
-                updated_at=datetime.utcnow()
+                updated_at=datetime.now()
             )
-            result = await session.execute(update_stmt)
-            
-            return result.rowcount > 0
+            try:
+                result = await db.execute(update_stmt)
+                await db.commit()
+                return True
+            except Exception as e:
+                print(f"恢复用户失败: {str(e)}")
+                return False
             
     async def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
         """获取用户详细资料，包括帖子数、评论数等统计信息
@@ -221,16 +267,12 @@ class UserRepository(BaseRepository):
             Optional[Dict[str, Any]]: 包含用户详细资料的字典，不存在则返回None
         """
         # 查找用户
+      
         user = await self.get_by_id(user_id)
         
-        # 如果用户不存在，返回None
-        if not user:
-            return None
-        
         # 获取数据库会话
-        session = await self.get_session()
-        
-        try:
+        async with async_get_db() as db:
+
             # 获取用户的帖子数量
             post_count_query = select(func.count()).select_from(Post).where(
                 and_(
@@ -238,8 +280,12 @@ class UserRepository(BaseRepository):
                     Post.is_deleted == False
                 )
             )
-            post_count_result = await session.execute(post_count_query)
-            post_count = post_count_result.scalar() or 0
+            try:
+                post_count_result = await db.execute(post_count_query)
+                post_count = post_count_result.scalar() or 0
+            except Exception as e:
+                print(f"获取帖子数量失败: {str(e)}")
+                return None
             
             # 获取用户的评论数量
             comment_count_query = select(func.count()).select_from(Comment).where(
@@ -248,32 +294,21 @@ class UserRepository(BaseRepository):
                     Comment.is_deleted == False
                 )
             )
-            
-            comment_count_result = await session.execute(comment_count_query)
-            comment_count = comment_count_result.scalar() or 0
+            try:
+                comment_count_result = await db.execute(comment_count_query)
+                comment_count = comment_count_result.scalar() or 0
+            except Exception as e:
+                print(f"获取评论数量失败: {str(e)}")
+                return None
         
-            # 创建用户资料对象
-            user_profile = {
-                "id": user["id"],
-                "username": user["username"],
-                "email": user["email"],
-                "bio": user.get("bio"),
-                "avatar_url": user.get("avatar_url"),
-                "is_active": user["is_active"],
-                "role": user["role"],
-                "created_at": user["created_at"],
-                "updated_at": user.get("updated_at", user["created_at"]),
-                "post_count": post_count,
-                "comment_count": comment_count,
-                "last_login": user.get("last_login"),
-                "join_date": user["created_at"],
-                "reputation": user.get("reputation", 0),
-                "badges": user.get("badges", [])
-            }
-            
+            user_profile = self.model_to_dict(user)
+
+            if post_count:
+                user_profile["post_count"] = post_count
+            if comment_count:
+                user_profile["comment_count"] = comment_count
+
             return user_profile
-        finally:
-            await session.close()
     
     async def get_by_id(self, user_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
         """通过ID查询用户
@@ -285,37 +320,22 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        session = await self.get_session()
-        try:
+        async with async_get_db() as db:
+        # session = await self.get_session()
+        # try:
             # 构建查询条件
             conditions = [self.model.id == user_id]
             if not include_deleted:
                 conditions.append(self.model.is_deleted == False)
                 
             query = select(self.model).where(and_(*conditions))
-            result = await session.execute(query)
-            item = result.scalar_one_or_none()
-            
-            if not item:
+            try:
+                result = await db.execute(query)
+                user = result.scalar_one_or_none()
+                return self.model_to_dict(user) if user else None
+            except Exception as e:
+                print(f"获取用户失败: {str(e)}")
                 return None
-                
-            # 手动创建字典而不是使用to_dict方法
-            return {
-                "id": item.id,
-                "username": item.username,
-                "email": item.email,
-                "hashed_password": item.hashed_password,
-                "is_active": item.is_active,
-                "role": item.role,
-                "avatar_url": item.avatar_url,
-                "bio": item.bio,
-                "created_at": item.created_at,
-                "updated_at": item.updated_at,
-                "is_deleted": item.is_deleted,
-                "deleted_at": item.deleted_at
-            }
-        finally:
-            await session.close()
     
     async def set_verification_token(self, email: str, token: str, expires: int = 3600) -> bool:
         """存储邮箱验证令牌到Redis

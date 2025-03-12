@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
 from .base_repository import BaseRepository
-from ..models import Post, post_tags, PostVote, VoteType, Section, User, Tag
+from ..models import Post, post_tags, PostVote, VoteType, Section, Category , User, Tag
 from ...core.exceptions import BusinessError
 from ..database import AsyncSessionLocal, async_get_db
 import traceback
@@ -75,7 +75,6 @@ class PostRepository(BaseRepository):
                     logger.warning(f"未找到帖子，ID: {post_id}")
                     return None
                     
-                # 使用model_to_dict替代手动创建字典
                 post_dict = self.model_to_dict(post)
                 
                 # 添加关联实体信息
@@ -175,7 +174,7 @@ class PostRepository(BaseRepository):
                 post_dict = self.model_to_dict(post)
                 
                 # 获取作者信息
-                from ..models.user import User
+                # from ..models.user import User
                 user_query = select(User).where(User.id == post.author_id)
                 user_result = await db.execute(user_query)
                 user = user_result.scalar_one_or_none()
@@ -190,7 +189,7 @@ class PostRepository(BaseRepository):
                     }
                 
                 # 获取分类信息
-                from ..models.category import Category
+                # from ..models.category import Category
                 category_query = select(Category).where(Category.id == post.category_id)
                 category_result = await db.execute(category_query)
                 category = category_result.scalar_one_or_none()
@@ -199,7 +198,7 @@ class PostRepository(BaseRepository):
                     post_dict["category"] = self.model_to_dict(category)
                 
                 # 获取版块信息
-                from ..models.section import Section
+                # from ..models.section import Section
                 if post.section_id:
                     section_query = select(Section).where(Section.id == post.section_id)
                     section_result = await db.execute(section_query)
