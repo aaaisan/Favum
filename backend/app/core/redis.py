@@ -28,3 +28,4 @@ redis_client = Redis(
     max_connections=10,  # 连接池最大连接数
     encoding='utf-8'  # 设置编码
 ) 
+

@@ -9,32 +9,19 @@
 """
 
 from sqlalchemy import select, and_, func, update
-# from sqlalchemy import select, and_, func, update
-# from sqlalchemy import select, and_, or_, func, update
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import redis
 from ...core.config import settings
+from ...core.redis import redis_client
 
 from .base_repository import BaseRepository
 from ..models import User, Post, Comment
 from ..database import async_get_db, AsyncSessionLocal
-# from ..database import SessionLocal, async_get_db, AsyncSessionLocal
-# from ..database import get_db, SessionLocal, AsyncSessionLocal
-# from ..database import get_db, SessionLocal, async_get_db, AsyncSessionLocal
+import logging
 
-# 创建Redis连接
-redis_client = redis.Redis(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT,
-    db=settings.REDIS_DB,
-    password=settings.REDIS_PASSWORD,
-    decode_responses=True  # 自动将bytes解码为str
-)
+logger = logging.getLogger(__name__)
 
-# Redis键前缀
-VERIFICATION_TOKEN_PREFIX = "email_verification:"
-RESET_TOKEN_PREFIX = "password_reset:"
 
 class UserRepository(BaseRepository):
     """User实体的数据访问仓储类"""
@@ -59,10 +46,9 @@ class UserRepository(BaseRepository):
         result = super().model_to_dict(model)
         
         # 从结果中移除敏感字段
-        sensitive_fields = ["hashed_password", "password_reset_token", "verification_token"]
-        for field in sensitive_fields:
-            if field in result:
-                del result[field]
+        sensitive_fields = "hashed_password"
+        if hasattr(result, sensitive_fields):
+            del result[sensitive_fields]
                 
         return result
     
@@ -107,11 +93,10 @@ class UserRepository(BaseRepository):
             try:
                 result = await db.execute(query)
                 user = result.scalar_one_or_none()
+                return self.model_to_dict(user) if user else None
             except Exception as e:
-                print(f"获取用户失败: {str(e)}")
+                logger.error(f"获取用户失败: {str(e)}")
                 return None
-            
-            return self.model_to_dict(user) if user else None
     
     async def get_user_posts(
         self, 
@@ -142,7 +127,7 @@ class UserRepository(BaseRepository):
             try:
                 result = await db.execute(query)
             except Exception as e:
-                print(f"获取帖子失败: {str(e)}")
+                logger.error(f"获取帖子失败: {str(e)}")
                 return None
             posts = []
             try:
@@ -150,7 +135,7 @@ class UserRepository(BaseRepository):
 
                     posts.append(self.model_to_dict(post))
             except Exception as e:
-                print(f"获取帖子失败: {str(e)}")
+                logger.error(f"获取帖子失败: {str(e)}")
                 return None
             
             # 查询总数
@@ -164,12 +149,10 @@ class UserRepository(BaseRepository):
                 count_result = await db.execute(count_query)
                 total = count_result.scalar_one()
             except Exception as e:
-                print(f"获取帖子总数失败: {str(e)}")
+                logger.error(f"获取帖子总数失败: {str(e)}")
                 return None
             
             return posts, total
-        # finally:
-        #     await session.close()
         
     async def soft_delete(self, user_id: int) -> bool:
         """软删除用户
@@ -199,7 +182,7 @@ class UserRepository(BaseRepository):
                 result = await db.execute(stmt)
                 await db.commit()
             except Exception as e:
-                print(f"软删除用户失败: {str(e)}")
+                logger.error(f"软删除用户失败: {str(e)}")
                 return False
         
         # 检查是否找到并更新了记录
@@ -226,7 +209,7 @@ class UserRepository(BaseRepository):
                 await db.commit()
                 return True
             except Exception as e:
-                print(f"恢复用户失败: {str(e)}")
+                logger.error(f"恢复用户失败: {str(e)}")
                 return False
             
     async def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
@@ -256,7 +239,7 @@ class UserRepository(BaseRepository):
                 post_count_result = await db.execute(post_count_query)
                 post_count = post_count_result.scalar() or 0
             except Exception as e:
-                print(f"获取帖子数量失败: {str(e)}")
+                logger.error(f"获取帖子数量失败: {str(e)}")
                 return None
             
             # 获取用户的评论数量
@@ -270,7 +253,7 @@ class UserRepository(BaseRepository):
                 comment_count_result = await db.execute(comment_count_query)
                 comment_count = comment_count_result.scalar() or 0
             except Exception as e:
-                print(f"获取评论数量失败: {str(e)}")
+                logger.error(f"获取评论数量失败: {str(e)}")
                 return None
         
             user_profile = self.model_to_dict(user)
@@ -304,9 +287,9 @@ class UserRepository(BaseRepository):
             try:
                 result = await db.execute(query)
                 user = result.scalar_one_or_none()
-                return self.model_to_dict(user) if user else None
+                return self.model_to_dict(user)
             except Exception as e:
-                print(f"获取用户失败: {str(e)}")
+                logger.error(f"获取用户失败: {str(e)}")
                 return None
     
     async def set_verification_token(self, email: str, token: str, expires: int = 3600) -> bool:
@@ -320,13 +303,13 @@ class UserRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        key = f"{VERIFICATION_TOKEN_PREFIX}{email}"
+        key = f"email_verification:{email}"
         try:
             redis_client.setex(key, expires, token)
             return True
         except Exception as e:
             # 此处应该记录日志
-            print(f"存储验证令牌失败: {str(e)}")
+            logger.error(f"存储验证令牌失败: {str(e)}")
             return False
     
     async def get_verification_token(self, email: str) -> Optional[str]:
@@ -338,13 +321,13 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[str]: 验证令牌，不存在则返回None
         """
-        key = f"{VERIFICATION_TOKEN_PREFIX}{email}"
+        key = f"email_verification:{email}"
         try:
             token = redis_client.get(key)
             return token
         except Exception as e:
             # 此处应该记录日志
-            print(f"获取验证令牌失败: {str(e)}")
+            logger.error(f"获取验证令牌失败: {str(e)}")
             return None
     
     async def delete_verification_token(self, email: str) -> bool:
@@ -356,13 +339,13 @@ class UserRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        key = f"{VERIFICATION_TOKEN_PREFIX}{email}"
+        key = f"email_verification:{email}"
         try:
             redis_client.delete(key)
             return True
         except Exception as e:
             # 此处应该记录日志
-            print(f"删除验证令牌失败: {str(e)}")
+            logger.error(f"删除验证令牌失败: {str(e)}")
             return False
     
     async def set_reset_token(self, email: str, token: str, expires: int = 3600) -> bool:
@@ -376,8 +359,8 @@ class UserRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        email_key = f"{RESET_TOKEN_PREFIX}{email}"
-        token_key = f"token:{RESET_TOKEN_PREFIX}{token}"
+        email_key = f"password_reset:{email}"
+        token_key = f"token:password_reset:{token}"
         try:
             # 存储两条记录，便于双向查找
             # 1. email -> token 映射
@@ -387,7 +370,7 @@ class UserRepository(BaseRepository):
             return True
         except Exception as e:
             # 此处应该记录日志
-            print(f"存储重置令牌失败: {str(e)}")
+            logger.error(f"存储重置令牌失败: {str(e)}")
             return False
     
     async def get_reset_token(self, email: str) -> Optional[str]:
@@ -399,13 +382,13 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[str]: 重置令牌，不存在则返回None
         """
-        key = f"{RESET_TOKEN_PREFIX}{email}"
+        key = f"password_reset:{email}"
         try:
             token = redis_client.get(key)
             return token
         except Exception as e:
             # 此处应该记录日志
-            print(f"获取重置令牌失败: {str(e)}")
+            logger.error(f"获取重置令牌失败: {str(e)}")
             return None
     
     async def get_email_by_reset_token(self, token: str) -> Optional[str]:
@@ -417,13 +400,13 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[str]: 关联的邮箱，不存在则返回None
         """
-        key = f"token:{RESET_TOKEN_PREFIX}{token}"
+        key = f"token:password_reset:{token}"
         try:
             email = redis_client.get(key)
             return email
         except Exception as e:
             # 此处应该记录日志
-            print(f"通过令牌获取邮箱失败: {str(e)}")
+            logger.error(f"通过令牌获取邮箱失败: {str(e)}")
             return None
     
     async def delete_reset_token(self, email: str, token: str = None) -> bool:
@@ -436,7 +419,7 @@ class UserRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        email_key = f"{RESET_TOKEN_PREFIX}{email}"
+        email_key = f"password_reset:{email}"
         try:
             # 如果没有提供token，先尝试获取
             if not token:
@@ -447,11 +430,11 @@ class UserRepository(BaseRepository):
             
             # 如果有token，删除token->email映射
             if token:
-                token_key = f"token:{RESET_TOKEN_PREFIX}{token}"
+                token_key = f"token:password_reset:{token}"
                 redis_client.delete(token_key)
                 
             return True
         except Exception as e:
             # 此处应该记录日志
-            print(f"删除重置令牌失败: {str(e)}")
+            logger.error(f"删除重置令牌失败: {str(e)}")
             return False 
