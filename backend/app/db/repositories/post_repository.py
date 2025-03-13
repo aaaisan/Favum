@@ -382,8 +382,6 @@ class PostRepository(BaseRepository):
             dict: 投票结果，包含投票计数和用户的投票状态
         """
         try:
-            with open("logs/vote_repository_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - vote_post开始执行: post_id={post_id}, user_id={user_id}, vote_type={vote_type}\n")
             
             # 使用BaseRepository的session上下文管理器
             async with self.session() as session:
@@ -394,9 +392,6 @@ class PostRepository(BaseRepository):
                         self.model.is_deleted == False
                     )
                 )
-                
-                with open("logs/vote_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 执行查询: {str(post_query)}\n")
                 
                 post_result = await session.execute(post_query)
                 post = post_result.scalar_one_or_none()
@@ -414,14 +409,8 @@ class PostRepository(BaseRepository):
                     )
                 )
                 
-                with open("logs/vote_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 执行查询: {str(vote_query)}\n")
-                
                 vote_result = await session.execute(vote_query)
                 existing_vote = vote_result.scalar_one_or_none()
-                
-                with open("logs/vote_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 查询结果: existing_vote={existing_vote}\n")
                 
                 if existing_vote:
                     # 如果已投票且投票类型相同，则移除投票（取消投票）
@@ -432,8 +421,6 @@ class PostRepository(BaseRepository):
                                 PostVote.user_id == user_id
                             )
                         )
-                        with open("logs/vote_repository_debug.log", "a") as f:
-                            f.write(f"{datetime.now().isoformat()} - 执行删除: {str(delete_query)}\n")
                             
                         await session.execute(delete_query)
                         action = "removed"
@@ -449,8 +436,6 @@ class PostRepository(BaseRepository):
                             )
                             .values(vote_type=vote_type.value)
                         )
-                        with open("logs/vote_repository_debug.log", "a") as f:
-                            f.write(f"{datetime.now().isoformat()} - 执行更新: {str(update_query)}\n")
                             
                         await session.execute(update_query)
                         action = "updated"
@@ -462,8 +447,6 @@ class PostRepository(BaseRepository):
                         vote_type=vote_type.value,
                         created_at=datetime.now()
                     )
-                    with open("logs/vote_repository_debug.log", "a") as f:
-                        f.write(f"{datetime.now().isoformat()} - 执行插入: {str(insert_query)}\n")
                         
                     await session.execute(insert_query)
                     action = "added"
@@ -482,9 +465,6 @@ class PostRepository(BaseRepository):
                     )
                 )
                 
-                with open("logs/vote_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 执行统计查询\n")
-                
                 upvotes_result = await session.execute(upvotes_query)
                 downvotes_result = await session.execute(downvotes_query)
                 
@@ -500,15 +480,10 @@ class PostRepository(BaseRepository):
                         updated_at=datetime.now()
                     )
                 )
-                with open("logs/vote_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 执行更新帖子: {str(update_post_query)}\n")
                 
                 try:
                     await session.execute(update_post_query)
                     await session.commit()
-                    
-                    with open("logs/vote_repository_debug.log", "a") as f:
-                        f.write(f"{datetime.now().isoformat()} - 提交事务成功\n")
                 except Exception as e:
                     with open("logs/vote_repository_debug.log", "a") as f:
                         f.write(f"{datetime.now().isoformat()} - 更新帖子失败: {str(e)}\n")
@@ -522,9 +497,6 @@ class PostRepository(BaseRepository):
                     "user_vote": None if action == "removed" else vote_type.value,
                     "action": action
                 }
-                
-                with open("logs/vote_repository_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - vote_post完成, 返回结果: {json.dumps(result, default=str)}\n")
                 
                 return result
         except Exception as e:
@@ -690,8 +662,6 @@ class PostRepository(BaseRepository):
                         except Exception as tag_error:
                             logger.warning(f"插入标签 {tag_id} 关联失败: {str(tag_error)}")
                             # 继续处理下一个标签
-                    
-                    logger.info(f"为帖子 {post_id} 关联了 {success_count}/{len(tag_ids)} 个标签")
                 
                 # 提交事务
                 await db.commit()
