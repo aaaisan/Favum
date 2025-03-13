@@ -16,7 +16,8 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
 from .base_repository import BaseRepository
-from ..models import Post, post_tags, PostVote, VoteType, Section, Category , User, Tag
+from ..models import Post, PostVote, VoteType, Section, Category , User, Tag
+from ..models.post_tag import post_tags  # 正确导入post_tags表
 from ...core.exceptions import BusinessError
 from ..database import AsyncSessionLocal, async_get_db
 import traceback
@@ -50,11 +51,15 @@ class PostRepository(BaseRepository):
             Optional[Dict[str, Any]]: 帖子数据字典，不存在则返回None
         """
         try:
+            logger.info(f"开始获取帖子关联信息，ID: {post_id}, include_hidden: {include_hidden}")
+            
             async with async_get_db() as db:
                 # 构建查询条件
                 conditions = [self.model.id == post_id, self.model.is_deleted == False]
                 if not include_hidden:
                     conditions.append(self.model.is_hidden == False)
+                
+                logger.info(f"查询条件: {conditions}")
                 
                 # 构建查询，加载关联实体
                 query = (
@@ -62,40 +67,87 @@ class PostRepository(BaseRepository):
                     .options(
                         joinedload(self.model.category),
                         joinedload(self.model.section),
-                        joinedload(self.model.tags)
+                        joinedload(self.model.tags),
+                        joinedload(self.model.author)
                     )
                     .where(and_(*conditions))
                 )
                 
                 # 执行查询
-                result = await db.execute(query)
-                post = result.unique().scalar_one_or_none()
-                
-                if not post:
-                    logger.warning(f"未找到帖子，ID: {post_id}")
+                try:
+                    result = await db.execute(query)
+                    post = result.unique().scalar_one_or_none()
+                    
+                    if not post:
+                        logger.warning(f"未找到帖子，ID: {post_id}")
+                        return None
+                        
+                    logger.info(f"找到帖子，ID: {post_id}")
+                    post_dict = self.model_to_dict(post)
+                    
+                    # 添加关联实体信息
+                    if post.category:
+                        logger.info(f"处理分类信息，ID: {post.category_id}")
+                        category_dict = {
+                            "id": post.category.id,
+                            "name": post.category.name,
+                            "description": post.category.description or "",
+                            "created_at": post.category.created_at.isoformat() if hasattr(post.category.created_at, 'isoformat') else post.category.created_at
+                        }
+                        post_dict["category"] = category_dict
+                    else:
+                        logger.info(f"帖子没有关联分类，ID: {post_id}")
+                        post_dict["category"] = None
+                        
+                    if post.section:
+                        logger.info(f"处理版块信息，ID: {post.section_id}")
+                        section_dict = {
+                            "id": post.section.id,
+                            "name": post.section.name,
+                            "description": post.section.description or "",
+                            "created_at": post.section.created_at.isoformat() if hasattr(post.section.created_at, 'isoformat') else post.section.created_at
+                        }
+                        post_dict["section"] = section_dict
+                    else:
+                        logger.info(f"帖子没有关联版块，ID: {post_id}")
+                        post_dict["section"] = None
+                    
+                    # 不要直接访问post.comments，而是设置为空列表
+                    logger.info(f"设置评论为空列表，ID: {post_id}")
+                    post_dict["comments"] = []
+                        
+                    # 确保标签列表始终存在
+                    if post.tags:
+                        logger.info(f"处理标签信息，数量: {len(post.tags)}")
+                        post_dict["tags"] = [{
+                            "id": tag.id,
+                            "name": tag.name,
+                            "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at,
+                            "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
+                        } for tag in post.tags]
+                    else:
+                        logger.info(f"帖子没有标签，ID: {post_id}")
+                        post_dict["tags"] = []
+                        
+                    # 添加作者信息
+                    if post.author:
+                        logger.info(f"处理作者信息，ID: {post.author_id}")
+                        author_dict = {
+                            "id": post.author.id,
+                            "username": post.author.username,
+                            "avatar_url": post.author.avatar_url,
+                            "role": post.author.role
+                        }
+                        post_dict["author"] = author_dict
+                    else:
+                        logger.info(f"帖子没有作者信息，ID: {post_id}")
+                        post_dict["author"] = None
+                        
+                    logger.info(f"成功获取帖子关联信息，ID: {post_id}")
+                    return post_dict
+                except Exception as query_error:
+                    logger.error(f"执行查询失败，ID: {post_id}, 错误: {str(query_error)}", exc_info=True)
                     return None
-                    
-                post_dict = self.model_to_dict(post)
-                
-                # 添加关联实体信息
-                if post.category:
-                    post_dict["category"] = self.model_to_dict(post.category)
-                    
-                if post.section:
-                    post_dict["section"] = self.model_to_dict(post.section)
-
-                if post.comments:
-                    post_dict["comments"] = [
-                        self.model_to_dict(comment) for comment in post.comments
-                    ]
-                    
-                # 确保标签列表始终存在
-                post_dict["tags"] = []
-                
-                if post.tags:
-                    post_dict["tags"] = [self.model_to_dict(tag) for tag in post.tags]
-                    
-                return post_dict
         except Exception as e:
             logger.error(f"获取帖子关联信息失败，ID: {post_id}, 错误: {str(e)}", exc_info=True)
             return None
@@ -111,122 +163,182 @@ class PostRepository(BaseRepository):
         """获取帖子列表
         
         Args:
-            skip: 跳过的记录数
-            limit: 返回的最大记录数
-            filter_options: 过滤选项
+            skip: 分页偏移
+            limit: 每页数量
+            filter_options: 过滤条件字典，支持按作者、分类、版块等筛选
             sort_by: 排序字段
             sort_order: 排序方向
             
         Returns:
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
-        async with async_get_db() as db:
-            # 构建查询
-            query = select(Post)
+        try:
+            logger.info(f"开始获取帖子列表：skip={skip}, limit={limit}, filter_options={filter_options}")
             
-            # 应用过滤条件
-            if filter_options:
-                if "author_id" in filter_options:
-                    query = query.where(Post.author_id == filter_options["author_id"])
-                
-                if "category_id" in filter_options:
-                    query = query.where(Post.category_id == filter_options["category_id"])
-                
-                if "section_id" in filter_options:
-                    query = query.where(Post.section_id == filter_options["section_id"])
-                
-                # 只获取未删除的帖子，除非特别指定
-                if filter_options.get("include_deleted", False) is False:
-                    query = query.where(Post.is_deleted == False)
-                
-                # 只获取未隐藏的帖子，除非特别指定
-                if filter_options.get("include_hidden", False) is False:
-                    query = query.where(Post.is_hidden == False)
-            else:
-                # 默认只获取未删除和未隐藏的帖子
-                query = query.where(Post.is_deleted == False)
-                query = query.where(Post.is_hidden == False)
-            
-            # 应用排序
-            if sort_by:
-                if hasattr(Post, sort_by):
-                    sort_column = getattr(Post, sort_by)
-                    if sort_order and sort_order.lower() == "asc":
-                        query = query.order_by(asc(sort_column))
-                    else:
-                        query = query.order_by(desc(sort_column))
-            
-            # 获取总记录数
-            count_query = select(func.count()).select_from(query.subquery())
-            count_result = await db.execute(count_query)
-            total = count_result.scalar() or 0
-            
-            # 应用分页
-            query = query.offset(skip).limit(limit)
-            
-            # 执行查询
-            result = await db.execute(query)
-            posts = result.scalars().all()
-            
-            # 转换为字典
-            post_dicts = []
-            for post in posts:
-                post_dict = self.model_to_dict(post)
-                
-                # 获取作者信息
-                # from ..models.user import User
-                user_query = select(User).where(User.id == post.author_id)
-                user_result = await db.execute(user_query)
-                user = user_result.scalar_one_or_none()
-                
-                if user:
-                    post_dict["author"] = self.model_to_dict(user)
-                    # 只保留需要的字段
-                    post_dict["author"] = {
-                        "id": user.id,
-                        "username": user.username,
-                        "avatar_url": user.avatar_url if hasattr(user, "avatar_url") else None
-                    }
-                
-                # 获取分类信息
-                # from ..models.category import Category
-                category_query = select(Category).where(Category.id == post.category_id)
-                category_result = await db.execute(category_query)
-                category = category_result.scalar_one_or_none()
-                
-                if category:
-                    post_dict["category"] = self.model_to_dict(category)
-                
-                # 获取版块信息
-                # from ..models.section import Section
-                if post.section_id:
-                    section_query = select(Section).where(Section.id == post.section_id)
-                    section_result = await db.execute(section_query)
-                    section = section_result.scalar_one_or_none()
-                    
-                    if section:
-                        post_dict["section"] = self.model_to_dict(section)
-                
-                # 获取标签信息
-                from ..models.tag import Tag
-                from ..models.post_tag import PostTag
-                
-                tag_query = select(Tag).join(
-                    PostTag, PostTag.tag_id == Tag.id
-                ).where(
-                    PostTag.post_id == post.id
+            async with async_get_db() as db:
+                # 构建查询
+                query = select(Post).options(
+                    joinedload(Post.category),
+                    joinedload(Post.section),
+                    joinedload(Post.tags),
+                    joinedload(Post.author)
                 )
                 
-                tag_result = await db.execute(tag_query)
-                tags = tag_result.scalars().all()
+                # 应用过滤条件
+                if filter_options:
+                    logger.info(f"应用过滤条件: {filter_options}")
+                    if "author_id" in filter_options:
+                        query = query.where(Post.author_id == filter_options["author_id"])
+                    
+                    if "category_id" in filter_options:
+                        query = query.where(Post.category_id == filter_options["category_id"])
+                    
+                    if "section_id" in filter_options:
+                        query = query.where(Post.section_id == filter_options["section_id"])
+                    
+                    # 处理标签筛选
+                    if "tag_ids" in filter_options and filter_options["tag_ids"]:
+                        # 使用子查询找出包含指定标签的帖子ID
+                        tag_ids = filter_options["tag_ids"]
+                        logger.info(f"应用标签过滤: {tag_ids}")
+                        tag_query = (
+                            select(post_tags.c.post_id)
+                            .where(post_tags.c.tag_id.in_(tag_ids))
+                            .distinct()
+                        )
+                        tag_results = await db.execute(tag_query)
+                        post_ids = [row[0] for row in tag_results.all()]
+                        
+                        if post_ids:
+                            logger.info(f"找到包含标签的帖子IDs: {post_ids}")
+                            query = query.where(Post.id.in_(post_ids))
+                        else:
+                            # 如果没有包含这些标签的帖子，返回空列表
+                            logger.info("没有找到包含指定标签的帖子，返回空列表")
+                            return [], 0
+                    
+                    # 只获取未删除的帖子，除非特别指定
+                    if filter_options.get("include_deleted", False) is False:
+                        query = query.where(Post.is_deleted == False)
+                    
+                    # 处理隐藏帖子的查询逻辑
+                    if "include_hidden" in filter_options:
+                        # 如果include_hidden为True，不添加任何条件（即显示所有帖子，包括隐藏的）
+                        if not filter_options["include_hidden"]:
+                            # 如果为False，只显示未隐藏的帖子
+                            query = query.where(Post.is_hidden == False)
+                    else:
+                        # 默认情况下，只显示未隐藏的帖子
+                        query = query.where(Post.is_hidden == False)
+                else:
+                    # 默认只获取未删除和未隐藏的帖子
+                    logger.info("使用默认过滤条件: 未删除且未隐藏")
+                    query = query.where(Post.is_deleted == False)
+                    query = query.where(Post.is_hidden == False)
                 
-                if tags:
-                    post_dict["tags"] = [self.model_to_dict(tag) for tag in tags]
+                # 应用排序
+                if sort_by:
+                    logger.info(f"应用排序: {sort_by} {sort_order}")
+                    if hasattr(Post, sort_by):
+                        sort_column = getattr(Post, sort_by)
+                        if sort_order and sort_order.lower() == "asc":
+                            query = query.order_by(asc(sort_column))
+                        else:
+                            query = query.order_by(desc(sort_column))
+                    else:
+                        logger.warning(f"排序字段 {sort_by} 不存在，使用默认排序")
+                        query = query.order_by(desc(Post.created_at))
+                else:
+                    # 默认按创建时间倒序排序
+                    query = query.order_by(desc(Post.created_at))
                 
-                # 添加到结果列表
-                post_dicts.append(post_dict)
-            
-            return post_dicts, total
+                # 查询总数
+                count_query = select(func.count(Post.id))
+                for clause in query.whereclause.clauses if hasattr(query, 'whereclause') and hasattr(query.whereclause, 'clauses') else []:
+                    count_query = count_query.where(clause)
+                
+                count_result = await db.execute(count_query)
+                total = count_result.scalar() or 0
+                
+                logger.info(f"查询到的帖子总数: {total}")
+                
+                # 应用分页
+                query = query.offset(skip).limit(limit)
+                
+                # 执行查询
+                result = await db.execute(query)
+                # 使用unique()确保关系实体正确去重
+                posts = result.unique().scalars().all()
+                
+                logger.info(f"查询到 {len(posts)} 条帖子")
+                
+                # 转换为字典
+                post_dicts = []
+                for post in posts:
+                    try:
+                        post_dict = self.model_to_dict(post)
+                        
+                        # 添加分类信息
+                        if post.category:
+                            category_dict = {
+                                "id": post.category.id,
+                                "name": post.category.name,
+                                "description": post.category.description or "",
+                                "created_at": post.category.created_at.isoformat() if hasattr(post.category.created_at, 'isoformat') else post.category.created_at
+                            }
+                            post_dict["category"] = category_dict
+                        else:
+                            post_dict["category"] = None
+                            
+                        # 添加版块信息
+                        if post.section:
+                            section_dict = {
+                                "id": post.section.id,
+                                "name": post.section.name,
+                                "description": post.section.description or "",
+                                "created_at": post.section.created_at.isoformat() if hasattr(post.section.created_at, 'isoformat') else post.section.created_at
+                            }
+                            post_dict["section"] = section_dict
+                        else:
+                            post_dict["section"] = None
+                            
+                        # 添加标签信息
+                        if post.tags:
+                            post_dict["tags"] = [{
+                                "id": tag.id,
+                                "name": tag.name,
+                                "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at,
+                                "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
+                            } for tag in post.tags]
+                        else:
+                            post_dict["tags"] = []
+                        
+                        # 添加作者信息
+                        if post.author:
+                            logger.info(f"处理作者信息，ID: {post.author_id}")
+                            author_dict = {
+                                "id": post.author.id,
+                                "username": post.author.username,
+                                "avatar_url": post.author.avatar_url,
+                                "role": post.author.role
+                            }
+                            post_dict["author"] = author_dict
+                        else:
+                            post_dict["author"] = None
+                        
+                        post_dict["comments"] = None
+                        
+                        # 添加到结果列表
+                        post_dicts.append(post_dict)
+                    except Exception as e:
+                        logger.error(f"处理帖子 {post.id} 失败: {str(e)}", exc_info=True)
+                        # 继续处理下一个帖子
+                
+                logger.info(f"成功处理 {len(post_dicts)}/{len(posts)} 条帖子")
+                return post_dicts, total
+        except Exception as e:
+            logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
+            return [], 0
     
     async def update_tags(self, post_id: int, tag_ids: List[int]) -> bool:
         """更新帖子的标签关联
@@ -326,7 +438,7 @@ class PostRepository(BaseRepository):
             bool: 操作是否成功
         """
         try:
-            async with self.session() as session:
+            async with async_get_db() as db:
                 # 构建更新语句
                 stmt = (
                     update(self.model)
@@ -338,8 +450,8 @@ class PostRepository(BaseRepository):
                 )
                 
                 # 执行更新
-                result = await session.execute(stmt)
-                await session.commit()
+                result = await db.execute(stmt)
+                await db.commit()
                 
                 # 检查是否找到并更新了记录
                 return result.rowcount > 0
@@ -365,7 +477,7 @@ class PostRepository(BaseRepository):
                 PostVote.user_id == user_id
             )
         )
-        result = await self.db.execute(query)
+        result = await async_get_db().execute(query)
         vote = result.scalar_one_or_none()
         
         return vote.vote_type.value if vote else None
@@ -384,7 +496,7 @@ class PostRepository(BaseRepository):
         try:
             
             # 使用BaseRepository的session上下文管理器
-            async with self.session() as session:
+            async with async_get_db() as db:
                 # 首先检查帖子是否存在
                 post_query = select(self.model).where(
                     and_(
@@ -393,7 +505,7 @@ class PostRepository(BaseRepository):
                     )
                 )
                 
-                post_result = await session.execute(post_query)
+                post_result = await db.execute(post_query)
                 post = post_result.scalar_one_or_none()
                 
                 if not post:
@@ -409,7 +521,7 @@ class PostRepository(BaseRepository):
                     )
                 )
                 
-                vote_result = await session.execute(vote_query)
+                vote_result = await db.execute(vote_query)
                 existing_vote = vote_result.scalar_one_or_none()
                 
                 if existing_vote:
@@ -422,7 +534,7 @@ class PostRepository(BaseRepository):
                             )
                         )
                             
-                        await session.execute(delete_query)
+                        await db.execute(delete_query)
                         action = "removed"
                     else:
                         # 如果已投票但投票类型不同，则更新投票类型
@@ -437,7 +549,7 @@ class PostRepository(BaseRepository):
                             .values(vote_type=vote_type.value)
                         )
                             
-                        await session.execute(update_query)
+                        await db.execute(update_query)
                         action = "updated"
                 else:
                     # 如果尚未投票，则创建新投票
@@ -448,7 +560,7 @@ class PostRepository(BaseRepository):
                         created_at=datetime.now()
                     )
                         
-                    await session.execute(insert_query)
+                    await db.execute(insert_query)
                     action = "added"
                 
                 # 获取最新的投票统计
@@ -465,8 +577,8 @@ class PostRepository(BaseRepository):
                     )
                 )
                 
-                upvotes_result = await session.execute(upvotes_query)
-                downvotes_result = await session.execute(downvotes_query)
+                upvotes_result = await db.execute(upvotes_query)
+                downvotes_result = await db.execute(downvotes_query)
                 
                 upvotes_count = upvotes_result.scalar() or 0
                 downvotes_count = downvotes_result.scalar() or 0
@@ -482,8 +594,8 @@ class PostRepository(BaseRepository):
                 )
                 
                 try:
-                    await session.execute(update_post_query)
-                    await session.commit()
+                    await db.execute(update_post_query)
+                    await db.commit()
                 except Exception as e:
                     with open("logs/vote_repository_debug.log", "a") as f:
                         f.write(f"{datetime.now().isoformat()} - 更新帖子失败: {str(e)}\n")
@@ -515,9 +627,9 @@ class PostRepository(BaseRepository):
             int: 投票计数
         """
         try:
-            async with self.session() as session:
+            async with async_get_db() as db:
                 query = select(self.model.vote_count).where(self.model.id == post_id)
-                result = await session.execute(query)
+                result = await db.execute(query)
                 return result.scalar_one_or_none() or 0
         except Exception as e:
             with open("logs/vote_count_debug.log", "a") as f:
@@ -587,8 +699,8 @@ class PostRepository(BaseRepository):
         )
         
         # 执行更新
-        result = await self.db.execute(stmt)
-        await self.db.commit()
+        result = await async_get_db().execute(stmt)
+        await async_get_db().commit()
         
         # 检查是否找到并更新了记录
         return result.rowcount > 0

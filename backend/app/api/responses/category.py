@@ -12,10 +12,9 @@ class CategoryResponse(BaseModel):
     description: Optional[str] = None
     parent_id: Optional[int] = None
     order: int = 0
-    created_at: datetime
+    created_at: str  # 使用字符串类型接收ISO格式的日期时间
     
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "ignore"}
 
 class CategoryDetailResponse(CategoryResponse):
     """类别详情响应模型，包含子类别

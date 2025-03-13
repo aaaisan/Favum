@@ -9,11 +9,10 @@ class TagResponse(BaseModel):
     """
     id: int
     name: str
-    created_at: datetime
+    created_at: str  # 使用字符串类型接收ISO格式的日期时间
     post_count: Optional[int] = 0
     
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "ignore"}
 
 class TagListResponse(BaseModel):
     """标签列表响应模型"""

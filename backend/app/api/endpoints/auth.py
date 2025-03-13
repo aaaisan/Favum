@@ -446,6 +446,72 @@ async def swagger_login(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+@router.post("/swagger-auth", response_model=TokenResponse, tags=["认证"])
+async def swagger_auth(
+    request: Request,
+    username: str = "admin",
+    password: str = "admin123"
+):
+    """Swagger UI专用认证端点
+    
+    使用此端点可以在Swagger UI中直接获取访问令牌:
+    1. 输入您的用户名和密码
+    2. 执行此请求获取令牌
+    3. 复制返回的 access_token 值
+    4. 点击右上角的 Authorize 按钮
+    5. 在弹出窗口中输入: Bearer {access_token}
+    6. 点击 Authorize 完成认证
+    
+    此端点仅用于API文档测试，跳过了验证码验证。
+    """
+    try:
+        user = await authenticate_user(username, password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="用户名或密码错误",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # 获取用户角色和权限
+        role_name = user["role"] if isinstance(user, dict) else user.role
+        if hasattr(role_name, 'value'):
+            role_name = role_name.value
+        
+        role = getattr(Role, role_name.upper(), Role.USER)
+        permissions = [p for p in get_role_permissions(role)]
+        
+        # 读取用户信息
+        user_id = user["id"] if isinstance(user, dict) else user.id
+        username = user["username"] if isinstance(user, dict) else user.username
+        
+        # 生成访问令牌
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={
+                "sub": username, 
+                "id": user_id, 
+                "role": role_name,
+                "permissions": permissions
+            },
+            expires_delta=access_token_expires
+        )
+        
+        # 返回符合TokenResponse的数据结构
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        }
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"认证服务器错误: {str(e)}",
+        )
+
 @router.post("/forgot-password", response_model=PasswordResetRequestResponse)
 @handle_exceptions(SQLAlchemyError, status_code=500, message="请求密码重置失败", include_details=True)
 @rate_limit(limit=5, window=300)  # 每5分钟限制5次请求
@@ -584,4 +650,83 @@ async def verify_email_get(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=e.message
+        )
+
+# 这个端点更加直观，专为Swagger UI测试设计
+@router.post("/api-key", tags=["认证"])
+async def get_api_key(
+    username: str = "admin",
+    password: str = "admin123"
+):
+    """获取API密钥（Bearer令牌）
+    
+    这个简化的端点专为Swagger UI测试设计：
+    1. 使用默认的管理员凭据（或您自己的凭据）
+    2. 执行此请求获取令牌
+    3. 复制完整的Authorization头值（包含Bearer前缀）
+    4. 点击右上角的Authorize按钮
+    5. 在ApiKeyAuth部分的文本框中粘贴整个值
+    6. 点击Authorize完成认证
+    
+    无需验证码，仅用于API测试。
+    
+    Returns:
+        访问令牌和使用示例
+    """
+    try:
+        user = await authenticate_user(username, password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="用户名或密码错误",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # 获取用户角色和权限
+        role_name = user["role"] if isinstance(user, dict) else user.role
+        if hasattr(role_name, 'value'):
+            role_name = role_name.value
+        
+        role = getattr(Role, role_name.upper(), Role.USER)
+        permissions = [p for p in get_role_permissions(role)]
+        
+        # 获取用户ID和用户名
+        user_id = user["id"] if isinstance(user, dict) else user.id
+        username = user["username"] if isinstance(user, dict) else user.username
+        
+        # 生成访问令牌
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={
+                "sub": username, 
+                "id": user_id, 
+                "role": role_name,
+                "permissions": permissions
+            },
+            expires_delta=access_token_expires
+        )
+        
+        # 构建带有Bearer前缀的Authorization头值
+        auth_header = f"Bearer {access_token}"
+        
+        # 返回详细的响应，包括如何使用令牌
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "authorization_header": auth_header,
+            "usage_example": "在Authorize对话框中的ApiKeyAuth部分直接粘贴整个authorization_header值",
+            "user_info": {
+                "id": user_id,
+                "username": username,
+                "role": role_name,
+                "permissions": permissions
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"认证服务器错误: {str(e)}",
         )

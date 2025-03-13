@@ -16,6 +16,8 @@ from .core.cache import RedisClient, cache_manager
 from jose import jwt  # 导入jwt模块
 from .middlewares import add_error_handler
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 # 配置日志
 logging.basicConfig(
@@ -29,6 +31,14 @@ logger = get_logger(__name__)
 
 # 初始化数据库
 init_db()
+
+# 定义允许的CORS源
+origins = [
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "*"
+]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -74,14 +84,28 @@ def create_app() -> FastAPI:
     
     app = FastAPI(
         title=settings.PROJECT_NAME,
-        description="论坛 API 接口文档",
+        description="论坛 API 接口文档\n\n### 认证说明\n1. 首先使用 `/api/v1/auth/swagger-auth` 端点获取JWT令牌\n2. 点击右上角的 'Authorize' 按钮\n3. 在弹出的对话框中输入 `Bearer your_jwt_token` (替换为您的实际令牌)\n4. 点击 'Authorize' 按钮完成认证",
         version=settings.VERSION,
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         docs_url=f"{settings.API_V1_STR}/docs",
         redoc_url=f"{settings.API_V1_STR}/redoc",
         lifespan=lifespan,
         generate_unique_id_function=custom_generate_unique_id,  # 自定义操作ID生成
-        redirect_slashes=False,  # 禁用路径尾部斜杠的自动重定向
+        redirect_slashes=False, 
+        swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect", # 禁用路径尾部斜杠的自动重定向
+        swagger_ui_init_oauth={
+            "usePkceWithAuthorizationCodeGrant": False,
+            "clientId": "swagger",
+            "clientSecret": "",
+            "appName": "Swagger UI"
+        },
+        swagger_ui_parameters={
+            "defaultModelsExpandDepth": -1,  # 隐藏默认模型
+            "persistAuthorization": True,    # 保持认证状态
+            "displayRequestDuration": True,  # 显示请求持续时间
+            "docExpansion": "list",          # 展开操作列表
+            "filter": True                   # 启用过滤功能
+        }
     )
 
     # CORS 中间件已在 middleware.py 中配置
@@ -97,6 +121,40 @@ def create_app() -> FastAPI:
     
     # 添加JWT模块到应用状态
     app.state.jwt = jwt
+    
+    # 添加自定义的安全方案定义
+    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+    
+    # 更新OpenAPI配置，添加API密钥安全方案
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+            
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        
+        # 添加API密钥认证方案
+        openapi_schema["components"]["securitySchemes"]["ApiKeyAuth"] = {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "输入格式: **Bearer your_jwt_token**"
+        }
+        
+        # 添加全局安全配置
+        openapi_schema["security"] = [
+            {"OAuth2PasswordBearer": []},
+            {"ApiKeyAuth": []}
+        ]
+        
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+    
+    app.openapi = custom_openapi
     
     return app
 

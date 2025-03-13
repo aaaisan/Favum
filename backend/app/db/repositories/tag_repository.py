@@ -10,6 +10,7 @@ from .base_repository import BaseRepository
 from ..database import async_get_db
 from ...core.exceptions import BusinessException
 import logging
+from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
 
@@ -386,15 +387,20 @@ class TagRepository(BaseRepository):
             tag = await self.get_by_id(tag_id)
             if not tag:
                 raise BusinessException(
-                    status_code=404,
-                    error_code="TAG_NOT_FOUND",
-                    message="标签不存在"
+                    code="TAG_NOT_FOUND",
+                    message="标签不存在",
+                    status_code=404
                 )
                 
             async with async_get_db() as session:
                 # 构建查询 - 使用left join确保能获取到帖子的所有相关标签
                 query = (
                     select(Post)
+                    .options(
+                        joinedload(Post.category),
+                        joinedload(Post.section),
+                        joinedload(Post.tags)
+                    )
                     .join(post_tags, Post.id == post_tags.c.post_id)
                     .where(
                         post_tags.c.tag_id == tag_id,
@@ -406,7 +412,7 @@ class TagRepository(BaseRepository):
                 )
                 
                 result = await session.execute(query)
-                posts = result.scalars().all()
+                posts = result.unique().scalars().all()
                 
                 logger.info(f"查询到 {len(posts)} 篇帖子")
                 
@@ -433,62 +439,65 @@ class TagRepository(BaseRepository):
                             "title": post.title,
                             "content": post.content[:200] + "..." if len(post.content) > 200 else post.content,
                             "author_id": post.author_id,
+                            "section_id": post.section_id,
+                            "category_id": post.category_id,
+                            "is_hidden": post.is_hidden,
                             "created_at": post.created_at.isoformat() if hasattr(post.created_at, 'isoformat') else post.created_at,
                             "updated_at": post.updated_at.isoformat() if hasattr(post.updated_at, 'isoformat') else post.updated_at,
+                            "is_deleted": post.is_deleted,
                             "vote_count": post.vote_count if hasattr(post, 'vote_count') else 0,
-                            "tags": []
                         }
                         
-                        # 添加可选字段
-                        if hasattr(post, 'section_id'):
-                            post_dict["section_id"] = post.section_id
-                        if hasattr(post, 'category_id'):
-                            post_dict["category_id"] = post.category_id
-                        if hasattr(post, 'is_hidden'):
-                            post_dict["is_hidden"] = post.is_hidden
-                        if hasattr(post, 'is_deleted'):
-                            post_dict["is_deleted"] = post.is_deleted
-                        
-                        # 获取帖子的所有标签
-                        try:
-                            tag_query = (
-                                select(Tag)
-                                .join(post_tags, Tag.id == post_tags.c.tag_id)
-                                .where(
-                                    post_tags.c.post_id == post.id,
-                                    Tag.is_deleted == False
-                                )
-                            )
-                            tag_result = await session.execute(tag_query)
-                            tags = tag_result.scalars().all()
+                        # 添加分类信息
+                        if post.category:
+                            category_dict = {
+                                "id": post.category.id,
+                                "name": post.category.name,
+                                "description": post.category.description,
+                                "created_at": post.category.created_at.isoformat() if hasattr(post.category.created_at, 'isoformat') else post.category.created_at
+                            }
+                            post_dict["category"] = category_dict
+                        else:
+                            post_dict["category"] = None
                             
+                        # 添加版块信息
+                        if post.section:
+                            section_dict = {
+                                "id": post.section.id,
+                                "name": post.section.name,
+                                "description": post.section.description,
+                                "created_at": post.section.created_at.isoformat() if hasattr(post.section.created_at, 'isoformat') else post.section.created_at
+                            }
+                            post_dict["section"] = section_dict
+                        else:
+                            post_dict["section"] = None
+                            
+                        # 添加标签信息
+                        if post.tags:
+                            post_dict["tags"] = [{
+                                "id": tag.id,
+                                "name": tag.name,
+                                "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at,
+                                "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
+                            } for tag in post.tags]
+                        else:
                             post_dict["tags"] = []
-                            for t in tags:
-                                tag_dict = {"id": t.id, "name": t.name}
-                                if hasattr(t, 'created_at'):
-                                    tag_dict["created_at"] = t.created_at.isoformat() if hasattr(t.created_at, 'isoformat') else t.created_at
-                                post_dict["tags"].append(tag_dict)
-                                
-                        except Exception as tag_error:
-                            logger.warning(f"获取帖子 {post.id} 的标签失败: {str(tag_error)}")
-                        
+                            
+                        post_dict["comments"] = None
                         posts_list.append(post_dict)
-                    except Exception as post_error:
-                        logger.warning(f"处理帖子 {post.id if hasattr(post, 'id') else '未知'} 失败: {str(post_error)}")
+                    except Exception as e:
+                        logger.error(f"处理帖子 {post.id} 失败: {str(e)}", exc_info=True)
                         continue
                 
-                logger.info(f"成功处理 {len(posts_list)}/{len(posts)} 篇帖子")
                 return posts_list, total
-            
         except BusinessException:
-            # 直接抛出业务异常
             raise
         except Exception as e:
-            logger.error(f"查询标签帖子失败: {str(e)}", exc_info=True)
+            logger.error(f"获取标签 {tag_id} 的帖子失败: {str(e)}", exc_info=True)
             raise BusinessException(
-                status_code=500,
-                error_code="GET_TAG_POSTS_ERROR",
-                message="获取标签帖子失败"
+                code="GET_POSTS_FAILED",
+                message="获取帖子失败",
+                status_code=500
             )
     
     async def search_tags(self, query: str, skip: int = 0, limit: int = 20) -> Tuple[List[Dict[str, Any]], int]:

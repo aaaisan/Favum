@@ -10,11 +10,10 @@ class SectionResponse(BaseModel):
     id: int
     name: str
     description: str
-    created_at: datetime
+    created_at: str  # 使用字符串类型接收ISO格式的日期时间
     post_count: Optional[int] = 0
     
-    class Config:
-        from_attributes = True
+    model_config = {"extra": "ignore"}
 
 class SectionDetailResponse(SectionResponse):
     """板块详情响应模型

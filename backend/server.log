@@ -1,0 +1,17 @@
+INFO:     Will watch for changes in these directories: ['/Users/aaaisan/forum/backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [11507] using StatReload
+/Users/aaaisan/forum/backend/.venv/lib/python3.12/site-packages/pydantic/_migration.py:283: UserWarning: `pydantic.generics:GenericModel` has been moved to `pydantic.BaseModel`.
+  warnings.warn(f'`{import_path}` has been moved to `{new_location}`.')
+INFO:     Started server process [11509]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+2025-03-13 18:51:05,834 - request - ERROR - Request failed
+{"timestamp": "2025-03-13T18:51:05.834484", "level": "ERROR", "logger": "request", "message": "Request failed", "module": "logging", "function": "_log", "line": 188}
+2025-03-13 18:52:28,071 - request - ERROR - Request failed
+{"timestamp": "2025-03-13T18:52:28.071508", "level": "ERROR", "logger": "request", "message": "Request failed", "module": "logging", "function": "_log", "line": 188}
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11509]
+INFO:     Stopping reloader process [11507]

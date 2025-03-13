@@ -50,19 +50,26 @@ class PostService(BaseService):
             Optional[Dict[str, Any]]: 帖子详情，不存在则返回None
         """
         try:
+            logger.info(f"获取帖子详情，ID: {post_id}, include_hidden: {include_hidden}")
             post = await self.repository.get_with_relations(post_id, include_hidden)
-            if post:
-                # 确保返回的帖子有一个标签列表
-                if "tags" not in post:
-                    post["tags"] = []
+            
+            if not post:
+                logger.warning(f"帖子不存在，ID: {post_id}")
+                return None
+                
+            # 确保返回的帖子有一个标签列表
+            if "tags" not in post:
+                post["tags"] = []
+                
+            # 确保返回的帖子有一个评论列表
+            if "comments" not in post:
+                post["comments"] = []
+                
+            logger.info(f"成功获取帖子详情，ID: {post_id}")
             return post
         except Exception as e:
-            logger.error(f"获取帖子详情失败，帖子ID: {post_id}, 错误: {str(e)}")
-            # 如果出现异常，使用基本get方法获取基本信息
-            basic_post = await self.get(post_id)
-            if basic_post:
-                basic_post["tags"] = []
-            return basic_post
+            logger.error(f"获取帖子详情失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
+            return None
     
     async def get_posts(
         self, 
@@ -94,17 +101,43 @@ class PostService(BaseService):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
-        return await self.repository.get_posts(
-            skip=skip,
-            limit=limit,
-            include_hidden=include_hidden,
-            category_id=category_id,
-            section_id=section_id,
-            author_id=author_id,
-            tag_ids=tag_ids,
-            sort_field=sort_field,
-            sort_order=sort_order
-        )
+        try:
+            logger.info(f"开始获取帖子列表: skip={skip}, limit={limit}, include_hidden={include_hidden}")
+            logger.info(f"过滤条件: category_id={category_id}, section_id={section_id}, author_id={author_id}, tag_ids={tag_ids}")
+            logger.info(f"排序: sort_field={sort_field}, sort_order={sort_order}")
+            
+            # 构建filter_options字典，包含所有过滤条件
+            filter_options = {}
+            
+            # 添加过滤条件
+            if include_hidden is not None:
+                filter_options["include_hidden"] = include_hidden
+                
+            if category_id is not None:
+                filter_options["category_id"] = category_id
+                
+            if section_id is not None:
+                filter_options["section_id"] = section_id
+                
+            if author_id is not None:
+                filter_options["author_id"] = author_id
+                
+            if tag_ids is not None:
+                filter_options["tag_ids"] = tag_ids
+            
+            logger.info(f"构建的filter_options: {filter_options}")
+            
+            # 调用仓储层方法，正确传递参数
+            return await self.repository.get_posts(
+                skip=skip,
+                limit=limit,
+                filter_options=filter_options,
+                sort_by=sort_field if sort_field else "created_at",
+                sort_order=sort_order
+            )
+        except Exception as e:
+            logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
+            raise
     
     async def create_post(self, post_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建帖子
@@ -130,20 +163,20 @@ class PostService(BaseService):
                     logger.error(f"创建帖子失败: 缺少必要字段 {field}")
                     raise BusinessException(
                         status_code=400,
-                        error_code="MISSING_REQUIRED_FIELD",
+                        code="MISSING_REQUIRED_FIELD",
                         message=f"缺少必要字段: {field}"
                     )
             
             # 使用repository的create方法创建帖子
             # 该方法已被覆盖，能够处理标签关联
             logger.info(f"准备创建帖子: {post_data}")
-            created_post = await self.repository.create(post_data)
+            created_post = await super().create(post_data)
             
             if not created_post:
                 logger.error("创建帖子失败")
                 raise BusinessException(
                     status_code=500,
-                    error_code="CREATE_POST_FAILED",
+                    code="CREATE_POST_FAILED",
                     message="创建帖子失败"
                 )
             
@@ -157,7 +190,7 @@ class PostService(BaseService):
             logger.error(f"创建帖子失败: {str(e)}", exc_info=True)
             raise BusinessException(
                 status_code=500,
-                error_code="CREATE_POST_ERROR",
+                code="CREATE_POST_ERROR",
                 message="创建帖子时发生错误"
             )
     

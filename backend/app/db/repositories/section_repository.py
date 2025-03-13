@@ -2,6 +2,7 @@ from sqlalchemy import select, func, delete, text, insert, and_, or_, desc, asc
 from sqlalchemy import select, func, update, delete, text, insert, and_, or_, desc, asc
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
+from sqlalchemy.orm import joinedload
 
 from ..models.section import Section
 from ..models.user import User
@@ -420,19 +421,26 @@ class SectionRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
+        from ..models.post_tag import post_tags
+        
         async with self.session() as session:
             # 检查版块是否存在
             section = await session.get(Section, section_id)
             if not section or section.is_deleted:
                 raise BusinessException(
-                    status_code=404, 
-                    error_code="SECTION_NOT_FOUND",
-                    message="版块不存在"
+                    code="SECTION_NOT_FOUND",
+                    message="版块不存在",
+                    status_code=404
                 )
             
             # 查询帖子
             posts_query = (
                 select(Post)
+                .options(
+                    joinedload(Post.category),
+                    joinedload(Post.section),
+                    joinedload(Post.tags)
+                )
                 .where(
                     Post.section_id == section_id,
                     Post.is_deleted == False
@@ -442,7 +450,7 @@ class SectionRepository(BaseRepository):
                 .limit(limit)
             )
             posts_result = await session.execute(posts_query)
-            posts = posts_result.scalars().all()
+            posts = posts_result.unique().scalars().all()
             
             # 查询总数
             count_query = select(func.count(Post.id)).where(
@@ -453,9 +461,54 @@ class SectionRepository(BaseRepository):
             total = count_result.scalar() or 0
             
             # 处理结果
-            posts_list = [self.model_to_dict(post) for post in posts]
-            
-            # TODO: 加载关联数据（作者、标签等）
+            posts_list = []
+            for post in posts:
+                try:
+                    post_dict = self.model_to_dict(post)
+                    
+                    # 添加分类信息
+                    if post.category:
+                        category_dict = {
+                            "id": post.category.id,
+                            "name": post.category.name,
+                            "description": post.category.description or "",
+                            "created_at": post.category.created_at.isoformat() if hasattr(post.category.created_at, 'isoformat') else post.category.created_at
+                        }
+                        post_dict["category"] = category_dict
+                    else:
+                        post_dict["category"] = None
+                        
+                    # 添加版块信息
+                    if post.section:
+                        section_dict = {
+                            "id": post.section.id,
+                            "name": post.section.name,
+                            "description": post.section.description or "",
+                            "created_at": post.section.created_at.isoformat() if hasattr(post.section.created_at, 'isoformat') else post.section.created_at
+                        }
+                        post_dict["section"] = section_dict
+                    else:
+                        post_dict["section"] = None
+                        
+                    # 添加标签信息
+                    if post.tags:
+                        post_dict["tags"] = [{
+                            "id": tag.id,
+                            "name": tag.name,
+                            "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at,
+                            "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
+                        } for tag in post.tags]
+                    else:
+                        post_dict["tags"] = []
+                    
+                    post_dict["comments"] = None
+                    posts_list.append(post_dict)
+                except Exception as e:
+                    # 记录错误但继续处理其他帖子
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"处理帖子 {post.id} 失败: {str(e)}", exc_info=True)
+                    continue
             
             return posts_list, total
     

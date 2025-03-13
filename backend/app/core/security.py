@@ -31,7 +31,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2认证方案
 # 配置token获取URL为/token以兼容Swagger UI
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/auth/login",  # 修改为正确的登录URL
+    scheme_name="JWT"  # 明确指定为JWT方案
+)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """

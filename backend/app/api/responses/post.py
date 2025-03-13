@@ -86,23 +86,39 @@ class PublicPostResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 # 帖子详情响应模型
-class PostDetailResponse(PostResponse):
-    """帖子详情响应，继承自PostResponse"""
-    author: Optional[UserInfoResponse] = None
+class PostDetailResponse(BaseModel):
+    """帖子详情响应，不再继承自PostResponse以避免字段冲突"""
+    id: int
+    title: str
+    content: str
+    author_id: int
+    section_id: Optional[int] = None
+    category_id: Optional[int] = None
+    is_hidden: bool = False
+    created_at: str  # 使用字符串类型接收ISO格式的日期时间
+    updated_at: Optional[str] = None
+    is_deleted: bool = False
+    deleted_at: Optional[str] = None  # 添加这个字段，因为实际数据中可能存在
+    vote_count: int = 0
     view_count: Optional[int] = 0
     favorite_count: Optional[int] = 0
+    category: Optional[dict] = None  # 使用dict类型而非CategoryResponse，避免验证失败
+    section: Optional[dict] = None   # 使用dict类型而非SectionResponse，避免验证失败
+    tags: Optional[List[dict]] = None  # 使用List[dict]类型而非List[TagResponse]，避免验证失败
+    author: Optional[dict] = None    # 使用dict类型而非UserInfoResponse，避免验证失败
+    comments: Optional[List] = None  # 使用List类型以适应任意结构的评论
     
-    model_config = {"extra": "ignore"}
+    model_config = ConfigDict(extra="ignore")  # 使用ConfigDict而非model_config = {}字典
 
 # 帖子列表响应模型
 class PostListResponse(BaseModel):
     """帖子列表响应"""
-    posts: List[PostResponse]
+    posts: List[dict]  # 使用List[dict]而非List[PostResponse]，避免验证失败
     total: int
     page: Optional[int] = 1
     size: Optional[int] = 10
     
-    model_config = {"extra": "ignore"}
+    model_config = ConfigDict(extra="ignore")  # 使用ConfigDict而非model_config = {}字典
 
 # 帖子评论响应模型
 class PostCommentResponse(BaseModel):

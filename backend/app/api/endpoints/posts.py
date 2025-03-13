@@ -68,7 +68,7 @@ async def get_post_owner(post_id: int) -> int:
         # 业务异常转换为HTTP异常
         logger.warning(f"获取帖子 {post_id} 作者ID时发生业务异常: {str(e)}")
         raise HTTPException(
-            status_code=404 if e.error_code == "post_not_found" else 400,
+            status_code=404 if e.code == "post_not_found" else 400,
             detail=str(e)
         )
     except HTTPException:
@@ -132,7 +132,7 @@ async def create_post(
         logger.error(f"业务异常: {e.message}, 状态码: {e.status_code}")
         raise HTTPException(
             status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            detail={"message": e.message, "error_code": e.code}
         )
     except Exception as e:
         # 处理所有其他异常
@@ -175,7 +175,7 @@ async def create_post(
 #         # 业务异常转换为HTTP异常
 #         raise HTTPException(
 #             status_code=e.status_code,
-#             detail={"message": e.message, "error_code": e.error_code}
+#             detail={"message": e.message, "error_code": e.code}
 #         )
 
 @router.get("", response_model=PostListResponse)
@@ -187,13 +187,15 @@ async def read_posts(
     section_id: Optional[int] = None,
     author_id: Optional[int] = None,
     tag_ids: Optional[List[int]] = Query(None),
-    sort_field: Optional[str] = None,
+    sort_by: Optional[str] = None,
     sort_order: Optional[str] = "desc",
     current_user: Optional[User] = Depends(get_current_user_optional),
     post_service: PostService = Depends(get_post_service),
 ):
     """
-    获取帖子列表，支持分页、筛选和排序
+    获取帖子列表
+    
+    支持分页、排序和多种筛选条件
     """
     try:
         # 获取帖子列表
@@ -205,7 +207,7 @@ async def read_posts(
             section_id=section_id,
             author_id=author_id,
             tag_ids=tag_ids,
-            sort_field=sort_field,
+            sort_field=sort_by,
             sort_order=sort_order
         )
         
@@ -223,48 +225,27 @@ async def read_posts(
                 "created_at": str(post.get("created_at")) if post.get("created_at") else "",
                 "updated_at": str(post.get("updated_at")) if post.get("updated_at") else None,
                 "is_deleted": post.get("is_deleted", False),
-                "vote_count": post.get("vote_count", 0)
+                "vote_count": post.get("vote_count", 0),
+                "category": post.get("category"),
+                "section": post.get("section"),
+                "tags": post.get("tags", []),
+                "author": post.get("author")
             }
-            
-            # 添加分类信息
-            if post.get("category"):
-                processed_post["category"] = {
-                    "id": post["category"].get("id"),
-                    "name": post["category"].get("name"),
-                    "created_at": str(post["category"].get("created_at")) if post["category"].get("created_at") else None
-                }
-            
-            # 添加版块信息
-            if post.get("section"):
-                processed_post["section"] = {
-                    "id": post["section"].get("id"),
-                    "name": post["section"].get("name")
-                }
-            
-            # 添加标签信息
-            if post.get("tags"):
-                processed_post["tags"] = []
-                for tag in post["tags"]:
-                    processed_post["tags"].append({
-                        "id": tag.get("id"),
-                        "name": tag.get("name"),
-                        "created_at": str(tag.get("created_at")) if tag.get("created_at") else None
-                    })
             
             processed_posts.append(processed_post)
         
-        # 返回符合PostListResponse结构的数据
-        return {
+        # 构建响应
+        response = {
             "posts": processed_posts,
             "total": total,
             "page": skip // limit + 1 if limit > 0 else 1,
             "size": limit
         }
-    except Exception as e:
-        error_msg = f"获取帖子列表失败: {str(e)}"
-        logger.error(error_msg, exc_info=True)
         
-        # 保持简单的错误返回
+        # 返回帖子列表，让FastAPI处理响应模型验证
+        return response
+    except Exception as e:
+        logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail={"message": "获取帖子列表失败", "error": str(e)}
@@ -280,15 +261,30 @@ async def read_post(
     获取帖子详情
     """
     try:
+        # 添加调试日志
+        import logging
+        debug_logger = logging.getLogger("post_detail_debug")
+        file_handler = logging.FileHandler("logs/post_detail_debug.log")
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        debug_logger.addHandler(file_handler)
+        debug_logger.setLevel(logging.DEBUG)
+        
+        debug_logger.debug(f"获取帖子详情 - 帖子ID: {post_id}")
+        
         # 获取帖子详情
         post = await post_service.get_post_detail(post_id=post_id)
         
+        debug_logger.debug(f"获取到的帖子数据: {post}")
+        
         if not post:
+            debug_logger.warning(f"帖子不存在 - 帖子ID: {post_id}")
             raise HTTPException(status_code=404, detail="帖子不存在")
         
         # 检查权限
         if post.get("is_hidden", False):
+            debug_logger.debug(f"帖子被隐藏 - 帖子ID: {post_id}")
             if not current_user:
+                debug_logger.warning(f"未授权用户尝试访问隐藏帖子 - 帖子ID: {post_id}")
                 raise HTTPException(status_code=404, detail="帖子不存在")
                 
             can_view_hidden = hasattr(current_user, 'permissions') and any(
@@ -296,68 +292,39 @@ async def read_post(
             )
             
             if not can_view_hidden and post.get("author_id") != current_user.id:
+                debug_logger.warning(f"用户无权查看隐藏帖子 - 帖子ID: {post_id}, 用户ID: {current_user.id}")
                 raise HTTPException(status_code=404, detail="帖子不存在")
         
-        # 处理帖子数据，确保结构与响应模型匹配
-        processed_post = {
-            "id": post.get("id"),
-            "title": post.get("title"),
-            "content": post.get("content", ""),
-            "author_id": post.get("author_id"),
-            "section_id": post.get("section_id"),
-            "category_id": post.get("category_id"),
-            "is_hidden": post.get("is_hidden", False),
-            "created_at": str(post.get("created_at")) if post.get("created_at") else "",
-            "updated_at": str(post.get("updated_at")) if post.get("updated_at") else None,
-            "is_deleted": post.get("is_deleted", False),
-            "vote_count": post.get("vote_count", 0),
-            "view_count": 0,  # 添加默认的查看次数
-            "favorite_count": 0  # 添加默认的收藏次数
-        }
+        # 确保所有必要的字段都存在
+        if "tags" not in post:
+            debug_logger.debug(f"帖子缺少tags字段，添加空列表 - 帖子ID: {post_id}")
+            post["tags"] = []
+        if "comments" not in post:
+            debug_logger.debug(f"帖子缺少comments字段，添加空列表 - 帖子ID: {post_id}")
+            post["comments"] = []
         
-        # 添加分类信息
-        if post.get("category"):
-            processed_post["category"] = {
-                "id": post["category"].get("id"),
-                "name": post["category"].get("name"),
-                "created_at": str(post["category"].get("created_at")) if post["category"].get("created_at") else None
-            }
+        # 添加PostDetailResponse需要的字段
+        if "view_count" not in post:
+            debug_logger.debug(f"帖子缺少view_count字段，添加默认值 - 帖子ID: {post_id}")
+            post["view_count"] = 0
+        if "favorite_count" not in post:
+            debug_logger.debug(f"帖子缺少favorite_count字段，添加默认值 - 帖子ID: {post_id}")
+            post["favorite_count"] = 0
         
-        # 添加版块信息
-        if post.get("section"):
-            processed_post["section"] = {
-                "id": post["section"].get("id"),
-                "name": post["section"].get("name")
-            }
+        # 打印最终返回的帖子数据
+        debug_logger.debug(f"返回帖子详情 - 帖子ID: {post_id}, 数据: {post}")
         
-        # 添加标签信息
-        if post.get("tags"):
-            processed_post["tags"] = []
-            for tag in post["tags"]:
-                processed_post["tags"].append({
-                    "id": tag.get("id"),
-                    "name": tag.get("name"),
-                    "created_at": str(tag.get("created_at")) if tag.get("created_at") else None
-                })
-        else:
-            processed_post["tags"] = []  # 确保tags字段存在
-        
-        # 添加作者信息（简化版）
-        processed_post["author"] = {
-            "id": post.get("author_id"),
-            "username": "未知用户",  # 默认用户名
-            "avatar_url": None,
-            "role": "user"
-        }
-        
-        return processed_post
+        # 直接返回帖子详情对象，让FastAPI处理响应模型验证
+        return post
     except HTTPException:
+        # 重新抛出HTTP异常
         raise
     except Exception as e:
-        error_msg = f"获取帖子详情失败, post_id={post_id}: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        
-        # 保持简单的错误返回
+        # 记录错误并返回500错误
+        logger.error(f"获取帖子详情失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
+        # 添加调试日志
+        if 'debug_logger' in locals():
+            debug_logger.error(f"获取帖子详情失败 - 帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail={"message": "获取帖子详情失败", "error": str(e)}
@@ -460,7 +427,7 @@ async def update_post(
         # 业务异常转换为HTTP异常
         raise HTTPException(
             status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            detail={"message": e.message, "error_code": e.code}
         )
 
 @router.delete("/{post_id}", response_model=PostDeleteResponse)
@@ -518,7 +485,7 @@ async def delete_post(
         # 业务异常转换为HTTP异常
         raise HTTPException(
             status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            detail={"message": e.message, "error_code": e.code}
         )
 
 @router.post("/{post_id}/restore", response_model=PostResponse)
@@ -557,7 +524,7 @@ async def restore_post(
         # 业务异常转换为HTTP异常
         raise HTTPException(
             status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            detail={"message": e.message, "error_code": e.code}
         )
 
 @router.patch("/{post_id}/visibility", response_model=PostResponse)
@@ -889,7 +856,7 @@ async def favorite_post(
                 f.write(f"{datetime.now().isoformat()} - 业务异常: {error_msg}\n")
             raise HTTPException(
                 status_code=e.status_code,
-                detail={"message": e.message, "error_code": e.error_code}
+                detail={"message": e.message, "error_code": e.code}
             )
     except HTTPException:
         # 直接重新抛出HTTP异常
@@ -950,7 +917,7 @@ async def unfavorite_post(
         # 将业务异常转换为HTTPException
         raise HTTPException(
             status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            detail={"message": e.message, "error_code": e.code}
         )
 
 @router.get("/{post_id}/favorite/status", response_model=bool)
@@ -1068,7 +1035,7 @@ async def read_post_comments(
         # 将业务异常转换为HTTPException
         raise HTTPException(
             status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            detail={"message": e.message, "error_code": e.code}
         )
 
 # @router.get("/debug-test", response_model=None)

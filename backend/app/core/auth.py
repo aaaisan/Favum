@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from fastapi import Depends, HTTPException, status, Request, Header
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 from jose import JWTError, jwt
 # from fastapi.security.utils import get_authorization_scheme_param
 
@@ -14,10 +14,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 # OAuth2密码流认证方案，指定token获取URL
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/auth/login",  # 修改为正确的登录端点
+    scheme_name="JWT"  # 明确指定为JWT认证方案
+)
+
+# 添加API密钥认证方案，使用Authorization头
+api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 
 # 可选的OAuth2密码流，不自动抛出错误
-oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
+oauth2_scheme_optional = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/auth/login",  # 修改为与上面相同的URL
+    auto_error=False,
+    scheme_name="JWT"  # 明确指定为JWT认证方案
+)
 
 def decode_token(token: str) -> Optional[Dict[str, Any]]:
     """解析JWT令牌
@@ -184,4 +194,45 @@ async def get_current_user_optional(token: str = Depends(oauth2_scheme_optional)
         return None
     except Exception as e:
         logger.error(f"可选获取用户时发生未预期的错误: {str(e)}", exc_info=True)
-        return None 
+        return None
+
+async def get_current_user_from_api_key(
+    api_key: str = Depends(api_key_header)
+) -> Optional[auth_schema.TokenData]:
+    """
+    从API密钥头部提取Bearer令牌并获取当前用户
+    
+    Args:
+        api_key: Authorization头部值，应包含Bearer令牌
+        
+    Returns:
+        Optional[auth_schema.TokenData]: 令牌数据或None
+    """
+    if not api_key:
+        return None
+        
+    # 提取Bearer令牌
+    try:
+        scheme, token = api_key.split()
+        if scheme.lower() != "bearer":
+            return None
+    except ValueError:
+        # 如果没有空格分隔，假设整个值是令牌
+        token = api_key
+    
+    # 解析令牌
+    payload = decode_token(token)
+    if not payload:
+        return None
+    
+    # 从payload中提取用户信息
+    username = payload.get("sub")
+    if not username:
+        return None
+    
+    # 创建令牌数据
+    return auth_schema.TokenData(
+        username=username,
+        role=payload.get("role", "user"),
+        permissions=payload.get("permissions", [])
+    ) 
