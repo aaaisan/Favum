@@ -2,7 +2,7 @@ from sqlalchemy import select, func, delete, text, insert, and_, or_, desc, asc
 from sqlalchemy import select, func, update, delete, text, insert, and_, or_, desc, asc
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import relationship
 
 from ..models.section import Section
 from ..models.user import User
@@ -436,11 +436,6 @@ class SectionRepository(BaseRepository):
             # 查询帖子
             posts_query = (
                 select(Post)
-                .options(
-                    joinedload(Post.category),
-                    joinedload(Post.section),
-                    joinedload(Post.tags)
-                )
                 .where(
                     Post.section_id == section_id,
                     Post.is_deleted == False

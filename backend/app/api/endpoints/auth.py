@@ -40,14 +40,13 @@ from ...schemas import auth as auth_schema
 from ...services.user_service import UserService
 from ...db.repositories.user_repository import UserRepository
 from fastapi.security import OAuth2PasswordRequestForm
+from ...core.decorators import public_endpoint, admin_endpoint
 
 router = APIRouter()
 
 @router.get("/check-username/{username}", response_model=LoginCheckResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="检查用户名失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-@cache(expire=60, include_query_params=True)
-async def check_username(request: Request, username: str):
+@public_endpoint(cache_ttl=60, custom_message="检查用户名失败")
+async def check_username(username: str):
     """检查用户名是否可用"""
     user_repository = UserRepository()
     
@@ -63,10 +62,8 @@ async def check_username(request: Request, username: str):
     }
 
 @router.get("/check-email/{email}", response_model=LoginCheckResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="检查邮箱失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
-@cache(expire=60, include_query_params=True)
-async def check_email(request: Request, email: str):
+@public_endpoint(cache_ttl=60, custom_message="检查邮箱失败")
+async def check_email(email: str):
     """检查邮箱是否可用"""
     user_repository = UserRepository()
     
@@ -82,9 +79,7 @@ async def check_email(request: Request, email: str):
     }
 
 @router.post("/register", response_model=TokenResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="用户注册失败", include_details=True)
-@rate_limit(limit=5, window=60)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(rate_limit_count=5, custom_message="用户注册失败")
 async def register(
     request: Request,
     user: auth_schema.UserRegister
@@ -166,9 +161,7 @@ async def register(
     }
 
 @router.post("/login", response_model=TokenResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="用户登录失败", include_details=True)
-@rate_limit(limit=10, window=60)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(rate_limit_count=10, custom_message="用户登录失败")
 async def login(
     request: Request,
     form_data: auth_schema.Login
@@ -274,6 +267,7 @@ async def login(
         raise
 
 @router.post("/token", response_model=TokenResponse)
+@public_endpoint(custom_message="获取访问令牌失败")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """获取访问令牌
     
@@ -358,8 +352,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         )
 
 @router.post("/test-token", response_model=TokenDataResponse)
-@validate_token
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(rate_limit_count=True, custom_message="测试令牌失败")
 async def test_token(
     request: Request
 ):
@@ -408,8 +401,7 @@ async def test_token(
         )
 
 @router.post("/swagger-login", include_in_schema=False)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="API授权失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(custom_message="API授权失败")
 async def swagger_login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends()
@@ -447,6 +439,7 @@ async def swagger_login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/swagger-auth", response_model=TokenResponse, tags=["认证"])
+@public_endpoint(custom_message="Swagger UI认证失败")
 async def swagger_auth(
     request: Request,
     username: str = "admin",
@@ -513,9 +506,7 @@ async def swagger_auth(
         )
 
 @router.post("/forgot-password", response_model=PasswordResetRequestResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="请求密码重置失败", include_details=True)
-@rate_limit(limit=5, window=300)  # 每5分钟限制5次请求
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(rate_limit_count=5, custom_message="请求密码重置失败")
 async def request_password_reset(
     request: Request,
     reset_request: auth_schema.PasswordResetRequest
@@ -537,9 +528,7 @@ async def request_password_reset(
     }
 
 @router.post("/reset-password", response_model=PasswordResetResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="密码重置失败", include_details=True)
-@rate_limit(limit=5, window=300)  # 每5分钟限制5次请求
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(rate_limit_count=5, custom_message="密码重置失败")
 async def reset_password(
     request: Request,
     reset_data: auth_schema.PasswordReset
@@ -575,8 +564,7 @@ async def reset_password(
         )
 
 @router.post("/verify-email", response_model=EmailVerificationResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="邮箱验证失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(custom_message="邮箱验证失败")
 async def verify_email(
     request: Request,
     verification_data: auth_schema.EmailVerification
@@ -612,8 +600,7 @@ async def verify_email(
         )
 
 @router.get("/verify-email/{token}", response_model=EmailVerificationRedirectResponse)
-@handle_exceptions(SQLAlchemyError, status_code=500, message="邮箱验证失败", include_details=True)
-@log_execution_time(level=logging.INFO, message="{function_name} 执行完成，耗时 {execution_time:.3f}秒")
+@public_endpoint(custom_message="邮箱验证失败")
 async def verify_email_get(
     request: Request,
     token: str,
@@ -654,6 +641,7 @@ async def verify_email_get(
 
 # 这个端点更加直观，专为Swagger UI测试设计
 @router.post("/api-key", tags=["认证"])
+@public_endpoint(custom_message="获取API密钥失败")
 async def get_api_key(
     username: str = "admin",
     password: str = "admin123"

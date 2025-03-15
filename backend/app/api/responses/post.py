@@ -66,11 +66,13 @@ class PostResponse(BaseModel):
     updated_at: Optional[str] = None
     is_deleted: bool = False
     vote_count: int = 0
-    category: Optional[CategoryResponse] = None
-    section: Optional[SectionResponse] = None
-    tags: Optional[List[TagResponse]] = None
-    comments: Optional[CommentListResponse] = None
-    model_config = {"extra": "ignore"}
+    category: Optional[dict] = None  # 保留完整结构但使用dict类型
+    section: Optional[dict] = None   # 保留完整结构但使用dict类型
+    tags: Optional[List[dict]] = None  # 保留完整结构但使用dict类型
+    author: Optional[dict] = None    # 保留完整结构但使用dict类型
+    tag_ids: Optional[List[int]] = None  # 添加tag_ids字段，用于ID引用模式
+    
+    model_config = ConfigDict(extra="ignore")
 
 # 公开帖子信息，仅包含非敏感内容
 class PublicPostResponse(BaseModel):
@@ -87,7 +89,7 @@ class PublicPostResponse(BaseModel):
 
 # 帖子详情响应模型
 class PostDetailResponse(BaseModel):
-    """帖子详情响应，不再继承自PostResponse以避免字段冲突"""
+    """帖子详情响应"""
     id: int
     title: str
     content: str
@@ -102,23 +104,24 @@ class PostDetailResponse(BaseModel):
     vote_count: int = 0
     view_count: Optional[int] = 0
     favorite_count: Optional[int] = 0
-    category: Optional[dict] = None  # 使用dict类型而非CategoryResponse，避免验证失败
-    section: Optional[dict] = None   # 使用dict类型而非SectionResponse，避免验证失败
-    tags: Optional[List[dict]] = None  # 使用List[dict]类型而非List[TagResponse]，避免验证失败
-    author: Optional[dict] = None    # 使用dict类型而非UserInfoResponse，避免验证失败
+    category: Optional[dict] = None  # 保留完整结构但使用dict类型
+    section: Optional[dict] = None   # 保留完整结构但使用dict类型
+    tags: Optional[List[dict]] = None  # 保留完整结构但使用dict类型
+    author: Optional[dict] = None    # 保留完整结构但使用dict类型
     comments: Optional[List] = None  # 使用List类型以适应任意结构的评论
+    tag_ids: Optional[List[int]] = None  # 添加tag_ids字段，用于ID引用模式
     
-    model_config = ConfigDict(extra="ignore")  # 使用ConfigDict而非model_config = {}字典
+    model_config = ConfigDict(extra="ignore")
 
 # 帖子列表响应模型
 class PostListResponse(BaseModel):
     """帖子列表响应"""
-    posts: List[dict]  # 使用List[dict]而非List[PostResponse]，避免验证失败
+    posts: List[dict]  # 使用dict
     total: int
     page: Optional[int] = 1
     size: Optional[int] = 10
     
-    model_config = ConfigDict(extra="ignore")  # 使用ConfigDict而非model_config = {}字典
+    model_config = ConfigDict(extra="ignore")
 
 # 帖子评论响应模型
 class PostCommentResponse(BaseModel):

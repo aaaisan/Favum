@@ -1,6 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List, Any
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -15,7 +13,8 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def password_strength(cls, v):
         if len(v) < 8:
             raise ValueError('密码长度至少为8个字符')
@@ -29,7 +28,8 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     password: Optional[str] = None
     
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def password_strength(cls, v):
         if v is not None and len(v) < 8:
             raise ValueError('密码长度至少为8个字符')

@@ -17,6 +17,8 @@ from sqlalchemy import desc, asc
 # from datetime import datetime, timedelta
 import secrets
 import hashlib
+import logging
+from datetime import datetime
 
 from ..core.base_service import BaseService
 from ..db.models import User
@@ -29,7 +31,7 @@ from ..core.config import settings
 # 导入邮件任务
 from ..tasks.email import send_welcome_email, send_reset_password_email, send_verification_email
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 创建代理用户仓库实例
 user_repository = UserRepository()
@@ -57,6 +59,8 @@ class UserService(BaseService):
     async def authenticate(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """验证用户凭据
         
+        验证用户提供的用户名和密码是否正确
+        
         Args:
             username: 用户名或邮箱
             password: 明文密码
@@ -64,25 +68,43 @@ class UserService(BaseService):
         Returns:
             Optional[Dict[str, Any]]: 验证成功返回用户信息，失败返回None
         """
-        # 先尝试用户名登录
-        user = await self.repository.get_by_username(username)
-        
-        # 如果用户名不存在，尝试邮箱登录
-        if not user:
-            user = await self.repository.get_by_email(username)
+        try:
+            # 先尝试用户名登录
+            user = await self.repository.get_by_username(username)
             
-        if not user:
+            # 如果用户名不存在，尝试邮箱登录
+            if not user:
+                user = await self.repository.get_by_email(username)
+                
+            if not user:
+                logger.info(f"用户验证失败: 用户不存在 - {username}")
+                return None
+                
+            # 检查用户是否被禁用或删除
+            if not user.get("is_active", False) or user.get("is_deleted", False):
+                logger.info(f"用户验证失败: 用户未激活或已删除 - {username}")
+                return None
+                
+            # 验证密码
+            if not verify_password(password, user.get("hashed_password", "")):
+                logger.info(f"用户验证失败: 密码错误 - {username}")
+                return None
+            
+            # 更新最后登录时间
+            user_id = user.get("id")
+            await self.repository.update_last_login(user_id)
+            
+            # 重新获取完整用户信息
+            user = await self.repository.get_by_id(user_id)
+            
+            # 格式化日期时间字段
+            self._format_datetime_fields(user)
+            
+            logger.info(f"用户验证成功: {username}")
+            return user
+        except Exception as e:
+            logger.error(f"用户验证失败: {str(e)}", exc_info=True)
             return None
-            
-        # 检查用户是否被禁用
-        if not user.get("is_active", False):
-            return None
-            
-        # 验证密码
-        if not verify_password(password, user.get("hashed_password", "")):
-            return None
-            
-        return user
     
     async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建新用户
@@ -230,7 +252,35 @@ class UserService(BaseService):
             user_data["hashed_password"] = hashed_password
             
         # 更新用户信息
-        return await self.update(user_id, user_data)
+        updated_user = await self.update(user_id, user_data)
+        
+        # 格式化日期时间字段
+        self._format_datetime_fields(updated_user)
+        
+        return updated_user
+        
+    def _format_datetime_fields(self, data: Dict[str, Any]) -> None:
+        """格式化字典中的日期时间字段为字符串
+        
+        Args:
+            data: 包含日期时间字段的字典
+        """
+        if not data:
+            return
+            
+        datetime_fields = ['created_at', 'updated_at', 'deleted_at', 'last_login', 'join_date']
+        for field in datetime_fields:
+            if field in data and data[field] and not isinstance(data[field], str):
+                data[field] = data[field].isoformat()
+        
+        # 处理嵌套字段
+        for key, value in data.items():
+            if isinstance(value, dict):
+                self._format_datetime_fields(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        self._format_datetime_fields(item)
         
     async def get_user_posts(self, user_id: int, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
         """获取用户的帖子列表
@@ -343,29 +393,108 @@ class UserService(BaseService):
         return restored_user
         
     async def get_user_profile(self, user_id: int) -> Dict[str, Any]:
-        """获取用户的详细资料
+        """获取用户详细资料
         
-        获取用户的详细资料，包括基本信息和统计数据（帖子数、评论数等）
+        返回包含用户基本信息和统计数据的资料
         
         Args:
             user_id: 用户ID
             
         Returns:
-            Dict[str, Any]: 用户资料详情
+            Dict[str, Any]: 用户资料
             
         Raises:
-            BusinessError: 如果用户不存在
+            BusinessException: 当用户不存在时抛出
         """
+        # 使用Repository获取用户详细资料
         user_profile = await self.repository.get_user_profile(user_id)
         
         if not user_profile:
             raise BusinessException(
                 message="用户不存在",
-                detail=f"未找到ID为{user_id}的用户",
-                error_code="USER_NOT_FOUND"
+                error_code="user_not_found",
+                status_code=404
             )
+        
+        # 格式化日期时间字段
+        self._format_datetime_fields(user_profile)
+        
+        return user_profile
+        
+    async def get_user_profile_id_ref(self, user_id: int) -> Dict[str, Any]:
+        """获取用户详细资料（ID引用版本）
+        
+        返回包含用户基本信息和ID引用的资料
+        
+        Args:
+            user_id: 用户ID
             
-        return user_profile 
+        Returns:
+            Dict[str, Any]: 用户资料
+            
+        Raises:
+            BusinessException: 当用户不存在时抛出
+        """
+        # 使用Repository获取用户详细资料
+        user_profile = await self.repository.get_user_profile_id_ref(user_id)
+        
+        if not user_profile:
+            raise BusinessException(
+                message="用户不存在",
+                error_code="user_not_found",
+                status_code=404
+            )
+        
+        # 格式化日期时间字段
+        self._format_datetime_fields(user_profile)
+        
+        return user_profile
+        
+    async def get_user_post_count(self, user_id: int) -> int:
+        """获取用户帖子数量
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            int: 帖子数量
+        """
+        return await self.repository.get_user_post_count(user_id)
+        
+    async def get_user_comment_count(self, user_id: int) -> int:
+        """获取用户评论数量
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            int: 评论数量
+        """
+        return await self.repository.get_user_comment_count(user_id)
+        
+    async def get_user_post_ids(self, user_id: int, limit: int = 10) -> List[int]:
+        """获取用户帖子ID列表
+        
+        Args:
+            user_id: 用户ID
+            limit: 最大返回数量
+            
+        Returns:
+            List[int]: 帖子ID列表
+        """
+        return await self.repository.get_user_post_ids(user_id, limit)
+        
+    async def get_user_favorite_post_ids(self, user_id: int, limit: int = 10) -> List[int]:
+        """获取用户收藏帖子ID列表
+        
+        Args:
+            user_id: 用户ID
+            limit: 最大返回数量
+            
+        Returns:
+            List[int]: 收藏帖子ID列表
+        """
+        return await self.repository.get_user_favorite_post_ids(user_id, limit)
     
     async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
         """通过ID获取用户信息

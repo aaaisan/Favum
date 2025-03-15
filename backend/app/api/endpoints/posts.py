@@ -179,6 +179,7 @@ async def create_post(
 #         )
 
 @router.get("", response_model=PostListResponse)
+@public_endpoint(cache_ttl=30, custom_message="获取帖子列表失败")
 async def read_posts(
     skip: int = 0,
     limit: int = 100,
@@ -189,15 +190,16 @@ async def read_posts(
     tag_ids: Optional[List[int]] = Query(None),
     sort_by: Optional[str] = None,
     sort_order: Optional[str] = "desc",
-    current_user: Optional[User] = Depends(get_current_user_optional),
     post_service: PostService = Depends(get_post_service),
 ):
     """
     获取帖子列表
     
+    同时提供完整的关联对象和ID引用(tag_ids)，前端可以选择使用哪种方式
     支持分页、排序和多种筛选条件
     """
     try:
+        # post_service = PostService()
         # 获取帖子列表
         posts, total = await post_service.get_posts(
             skip=skip,
@@ -214,23 +216,12 @@ async def read_posts(
         # 处理帖子数据，确保结构与响应模型匹配
         processed_posts = []
         for post in posts:
-            processed_post = {
-                "id": post.get("id"),
-                "title": post.get("title"),
-                "content": post.get("content", ""),
-                "author_id": post.get("author_id"),
-                "section_id": post.get("section_id"),
-                "category_id": post.get("category_id"),
-                "is_hidden": post.get("is_hidden", False),
-                "created_at": str(post.get("created_at")) if post.get("created_at") else "",
-                "updated_at": str(post.get("updated_at")) if post.get("updated_at") else None,
-                "is_deleted": post.get("is_deleted", False),
-                "vote_count": post.get("vote_count", 0),
-                "category": post.get("category"),
-                "section": post.get("section"),
-                "tags": post.get("tags", []),
-                "author": post.get("author")
-            }
+            # 提取标签ID
+            tag_ids = []
+            if "tags" in post and post["tags"]:
+                tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
+
+            processed_post = post_service.model_to_dict(post)
             
             processed_posts.append(processed_post)
         
@@ -252,6 +243,7 @@ async def read_posts(
         )
 
 @router.get("/{post_id}", response_model=PostDetailResponse)
+@public_endpoint(cache_ttl=30, custom_message="获取帖子详情失败")
 async def read_post(
     post_id: int,
     current_user: Optional[User] = Depends(get_current_user_optional),
@@ -259,6 +251,8 @@ async def read_post(
 ):
     """
     获取帖子详情
+    
+    同时提供完整的关联对象和ID引用(tag_ids)，前端可以选择使用哪种方式
     """
     try:
         # 添加调试日志
@@ -310,8 +304,13 @@ async def read_post(
         if "favorite_count" not in post:
             debug_logger.debug(f"帖子缺少favorite_count字段，添加默认值 - 帖子ID: {post_id}")
             post["favorite_count"] = 0
+            
+        # 添加tag_ids字段，用于ID引用模式
+        tag_ids = []
+        if post.get("tags"):
+            tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
+        post["tag_ids"] = tag_ids
         
-        # 打印最终返回的帖子数据
         debug_logger.debug(f"返回帖子详情 - 帖子ID: {post_id}, 数据: {post}")
         
         # 直接返回帖子详情对象，让FastAPI处理响应模型验证
@@ -331,6 +330,7 @@ async def read_post(
         )
 
 @router.put("/{post_id}", response_model=PostResponse)
+@public_endpoint(auth_required=True, custom_message="更新帖子失败")
 async def update_post(
     request: Request,
     post_id: int,
@@ -353,28 +353,28 @@ async def update_post(
     """
     try:
         # 验证用户是否已登录
-        authorization = request.headers.get('Authorization')
-        if not authorization or not authorization.startswith('Bearer '):
-            raise HTTPException(
-                status_code=401,
-                detail="缺少有效的身份验证令牌",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        # authorization = request.headers.get('Authorization')
+        # if not authorization or not authorization.startswith('Bearer '):
+        #     raise HTTPException(
+        #         status_code=401,
+        #         detail="缺少有效的身份验证令牌",
+        #         headers={"WWW-Authenticate": "Bearer"},
+        #     )
         
-        token = authorization.split(' ')[1]
+        # token = authorization.split(' ')[1]
         
-        # 验证token
-        from ...core.auth import decode_token
-        token_data = decode_token(token)
-        if not token_data:
-            raise HTTPException(
-                status_code=401,
-                detail="令牌无效或已过期",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        # # 验证token
+        # from ...core.auth import decode_token
+        # token_data = decode_token(token)
+        # if not token_data:
+        #     raise HTTPException(
+        #         status_code=401,
+        #         detail="令牌无效或已过期",
+        #         headers={"WWW-Authenticate": "Bearer"},
+        #     )
         
-        # 将用户信息存储在request.state中
-        request.state.user = token_data
+        # # 将用户信息存储在request.state中
+        # request.state.user = token_data
         
         # 获取当前用户ID
         current_user_id = request.state.user.get("id")
@@ -458,20 +458,19 @@ async def delete_post(
         existing_post = await post_service.get_post_detail(post_id)
         if not existing_post:
             raise HTTPException(status_code=404, detail="帖子不存在")
-        
-        # 检查权限
+            
+        # 检查权限 - 确认当前用户是帖子作者或管理员
         user_role = request.state.user.get("role", "user")
         user_id = request.state.user.get("id")
+        is_author = existing_post.get("author_id") == user_id
+        is_admin = user_role in ["admin", "super_admin", "moderator"]
         
-        # 如果是管理员或版主，直接允许访问
-        if user_role not in ["admin", "super_admin", "moderator"]:
-            # 检查是否为资源所有者
-            author_id = existing_post.get("author_id")
-            if str(author_id) != str(user_id):
-                raise HTTPException(
-                    status_code=403,
-                    detail="没有权限访问此资源"
-                )
+        if not (is_author or is_admin):
+            logger.warning(f"用户 {user_id} 无权限删除帖子 {post_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="没有权限删除此帖子"
+            )
         
         # 删除帖子
         success = await post_service.delete_post(post_id)

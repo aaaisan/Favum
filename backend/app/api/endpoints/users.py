@@ -5,6 +5,7 @@ from ...schemas import user as user_schema
 from ...schemas import post as post_schema
 from ...services.favorite_service import FavoriteService
 from ...services.user_service import UserService
+from ...services.post_service import PostService
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.enums import Role, Permission
 from ...core.exceptions import APIError, BusinessException
@@ -16,7 +17,7 @@ from ..responses import (
     UserResponse, 
     UserProfileResponse, 
     UserListResponse, 
-    UserDeleteResponse
+    UserDeleteResponse,
 )
 from ..responses.post import PostListResponse
 
@@ -65,7 +66,7 @@ async def create_user(
             detail={"message": e.message, "error_code": e.error_code}
         )
 
-@router.get("")
+@router.get("", response_model=UserListResponse)
 @public_endpoint(auth_required=True, custom_message="获取用户列表失败")
 async def read_users(
     request: Request,
@@ -74,8 +75,7 @@ async def read_users(
     sort: Optional[str] = None,
     order: str = "asc"
 ):
-    """
-    获取用户列表
+    """获取用户列表
     
     Args:
         request: 请求对象
@@ -83,52 +83,43 @@ async def read_users(
         limit: 每页数量
         sort: 排序字段
         order: 排序方向 ("asc"或"desc")
+        
+    Returns:
+        包含用户列表和总数的响应
     """
     try:
         # 从请求中获取用户信息
-        user_info = request.state.user
+        # user_info = request.state.user
         
-        # 创建模拟用户列表
-        users = [
-            {
-                "id": 46,
-                "username": "admin",
-                "email": "admin@example.com",
-                "bio": "测试更新个人简介",
-                "avatar_url": "https://example.com/avatars/new.jpg",
-                "is_active": True,
-                "role": "admin",
-                "created_at": "2025-03-05 18:16:28",
-                "updated_at": "2025-03-09 02:34:45"
-            },
-            {
-                "id": 47,
-                "username": "user1",
-                "email": "user1@example.com",
-                "bio": "普通用户",
-                "avatar_url": None,
-                "is_active": True,
-                "role": "user",
-                "created_at": "2025-03-01 10:00:00",
-                "updated_at": "2025-03-01 10:00:00"
-            },
-            {
-                "id": 48,
-                "username": "user2",
-                "email": "user2@example.com",
-                "bio": "另一个普通用户",
-                "avatar_url": None,
-                "is_active": True,
-                "role": "user",
-                "created_at": "2025-03-02 11:30:00",
-                "updated_at": "2025-03-02 11:30:00"
-            }
-        ]
+        # 创建用户服务实例
+        user_service = UserService()
+        
+        # 从数据库获取用户列表
+        users, total = await user_service.get_users(skip, limit, sort, order)
+        
+        # 处理用户数据，确保日期时间字段为字符串格式
+        processed_users = []
+        for user in users:
+            # 确保日期时间字段格式化为字符串
+            if user.get("created_at") and not isinstance(user.get("created_at"), str):
+                user["created_at"] = user["created_at"].isoformat()
+                
+            if user.get("updated_at") and not isinstance(user.get("updated_at"), str):
+                user["updated_at"] = user["updated_at"].isoformat()
+                
+            processed_users.append(user)
         
         # 返回用户列表和总数
-        return {"users": users, "total": len(users)}
+        return {"users": processed_users, "total": total}
+    except BusinessException as e:
+        # 处理业务异常
+        logger.error(f"业务错误: {str(e)}")
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "error_code": e.error_code}
+        )
     except Exception as e:
-        logger.error(f"Error retrieving users: {str(e)}")
+        logger.error(f"获取用户列表失败: {str(e)}", exc_info=True)
         raise APIError(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="获取用户列表失败"
@@ -166,15 +157,10 @@ async def read_current_user(
         
         # 获取用户详情
         user = await user_service.get_user_by_id(user_id)
-        
-        # 确保日期时间字段格式化为字符串
-        if user.get("created_at") and not isinstance(user.get("created_at"), str):
-            user["created_at"] = user["created_at"].isoformat()
+
+        processed_user = user_service.model_to_dict(user)
             
-        if user.get("updated_at") and not isinstance(user.get("updated_at"), str):
-            user["updated_at"] = user["updated_at"].isoformat()
-            
-        return user
+        return processed_user
         
     except Exception as e:
         logger.error(f"获取当前用户信息失败: {str(e)}", exc_info=True)
@@ -209,19 +195,8 @@ async def read_user(
         
         # 获取用户详情
         user = await user_service.get_user_by_id(user_id)
-        
-        # 处理用户数据，确保日期时间字段为字符串格式
-        processed_user = {
-            "id": user.get("id"),
-            "username": user.get("username"),
-            "email": user.get("email"),
-            "bio": user.get("bio"),
-            "avatar_url": user.get("avatar_url"),
-            "is_active": user.get("is_active", False),
-            "role": user.get("role", "user"),
-            "created_at": str(user.get("created_at")) if user.get("created_at") else "",
-            "updated_at": str(user.get("updated_at")) if user.get("updated_at") else ""
-        }
+
+        processed_user = user_service.model_to_dict(user)
         
         return processed_user
     except Exception as e:
@@ -268,19 +243,8 @@ async def update_user(
             user_data=user_update.model_dump(exclude_unset=True),
             current_user_id=current_user_id
         )
-        
-        # 处理用户数据，确保日期时间字段为字符串格式
-        processed_user = {
-            "id": updated_user.get("id"),
-            "username": updated_user.get("username"),
-            "email": updated_user.get("email"),
-            "bio": updated_user.get("bio"),
-            "avatar_url": updated_user.get("avatar_url"),
-            "is_active": updated_user.get("is_active", False),
-            "role": updated_user.get("role", "user"),
-            "created_at": str(updated_user.get("created_at")) if updated_user.get("created_at") else "",
-            "updated_at": str(updated_user.get("updated_at")) if updated_user.get("updated_at") else ""
-        }
+
+        processed_user = user_service.model_to_dict(updated_user)
         
         return processed_user
         
@@ -292,7 +256,7 @@ async def update_user(
         )
 
 @router.delete("/{user_id}", response_model=UserDeleteResponse)
-@owner_endpoint(owner_param_name="user_id", custom_message="删除用户失败")
+@admin_endpoint(custom_message="删除用户失败")
 async def delete_user(
     request: Request,
     user_id: int
@@ -362,19 +326,8 @@ async def restore_user(
         
         # 恢复用户
         restored_user = await user_service.restore_user(user_id)
-        
-        # 处理用户数据，确保日期时间字段为字符串格式
-        processed_user = {
-            "id": restored_user.get("id"),
-            "username": restored_user.get("username"),
-            "email": restored_user.get("email"),
-            "bio": restored_user.get("bio"),
-            "avatar_url": restored_user.get("avatar_url"),
-            "is_active": restored_user.get("is_active", False),
-            "role": restored_user.get("role", "user"),
-            "created_at": str(restored_user.get("created_at")) if restored_user.get("created_at") else "",
-            "updated_at": str(restored_user.get("updated_at")) if restored_user.get("updated_at") else ""
-        }
+
+        processed_user = user_service.model_to_dict(restored_user)
         
         return processed_user
     except BusinessException as e:
@@ -410,25 +363,8 @@ async def read_user_profile(
         
         # 获取用户详情
         profile = await user_service.get_user_profile(user_id)
-        
-        # 处理用户资料数据，确保日期时间字段为字符串格式
-        processed_profile = {
-            "id": profile.get("id"),
-            "username": profile.get("username"),
-            "email": profile.get("email"),
-            "bio": profile.get("bio"),
-            "avatar_url": profile.get("avatar_url"),
-            "is_active": profile.get("is_active", False),
-            "role": profile.get("role", "user"),
-            "created_at": str(profile.get("created_at")) if profile.get("created_at") else "",
-            "updated_at": str(profile.get("updated_at")) if profile.get("updated_at") else "",
-            "post_count": profile.get("post_count", 0),
-            "comment_count": profile.get("comment_count", 0),
-            "last_login": str(profile.get("last_login")) if profile.get("last_login") else None,
-            "join_date": str(profile.get("created_at")) if profile.get("created_at") else "",
-            "reputation": profile.get("reputation", 0),
-            "badges": profile.get("badges", [])
-        }
+
+        processed_profile = user_service.model_to_dict(profile)
         
         return processed_profile
     except BusinessException as e:
@@ -464,27 +400,13 @@ async def read_user_posts(
     """
     try:
         user_service = UserService()
+        post_service = PostService()
         posts, total = await user_service.get_user_posts(user_id=user_id, skip=skip, limit=limit)
         
         # 处理帖子数据，确保日期时间字段为字符串格式
         processed_posts = []
         for post in posts:
-            processed_post = {
-                "id": post.get("id"),
-                "title": post.get("title"),
-                "content": post.get("content"),
-                "author_id": post.get("author_id"),
-                "section_id": post.get("section_id"),
-                "category_id": post.get("category_id"),
-                "is_hidden": post.get("is_hidden", False),
-                "created_at": str(post.get("created_at")) if post.get("created_at") else "",
-                "updated_at": str(post.get("updated_at")) if post.get("updated_at") else "",
-                "is_deleted": post.get("is_deleted", False),
-                "vote_count": post.get("vote_count", 0),
-                "category": post.get("category"),
-                "section": post.get("section"),
-                "tags": post.get("tags", [])
-            }
+            processed_post = post_service.model_to_dict(post)
             processed_posts.append(processed_post)
         
         # 构建符合PostListResponse的返回结构
@@ -533,7 +455,7 @@ async def get_my_favorites(
         
         # 使用Service架构
         favorite_service = FavoriteService()
-        
+        post_service = PostService()
         # 获取收藏列表
         favorites_result = await favorite_service.get_user_favorites(user_id, skip, limit)
         favorites = favorites_result.get("posts", [])
@@ -542,22 +464,7 @@ async def get_my_favorites(
         # 处理帖子数据，确保日期时间字段为字符串格式
         processed_posts = []
         for post in favorites:
-            processed_post = {
-                "id": post.get("id"),
-                "title": post.get("title"),
-                "content": post.get("content"),
-                "author_id": post.get("author_id"),
-                "section_id": post.get("section_id"),
-                "category_id": post.get("category_id"),
-                "is_hidden": post.get("is_hidden", False),
-                "created_at": str(post.get("created_at")) if post.get("created_at") else "",
-                "updated_at": str(post.get("updated_at")) if post.get("updated_at") else "",
-                "is_deleted": post.get("is_deleted", False),
-                "vote_count": post.get("vote_count", 0),
-                "category": post.get("category"),
-                "section": post.get("section"),
-                "tags": post.get("tags", [])
-            }
+            processed_post = post_service.model_to_dict(post)
             processed_posts.append(processed_post)
         
         # 构建符合PostListResponse的返回结构
@@ -608,7 +515,7 @@ async def get_user_favorites(
     try:
         # 使用Service架构
         favorite_service = FavoriteService()
-        
+        post_service = PostService()
         # 获取收藏列表
         favorites_result = await favorite_service.get_user_favorites(user_id, skip, limit)
         favorites = favorites_result.get("posts", [])
@@ -617,22 +524,7 @@ async def get_user_favorites(
         # 处理帖子数据，确保日期时间字段为字符串格式
         processed_posts = []
         for post in favorites:
-            processed_post = {
-                "id": post.get("id"),
-                "title": post.get("title"),
-                "content": post.get("content"),
-                "author_id": post.get("author_id"),
-                "section_id": post.get("section_id"),
-                "category_id": post.get("category_id"),
-                "is_hidden": post.get("is_hidden", False),
-                "created_at": str(post.get("created_at")) if post.get("created_at") else "",
-                "updated_at": str(post.get("updated_at")) if post.get("updated_at") else "",
-                "is_deleted": post.get("is_deleted", False),
-                "vote_count": post.get("vote_count", 0),
-                "category": post.get("category"),
-                "section": post.get("section"),
-                "tags": post.get("tags", [])
-            }
+            processed_post = post_service.model_to_dict(post)
             processed_posts.append(processed_post)
         
         # 构建符合PostListResponse的返回结构
@@ -654,4 +546,4 @@ async def get_user_favorites(
         raise APIError(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="获取用户收藏列表失败"
-        ) 
+        )

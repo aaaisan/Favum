@@ -48,6 +48,9 @@ class PostService(BaseService):
             
         Returns:
             Optional[Dict[str, Any]]: 帖子详情，不存在则返回None
+            
+        Raises:
+            BusinessException: 当获取帖子详情失败时抛出
         """
         try:
             logger.info(f"获取帖子详情，ID: {post_id}, include_hidden: {include_hidden}")
@@ -64,12 +67,39 @@ class PostService(BaseService):
             # 确保返回的帖子有一个评论列表
             if "comments" not in post:
                 post["comments"] = []
-                
+            
+            # 格式化日期时间字段
+            self._format_datetime_fields(post)
+            
             logger.info(f"成功获取帖子详情，ID: {post_id}")
             return post
         except Exception as e:
             logger.error(f"获取帖子详情失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
-            return None
+            raise BusinessException(
+                status_code=500,
+                code="GET_POST_DETAIL_ERROR",
+                message=f"获取帖子详情失败: {str(e)}"
+            )
+    
+    def _format_datetime_fields(self, data: Dict[str, Any]) -> None:
+        """格式化字典中的日期时间字段为字符串
+        
+        Args:
+            data: 包含日期时间字段的字典
+        """
+        datetime_fields = ['created_at', 'updated_at', 'deleted_at', 'last_used_at']
+        for field in datetime_fields:
+            if field in data and data[field] and not isinstance(data[field], str):
+                data[field] = data[field].isoformat()
+        
+        # 处理嵌套字段
+        for key, value in data.items():
+            if isinstance(value, dict):
+                self._format_datetime_fields(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        self._format_datetime_fields(item)
     
     async def get_posts(
         self, 
@@ -100,6 +130,9 @@ class PostService(BaseService):
             
         Returns:
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
+            
+        Raises:
+            BusinessException: 当获取帖子列表失败时抛出
         """
         try:
             logger.info(f"开始获取帖子列表: skip={skip}, limit={limit}, include_hidden={include_hidden}")
@@ -128,16 +161,26 @@ class PostService(BaseService):
             logger.info(f"构建的filter_options: {filter_options}")
             
             # 调用仓储层方法，正确传递参数
-            return await self.repository.get_posts(
+            posts, total = await self.repository.get_posts(
                 skip=skip,
                 limit=limit,
                 filter_options=filter_options,
                 sort_by=sort_field if sort_field else "created_at",
                 sort_order=sort_order
             )
+            
+            # 格式化所有帖子的日期时间字段
+            for post in posts:
+                self._format_datetime_fields(post)
+            
+            return posts, total
         except Exception as e:
             logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
-            raise
+            raise BusinessException(
+                status_code=500,
+                code="GET_POSTS_ERROR",
+                message=f"获取帖子列表失败: {str(e)}"
+            )
     
     async def create_post(self, post_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建帖子
@@ -209,25 +252,45 @@ class PostService(BaseService):
         Raises:
             BusinessException: 当帖子不存在或验证失败时
         """
-        # 检查帖子是否存在
-        post = await self.get(post_id)
-        if not post:
-            return None
+        try:
+            # 检查帖子是否存在
+            post = await self.get(post_id)
+            if not post:
+                logger.warning(f"更新帖子失败: 帖子不存在，ID: {post_id}")
+                raise BusinessException(
+                    status_code=404,
+                    code="POST_NOT_FOUND",
+                    message="帖子不存在"
+                )
             
-        # 提取标签ID列表
-        tag_ids = post_data.pop("tag_ids", None)
-        
-        # 更新帖子基本信息
-        updated_post = await self.update(post_id, post_data)
-        
-        # 如果提供了标签ID，更新标签关联
-        if tag_ids is not None:
-            await self.repository.update_tags(post_id, tag_ids)
+            # 提取标签ID列表
+            tag_ids = post_data.pop("tag_ids", None)
+            
+            # 更新帖子基本信息
+            updated_post = await self.update(post_id, post_data)
+            
+            # 如果提供了标签ID，更新标签关联
+            if tag_ids is not None:
+                await self.repository.update_tags(post_id, tag_ids)
             
             # 重新获取帖子信息，包含标签
-            return await self.get_post_detail(post_id)
+            updated_post = await self.get_post_detail(post_id)
+        
+            # 格式化日期时间字段
+            if updated_post:
+                self._format_datetime_fields(updated_post)
             
-        return updated_post
+            return updated_post
+        except BusinessException:
+            # 继续抛出业务异常
+            raise
+        except Exception as e:
+            logger.error(f"更新帖子失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
+            raise BusinessException(
+                status_code=500,
+                code="UPDATE_POST_ERROR",
+                message=f"更新帖子失败: {str(e)}"
+            )
     
     async def delete_post(self, post_id: int) -> bool:
         """软删除帖子
@@ -273,38 +336,55 @@ class PostService(BaseService):
         Raises:
             BusinessException: 当帖子不存在或未被删除时
         """
-        # 先通过基础查询获取帖子（包括已删除的）
-        query = await self.repository.execute_query(
-            select(self.model).where(self.model.id == post_id)
-        )
-        post = query.first()
-        
-        if not post:
-            raise BusinessException(
-                status_code=404,
-                error_code="POST_NOT_FOUND",
-                message="帖子不存在"
+        try:
+            # 先通过基础查询获取帖子（包括已删除的）
+            query = await self.repository.execute_query(
+                select(self.model).where(self.model.id == post_id)
             )
+            post = query.first()
             
-        # 如果帖子未被删除，抛出错误
-        if not post.is_deleted:
-            raise BusinessException(
-                status_code=400,
-                error_code="POST_NOT_DELETED",
-                message="帖子未被删除，无需恢复"
-            )
+            if not post:
+                raise BusinessException(
+                    status_code=404,
+                    code="POST_NOT_FOUND",
+                    message="帖子不存在"
+                )
             
-        # 执行恢复
-        success = await self.repository.restore(post_id)
-        if not success:
+            # 如果帖子未被删除，抛出错误
+            if not post.is_deleted:
+                raise BusinessException(
+                    status_code=400,
+                    code="POST_NOT_DELETED",
+                    message="帖子未被删除，无需恢复"
+                )
+            
+            # 执行恢复
+            success = await self.repository.restore(post_id)
+            if not success:
+                raise BusinessException(
+                    status_code=500,
+                    code="RESTORE_FAILED",
+                    message="恢复帖子失败"
+                )
+            
+            # 获取并返回更新后的帖子信息
+            restored_post = await self.get_post_detail(post_id)
+            
+            # 格式化日期时间字段
+            if restored_post:
+                self._format_datetime_fields(restored_post)
+            
+            return restored_post
+        except BusinessException:
+            # 继续抛出业务异常
+            raise
+        except Exception as e:
+            logger.error(f"恢复帖子失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
             raise BusinessException(
                 status_code=500,
-                error_code="RESTORE_FAILED",
-                message="恢复帖子失败"
+                code="RESTORE_POST_ERROR",
+                message=f"恢复帖子失败: {str(e)}"
             )
-            
-        # 获取并返回更新后的帖子信息
-        return await self.get_post_detail(post_id)
     
     async def toggle_visibility(self, post_id: int, is_hidden: bool) -> Dict[str, Any]:
         """切换帖子可见性
@@ -319,30 +399,48 @@ class PostService(BaseService):
         Raises:
             BusinessException: 当帖子不存在时
         """
-        # 检查帖子是否存在
-        post = await self.get(post_id)
-        if not post:
-            raise BusinessException(
-                status_code=404,
-                code="POST_NOT_FOUND",
-                message="帖子不存在"
-            )
+        try:
+            # 检查帖子是否存在
+            post = await self.get(post_id)
+            if not post:
+                raise BusinessException(
+                    status_code=404,
+                    code="POST_NOT_FOUND",
+                    message="帖子不存在"
+                )
             
-        # 如果当前状态已经是目标状态，直接返回
-        if post.get("is_hidden") == is_hidden:
-            return post
+            # 如果当前状态已经是目标状态，直接返回
+            if post.get("is_hidden") == is_hidden:
+                self._format_datetime_fields(post)
+                return post
             
-        # 执行可见性切换
-        success = await self.repository.toggle_visibility(post_id, is_hidden)
-        if not success:
+            # 执行可见性切换
+            success = await self.repository.toggle_visibility(post_id, is_hidden)
+            if not success:
+                raise BusinessException(
+                    status_code=500,
+                    code="TOGGLE_FAILED",
+                    message="切换帖子可见性失败"
+                )
+            
+            # 获取并返回更新后的帖子信息
+            updated_post = await self.get_post_detail(post_id, include_hidden=True)
+            
+            # 格式化日期时间字段
+            if updated_post:
+                self._format_datetime_fields(updated_post)
+            
+            return updated_post
+        except BusinessException:
+            # 继续抛出业务异常
+            raise
+        except Exception as e:
+            logger.error(f"切换帖子可见性失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
             raise BusinessException(
                 status_code=500,
-                code="TOGGLE_FAILED",
-                message="切换帖子可见性失败"
+                code="TOGGLE_VISIBILITY_ERROR",
+                message=f"切换帖子可见性失败: {str(e)}"
             )
-            
-        # 获取并返回更新后的帖子信息
-        return await self.get_post_detail(post_id, include_hidden=True)
     
     async def vote_post(self, post_id: int, user_id: int, vote_type: VoteType) -> Dict[str, Any]:
         """为帖子投票
@@ -377,16 +475,16 @@ class PostService(BaseService):
                     message="帖子不存在"
                 )
             
+            # 格式化结果中可能包含的日期时间字段
+            self._format_datetime_fields(result)
+            
             return result
+        except BusinessException:
+            # 继续抛出业务异常
+            raise
         except Exception as e:
             # 记录错误
-            logging.error(f"投票失败: {str(e)}")
-            
-            # 如果是已知的业务异常，直接抛出
-            if isinstance(e, BusinessException):
-                raise e
-            
-            # 其他异常转换为业务异常
+            logger.error(f"投票失败: {str(e)}", exc_info=True)
             raise BusinessException(
                 status_code=500,
                 code="VOTE_FAILED",
@@ -460,24 +558,27 @@ class PostService(BaseService):
                 current_count = post.get("favorites_count", 0)
                 await self.repository.update(post_id, {"favorites_count": current_count + 1})
             except Exception as e:
-                logging.warning(f"更新收藏计数失败: {str(e)}")
+                logger.warning(f"更新收藏计数失败: {str(e)}")
             
-            return {
+            # 构建结果
+            favorite_result = {
                 "post_id": post_id,
                 "user_id": user_id,
                 "status": "favorited",
                 "success": result.get("success", True),
                 "message": result.get("message", "收藏成功")
             }
+            
+            # 格式化结果中可能包含的日期时间字段
+            self._format_datetime_fields(favorite_result)
+            
+            return favorite_result
+        except BusinessException:
+            # 继续抛出业务异常
+            raise
         except Exception as e:
             # 记录错误
-            logging.error(f"收藏帖子失败: {str(e)}")
-            
-            # 如果是已知的业务异常，直接抛出
-            if isinstance(e, BusinessException):
-                raise e
-            
-            # 其他异常转换为业务异常
+            logger.error(f"收藏帖子失败: {str(e)}", exc_info=True)
             raise BusinessException(
                 status_code=500,
                 code="FAVORITE_FAILED",

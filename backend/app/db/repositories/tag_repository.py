@@ -10,7 +10,7 @@ from .base_repository import BaseRepository
 from ..database import async_get_db
 from ...core.exceptions import BusinessException
 import logging
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import relationship
 
 logger = logging.getLogger(__name__)
 
@@ -396,11 +396,6 @@ class TagRepository(BaseRepository):
                 # 构建查询 - 使用left join确保能获取到帖子的所有相关标签
                 query = (
                     select(Post)
-                    .options(
-                        joinedload(Post.category),
-                        joinedload(Post.section),
-                        joinedload(Post.tags)
-                    )
                     .join(post_tags, Post.id == post_tags.c.post_id)
                     .where(
                         post_tags.c.tag_id == tag_id,

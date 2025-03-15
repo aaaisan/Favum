@@ -1,11 +1,11 @@
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from datetime import datetime
 
 class UserResponse(BaseModel):
     """用户响应模型
     
-    用于API返回用户对象的标准格式
+    用于API返回用户对象的标准格式，包含完整用户信息
     """
     id: int
     username: str
@@ -57,4 +57,4 @@ class UserDeleteResponse(BaseModel):
     id: int
     message: str = "用户已成功删除"
     
-    model_config = {"extra": "ignore"} 
+    model_config = {"extra": "ignore"}
