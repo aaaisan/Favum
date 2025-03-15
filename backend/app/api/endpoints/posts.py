@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, Query, Depends, Body
+from fastapi import APIRouter, HTTPException, Request, Query, Depends, Body, Path, status
 from typing import List, Optional
 from datetime import datetime
 import logging
@@ -14,7 +14,7 @@ from ...core.exceptions import (
     NotFoundError, 
     RequestDataError,
     AuthenticationError,
-    ValidationError,
+    BusinessException,
     with_error_handling
 )
 from ..responses.post import (
@@ -89,42 +89,87 @@ async def create_post(
     Raises:
         HTTPException: 当权限不足或数据验证失败时抛出相应错误
     """
-    # 从token获取当前用户ID
-    current_user_id = request.state.user.get("id")
-    if not current_user_id:
-        raise AuthenticationError(code="missing_user_id", message="无法获取用户ID")
-    
-    # 准备帖子数据
     try:
-        post_data = post.model_dump()
-    except AttributeError:
+        # 从token获取当前用户ID
+        current_user_id = request.state.user.get("id")
+        if not current_user_id:
+            raise AuthenticationError(code="missing_user_id", message="无法获取用户ID")
+        
+        # 准备帖子数据
         try:
-            post_data = post.dict()
+            post_data = post.model_dump()
         except AttributeError:
-            post_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
-    
-    # 如果未提供作者ID，使用当前用户ID
-    if "author_id" not in post_data or not post_data["author_id"]:
-        post_data["author_id"] = current_user_id
-    
-    # 使用PostService的create_post方法创建帖子，包括处理标签关联
-    created_post = await post_service.create_post(post_data)
-    
-    return created_post
+            try:
+                post_data = post.dict()
+            except AttributeError:
+                post_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
+        
+        # 如果未提供作者ID，使用当前用户ID
+        if "author_id" not in post_data or not post_data["author_id"]:
+            post_data["author_id"] = current_user_id
+        
+        # 基本验证
+        if not post_data.get("title") or len(post_data.get("title", "")) < 3:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "标题不能为空且长度至少为3个字符", "code": "invalid_title"}
+            )
+        
+        if not post_data.get("content"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "内容不能为空", "code": "invalid_content"}
+            )
+            
+        if not post_data.get("category_id"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
+                detail={"message": "必须选择分类", "code": "missing_category"}
+            )
+            
+        if not post_data.get("section_id"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "必须选择版块", "code": "missing_section"}
+            )
+        
+        # 使用PostService的create_post方法创建帖子，包括处理标签关联
+        created_post = await post_service.create_post(post_data)
+        
+        return created_post
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
+        )
+    except Exception as e:
+        logger.error(f"创建帖子失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"创建帖子失败: {str(e)}", "code": "create_post_error"}
+        )
 
 @router.get("", response_model=PostListResponse)
 @public_endpoint(cache_ttl=30, custom_message="获取帖子列表失败")
 @with_error_handling(default_error_message="获取帖子列表失败")
 async def read_posts(
-    skip: int = 0,
-    limit: int = 100,
+    request: Request,
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(100, ge=1, le=1000, description="返回的记录数"),
     include_hidden: bool = False,
-    category_id: Optional[int] = None,
-    section_id: Optional[int] = None,
-    author_id: Optional[int] = None,
+    category_id: Optional[int] = Query(None, ge=1),
+    section_id: Optional[int] = Query(None, ge=1),
+    author_id: Optional[int] = Query(None, ge=1),
     tag_ids: Optional[List[int]] = Query(None),
-    sort_by: Optional[str] = None,
-    sort_order: Optional[str] = "desc",
+    sort_by: Optional[str] = Query(None, regex="^[a-zA-Z0-9_]+$", description="排序字段"),
+    sort_order: Optional[str] = Query("desc", regex="^(asc|desc)$", description="排序方向(asc或desc)"),
     post_service: PostService = Depends(get_post_service),
 ):
     """获取帖子列表
@@ -132,6 +177,7 @@ async def read_posts(
     提供帖子列表，支持分页、排序和多种筛选条件。
     
     Args:
+        request: FastAPI请求对象
         skip: 跳过的记录数，用于分页
         limit: 返回的记录数，用于分页
         include_hidden: 是否包含隐藏的帖子
@@ -145,32 +191,93 @@ async def read_posts(
         
     Returns:
         PostListResponse: 包含帖子列表和分页信息的响应
-    """    
-    # 获取帖子列表
-    posts, total = await post_service.get_posts(
-        skip=skip,
-        limit=limit,
-        include_hidden=include_hidden,
-        category_id=category_id,
-        section_id=section_id,
-        author_id=author_id,
-        tag_ids=tag_ids,
-        sort_field=sort_by,
-        sort_order=sort_order
-    )
-    
-    return {
-        "posts": posts,
-        "total": total,
-        "page": skip // limit + 1 if limit > 0 else 1,
-        "size": limit
-    }
+    """
+    try:
+        # 验证排序字段
+        valid_sort_fields = ["id", "title", "created_at", "updated_at", "vote_count", "view_count"]
+        if sort_by and sort_by not in valid_sort_fields:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": f"无效的排序字段，允许值: {', '.join(valid_sort_fields)}",
+                    "code": "invalid_sort_field"
+                }
+            )
+        
+        # 验证排序方向
+        if sort_order not in ["asc", "desc"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": "无效的排序方向，允许值: asc, desc",
+                    "code": "invalid_sort_order"
+                }
+            )
+        
+        # 验证分页参数
+        if skip < 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "分页偏移量不能为负数", "code": "invalid_skip"}
+            )
+            
+        if limit < 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "每页记录数必须大于0", "code": "invalid_limit"}
+            )
+            
+        if limit > 1000:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "每页记录数不能超过1000", "code": "limit_too_large"}
+            )
+        
+        # 获取帖子列表
+        posts, total = await post_service.get_posts(
+            skip=skip,
+            limit=limit,
+            include_hidden=include_hidden,
+            category_id=category_id,
+            section_id=section_id,
+            author_id=author_id,
+            tag_ids=tag_ids,
+            sort_field=sort_by,
+            sort_order=sort_order
+        )
+        
+        return {
+            "posts": posts,
+            "total": total,
+            "page": skip // limit + 1 if limit > 0 else 1,
+            "size": limit
+        }
+    except HTTPException:
+        raise
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
+        )
+    except Exception as e:
+        logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"获取帖子列表失败: {str(e)}", "code": "get_posts_error"}
+        )
 
 @router.get("/{post_id}", response_model=PostDetailResponse)
 @public_endpoint(cache_ttl=30, custom_message="获取帖子详情失败")
 @with_error_handling(default_error_message="获取帖子详情失败")
 async def read_post(
-    post_id: int,
+    post_id: int = Path(..., ge=1),
     current_user: Optional[User] = Depends(get_current_user_optional),
     post_service: PostService = Depends(get_post_service),
 ):
@@ -189,51 +296,69 @@ async def read_post(
     Raises:
         HTTPException: 当帖子不存在或用户无权查看时抛出相应错误
     """
-    # 获取帖子详情
-    post = await post_service.get_post_detail(post_id=post_id)
-    
-    if not post:
-        raise NotFoundError(code="post_not_found", message="帖子不存在")
-    
-    # 检查权限
-    if post.get("is_hidden", False):
-        if not current_user:
-            raise NotFoundError(code="post_not_found", message="帖子不存在")
-            
-        can_view_hidden = hasattr(current_user, 'permissions') and any(
-            perm in current_user.permissions for perm in ["manage_content", "manage_system"]
-        )
-        
-        if not can_view_hidden and post.get("author_id") != current_user.id:
-            raise NotFoundError(code="post_not_found", message="帖子不存在")
-    
-    # 确保所有必要的字段都存在，防止前端渲染错误
-    if "tags" not in post:
-        post["tags"] = []
-    if "comments" not in post:
-        post["comments"] = []
-    
-    # 添加PostDetailResponse需要的字段
-    if "view_count" not in post:
-        post["view_count"] = 0
-    if "favorite_count" not in post:
-        post["favorite_count"] = 0
-        
-    # 添加tag_ids字段，用于ID引用模式
-    tag_ids = []
-    if post.get("tags"):
-        tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
-    post["tag_ids"] = tag_ids
-    
-    # 尝试记录浏览量增加（不阻塞响应）
     try:
-        # 异步记录浏览量，不等待结果
-        post_service.increment_view_count(post_id, background=True)
-    except Exception as view_exc:
-        # 记录但不影响主请求
-        logger.warning(f"记录帖子浏览量失败: {str(view_exc)}")
-    
-    return post
+        # 获取帖子详情
+        post = await post_service.get_post_detail(post_id=post_id)
+        
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "帖子不存在", "code": "post_not_found"}
+            )
+        
+        # 检查权限
+        if post.get("is_hidden", False):
+            if not current_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"message": "帖子不存在", "code": "post_not_found"}
+                )
+                
+            can_view_hidden = hasattr(current_user, 'permissions') and any(
+                perm in current_user.permissions for perm in ["manage_content", "manage_system"]
+            )
+            
+            if not can_view_hidden and post.get("author_id") != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"message": "帖子不存在", "code": "post_not_found"}
+                )
+        
+        # 确保所有必要的字段都存在，防止前端渲染错误
+        if "tags" not in post:
+            post["tags"] = []
+        if "comments" not in post:
+            post["comments"] = []
+        
+        # 添加PostDetailResponse需要的字段
+        if "view_count" not in post:
+            post["view_count"] = 0
+        if "favorite_count" not in post:
+            post["favorite_count"] = 0
+        
+        # 添加tag_ids字段，用于ID引用模式
+        tag_ids = []
+        if post.get("tags"):
+            tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
+        post["tag_ids"] = tag_ids
+        
+        # 尝试记录浏览量增加（不阻塞响应）
+        try:
+            # 异步记录浏览量，不等待结果
+            post_service.increment_view_count(post_id, background=True)
+        except Exception as view_exc:
+            # 记录但不影响主请求
+            logger.warning(f"记录帖子浏览量失败: {str(view_exc)}")
+        
+        return post
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取帖子详情失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"获取帖子详情失败: {str(e)}", "code": "get_post_detail_error"}
+        )
 
 @router.put("/{post_id}", response_model=PostResponse)
 @owner_endpoint(custom_message="更新帖子失败", resource_owner_lookup_func=get_post_owner)
@@ -388,9 +513,9 @@ async def toggle_post_visibility(
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="点赞操作失败")
 @with_error_handling(default_error_message="点赞操作失败")
 async def vote_post(
-    post_id: int,
-    vote_data: post_schema.PostVoteCreate,
-    request: Request,
+    post_id: int = Path(..., ge=1),
+    vote_data: post_schema.PostVoteCreate = Body(...),
+    request: Request = None,
     post_service: PostService = Depends(get_post_service)
 ):
     """
@@ -405,47 +530,77 @@ async def vote_post(
     Returns:
         PostVoteResponse: 包含投票结果的响应
     """
-    # 获取当前用户信息并验证
-    current_user = request.state.user
-    user_id = current_user.get("id")
-    if not user_id:
-        raise AuthenticationError(code="missing_user_id", message="未能获取用户ID")
-    
-    # 验证投票类型
-    if vote_data.vote_type not in ["upvote", "downvote"]:
-        raise ValidationError(
-            code="invalid_vote_type", 
-            message="无效的投票类型，只允许 upvote 或 downvote"
+    try:
+        # 获取当前用户信息并验证
+        current_user = request.state.user
+        user_id = current_user.get("id")
+        if not user_id:
+            raise AuthenticationError(code="missing_user_id", message="未能获取用户ID")
+        
+        # 验证投票类型
+        vote_type_str = str(vote_data.vote_type)
+        if vote_type_str not in ["upvote", "downvote"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "无效的投票类型，只允许 upvote 或 downvote", "code": "invalid_vote_type"}
+            )
+        
+        # 验证帖子是否存在
+        post_exists = await post_service.get_post_detail(post_id)
+        if not post_exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "帖子不存在或已删除", "code": "post_not_found"}
+            )
+        
+        # 将字符串转换为枚举
+        vote_type_enum = VoteType.UPVOTE if vote_type_str == "upvote" else VoteType.DOWNVOTE
+        
+        # 执行投票
+        vote_result = await post_service.vote_post(
+            post_id=post_id,
+            user_id=user_id,
+            vote_type=vote_type_enum
         )
-    
-    # 将字符串转换为枚举
-    vote_type_enum = VoteType.UPVOTE if vote_data.vote_type == "upvote" else VoteType.DOWNVOTE
-    
-    # 执行投票
-    vote_result = await post_service.vote_post(
-        post_id=post_id,
-        user_id=user_id,
-        vote_type=vote_type_enum
-    )
-    
-    # 检查返回结果
-    if vote_result is None:
-        raise NotFoundError(
-            code="post_not_found", 
-            message="帖子不存在或已删除"
+        
+        # 检查返回结果
+        if vote_result is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "帖子不存在或已删除", "code": "post_not_found"}
+            )
+        
+        # 确保结果符合响应模型
+        processed_result = {
+            "post_id": vote_result.get("post_id"),
+            "upvotes": vote_result.get("upvotes", 0),
+            "downvotes": vote_result.get("downvotes", 0),
+            "score": vote_result.get("score", 0),
+            "user_vote": vote_result.get("user_vote"),
+            "action": vote_result.get("action", "")
+        }
+        
+        return processed_result
+    except HTTPException:
+        raise
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
         )
-    
-    # 确保结果符合响应模型
-    processed_result = {
-        "post_id": vote_result.get("post_id"),
-        "upvotes": vote_result.get("upvotes", 0),
-        "downvotes": vote_result.get("downvotes", 0),
-        "score": vote_result.get("score", 0),
-        "user_vote": vote_result.get("user_vote"),
-        "action": vote_result.get("action", "")
-    }
-    
-    return processed_result
+    except Exception as e:
+        logger.error(f"投票操作失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"投票操作失败: {str(e)}", "code": "vote_error"}
+        )
 
 @router.get("/{post_id}/votes", response_model=PostStatsResponse)
 @public_endpoint(cache_ttl=10, custom_message="获取投票数失败")

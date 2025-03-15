@@ -7,8 +7,8 @@ import logging
 # 定义logger
 logger = logging.getLogger(__name__)
 
-# 导入BusinessError
-from ...core.exceptions import BusinessError
+# 导入BusinessException
+from ...core.exceptions import BusinessException
 
 # 导入响应模型
 
@@ -161,7 +161,7 @@ async def register(
     }
 
 @router.post("/login", response_model=TokenResponse)
-@public_endpoint(rate_limit_count=10, custom_message="用户登录失败")
+@public_endpoint(rate_limit_count=0, custom_message="用户登录失败")
 async def login(
     request: Request,
     form_data: auth_schema.Login
@@ -557,7 +557,7 @@ async def reset_password(
             "message": "密码已成功重置，请使用新密码登录"
         }
         
-    except BusinessError as e:
+    except BusinessException as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=e.message
@@ -593,7 +593,7 @@ async def verify_email(
             "message": "邮箱验证成功，您的账号已激活"
         }
         
-    except BusinessError as e:
+    except BusinessException as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=e.message
@@ -633,7 +633,7 @@ async def verify_email_get(
             "redirect": f"{frontend_url}/verification-success"
         }
         
-    except BusinessError as e:
+    except BusinessException as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=e.message

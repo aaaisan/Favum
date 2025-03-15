@@ -98,10 +98,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
     Raises:
         HTTPException: 当令牌无效或用户不存在时抛出401错误
     """
-    logger.debug(f"开始验证用户令牌: {token[:10] if token else None}...")
+    logger.debug(f"开始验证用户令牌: {token[:20] if token else None}...")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="无效的凭证",
+        detail="令牌无效或已过期",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
@@ -111,14 +111,40 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
         
     try:
         logger.debug("开始解码令牌")
+        
+        # 先不验证令牌，只解码查看内容
+        debug_payload = None
+        try:
+            debug_payload = jwt.decode(token, options={"verify_signature": False})
+            logger.info(f"令牌内容解码 (不验证签名): {debug_payload}")
+        except Exception as e:
+            logger.warning(f"令牌解码失败 (不验证签名): {str(e)}")
+        
+        # 正常解码并验证令牌
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             logger.warning("令牌中未包含用户ID (sub)")
             raise credentials_exception
-        logger.debug(f"令牌解码成功，用户ID: {username}")
+        logger.debug(f"令牌解码成功，用户名: {username}")
     except JWTError as e:
         logger.warning(f"令牌解码失败: {str(e)}")
+        
+        # 添加更多调试信息
+        try:
+            # 检查令牌格式
+            parts = token.split('.')
+            if len(parts) != 3:
+                logger.error(f"令牌格式错误，应有3部分但有{len(parts)}部分")
+            else:
+                # 检查签名问题
+                logger.info(f"令牌头部: {parts[0][:10]}...")
+                logger.info(f"令牌载荷: {parts[1][:10]}...")
+                logger.info(f"令牌签名: {parts[2][:10]}...")
+                logger.info(f"使用的密钥: {settings.SECRET_KEY[:10]}...")
+        except Exception as debug_e:
+            logger.error(f"调试令牌过程中出错: {str(debug_e)}")
+        
         raise credentials_exception
     
     try:

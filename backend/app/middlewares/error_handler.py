@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..core.exceptions import BusinessError, BusinessException
+from ..core.exceptions import BusinessException
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
             # 处理其他未预期的异常
             return self._handle_unexpected_error(e, request_id)
     
-    def _handle_business_error(self, exc: BusinessError, request_id: str) -> JSONResponse:
+    def _handle_business_error(self, exc: BusinessException, request_id: str) -> JSONResponse:
         """
         处理业务异常
         
@@ -207,7 +207,7 @@ def add_error_handler(app: FastAPI):
     
     # 注册特定异常处理器
     @app.exception_handler(BusinessException)
-    async def business_error_handler(request: Request, exc: BusinessError):
+    async def business_error_handler(request: Request, exc: BusinessException):
         request_id = getattr(request.state, "request_id", "unknown")
         middleware = ErrorHandlerMiddleware(None)
         return middleware._handle_business_error(exc, request_id)

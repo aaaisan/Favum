@@ -196,9 +196,8 @@ async def read_user(
         # 获取用户详情
         user = await user_service.get_user_by_id(user_id)
 
-        processed_user = user_service.model_to_dict(user)
-        
-        return processed_user
+        # 直接返回用户数据
+        return user
     except Exception as e:
         logger.error(f"Error retrieving user {user_id}: {str(e)}")
         raise APIError(

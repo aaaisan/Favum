@@ -24,6 +24,14 @@ class BaseRepository:
         Returns:
             Dict[str, Any]: 包含模型属性的字典
         """
+        # 如果已经是字典，直接返回
+        if isinstance(model_instance, dict):
+            return model_instance
+            
+        # 如果是None，返回空字典
+        if model_instance is None:
+            return {}
+        
         result = {}
         for column in model_instance.__table__.columns:
             value = getattr(model_instance, column.name)

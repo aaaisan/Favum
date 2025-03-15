@@ -16,12 +16,12 @@ from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy import asc, select
 # from sqlalchemy import desc, asc, select
 import logging
-# from datetime import datetime
+from datetime import datetime
 
 from ..core.base_service import BaseService
 from ..db.models import Post, Tag, VoteType
 from ..db.repositories.post_repository import PostRepository
-from ..core.exceptions import BusinessException
+from ..core.exceptions import BusinessException, BusinessErrorCode
 from ..services.favorite_service import FavoriteService
 
 logger = logging.getLogger(__name__)
@@ -102,50 +102,24 @@ class PostService(BaseService):
                         self._format_datetime_fields(item)
     
     async def get_posts(
-        self, 
-        skip: int = 0, 
-        limit: int = 100, 
+        self,
+        skip: int = 0,
+        limit: int = 10,
         include_hidden: bool = False,
         category_id: Optional[int] = None,
         section_id: Optional[int] = None,
         author_id: Optional[int] = None,
         tag_ids: Optional[List[int]] = None,
         sort_field: Optional[str] = None,
-        sort_order: Optional[str] = "desc"
-    ) -> Tuple[List[Dict[str, Any]], int]:
-        """获取帖子列表
-        
-        支持多种过滤条件和排序
-        
-        Args:
-            skip: 分页偏移
-            limit: 每页数量
-            include_hidden: 是否包含隐藏的帖子
-            category_id: 按分类ID筛选
-            section_id: 按版块ID筛选
-            author_id: 按作者ID筛选
-            tag_ids: 按标签ID列表筛选
-            sort_field: 排序字段
-            sort_order: 排序顺序("asc"或"desc")
-            
-        Returns:
-            Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
-            
-        Raises:
-            BusinessException: 当获取帖子列表失败时抛出
+        sort_order: Optional[str] = "desc",
+    ) -> Tuple[List[Dict], int]:
+        """
+        获取帖子列表
         """
         try:
-            logger.info(f"开始获取帖子列表: skip={skip}, limit={limit}, include_hidden={include_hidden}")
-            logger.info(f"过滤条件: category_id={category_id}, section_id={section_id}, author_id={author_id}, tag_ids={tag_ids}")
-            logger.info(f"排序: sort_field={sort_field}, sort_order={sort_order}")
+            logger.info(f"PostService.get_posts: Starting with params: skip={skip}, limit={limit}")
             
-            # 构建filter_options字典，包含所有过滤条件
             filter_options = {}
-            
-            # 添加过滤条件
-            if include_hidden is not None:
-                filter_options["include_hidden"] = include_hidden
-                
             if category_id is not None:
                 filter_options["category_id"] = category_id
                 
@@ -155,32 +129,37 @@ class PostService(BaseService):
             if author_id is not None:
                 filter_options["author_id"] = author_id
                 
-            if tag_ids is not None:
+            if tag_ids:
                 filter_options["tag_ids"] = tag_ids
+                
+            # 记录过滤条件
+            logger.info(f"PostService.get_posts: Filter options: {filter_options}")
+            logger.info(f"PostService.get_posts: Sort field: {sort_field}, sort order: {sort_order}")
             
-            logger.info(f"构建的filter_options: {filter_options}")
-            
-            # 调用仓储层方法，正确传递参数
+            # 调用repository层获取帖子
             posts, total = await self.repository.get_posts(
                 skip=skip,
                 limit=limit,
-                filter_options=filter_options,
-                sort_by=sort_field if sort_field else "created_at",
-                sort_order=sort_order
+                include_hidden=include_hidden,
+                include_deleted=False,
+                sort_field=sort_field,
+                sort_order=sort_order,
+                **filter_options
             )
             
-            # 格式化所有帖子的日期时间字段
+            # 格式化日期字段
+            result_posts = []
             for post in posts:
-                self._format_datetime_fields(post)
-            
-            return posts, total
+                # 确保我们有一个字典，如果post是数据库模型则转换为字典
+                post_dict = self.model_to_dict(post)
+                result_posts.append(post_dict)
+                
+            logger.info(f"PostService.get_posts: Successfully retrieved {len(result_posts)} posts")
+            return result_posts, total
         except Exception as e:
-            logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
-            raise BusinessException(
-                status_code=500,
-                code="GET_POSTS_ERROR",
-                message=f"获取帖子列表失败: {str(e)}"
-            )
+            logger.error(f"PostService.get_posts: Error retrieving posts: {str(e)}")
+            logger.exception("Exception traceback:")
+            raise BusinessException(code=BusinessErrorCode.POST_NOT_FOUND, message=f"获取帖子列表失败: {str(e)}")
     
     async def create_post(self, post_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建帖子
@@ -200,41 +179,92 @@ class PostService(BaseService):
             logger.info(f"开始创建帖子: {post_data.get('title', '无标题')}")
             
             # 验证必要字段
-            required_fields = ['title', 'content', 'author_id']
+            required_fields = ['title', 'content', 'author_id', 'section_id', 'category_id']
             for field in required_fields:
                 if field not in post_data or not post_data[field]:
                     logger.error(f"创建帖子失败: 缺少必要字段 {field}")
                     raise BusinessException(
-                        status_code=400,
-                        code="MISSING_REQUIRED_FIELD",
+                        code=BusinessErrorCode.VALIDATION_ERROR,
                         message=f"缺少必要字段: {field}"
                     )
+            
+            # 额外验证
+            if len(post_data.get('title', '')) < 3:
+                raise BusinessException(
+                    code=BusinessErrorCode.VALIDATION_ERROR,
+                    message="标题长度至少为3个字符"
+                )
+            
+            if len(post_data.get('content', '')) < 10:
+                raise BusinessException(
+                    code=BusinessErrorCode.VALIDATION_ERROR,
+                    message="内容长度至少为10个字符"
+                )
+            
+            # 检查外键约束 - 验证作者ID是否存在
+            author_id = post_data.get('author_id')
+            if author_id:
+                from ..db.repositories.user_repository import UserRepository
+                user_repo = UserRepository()
+                user = await user_repo.get(author_id)
+                if not user:
+                    raise BusinessException(
+                        code=BusinessErrorCode.VALIDATION_ERROR,
+                        message=f"作者ID不存在: {author_id}"
+                    )
+            
+            # 检查外键约束 - 验证分类ID是否存在
+            category_id = post_data.get('category_id')
+            if category_id:
+                # 导入CategoryRepository可能需要根据你的项目结构调整
+                from ..db.repositories.category_repository import CategoryRepository
+                category_repo = CategoryRepository()
+                category = await category_repo.get(category_id)
+                if not category:
+                    raise BusinessException(
+                        code=BusinessErrorCode.VALIDATION_ERROR,
+                        message=f"分类ID不存在: {category_id}"
+                    )
+            
+            # 检查外键约束 - 验证版块ID是否存在
+            section_id = post_data.get('section_id')
+            if section_id:
+                # 导入SectionRepository可能需要根据你的项目结构调整
+                from ..db.repositories.section_repository import SectionRepository
+                section_repo = SectionRepository()
+                section = await section_repo.get(section_id)
+                if not section:
+                    raise BusinessException(
+                        code=BusinessErrorCode.VALIDATION_ERROR,
+                        message=f"版块ID不存在: {section_id}"
+                    )
+            
+            # 确保有tag_ids字段，即使是空列表
+            if 'tag_ids' not in post_data:
+                post_data['tag_ids'] = []
             
             # 使用repository的create方法创建帖子
             # 该方法已被覆盖，能够处理标签关联
             logger.info(f"准备创建帖子: {post_data}")
-            created_post = await super().create(post_data)
+            created_post = await self.repository.create(post_data)
             
             if not created_post:
                 logger.error("创建帖子失败")
                 raise BusinessException(
-                    status_code=500,
-                    code="CREATE_POST_FAILED",
+                    code=BusinessErrorCode.CREATE_ERROR,
                     message="创建帖子失败"
                 )
             
             logger.info(f"成功创建帖子，ID: {created_post.get('id')}")
             return created_post
-        except BusinessException as be:
+        except BusinessException:
             # 直接传递业务异常
-            logger.error(f"创建帖子时遇到业务异常: {be.message}")
             raise
         except Exception as e:
             logger.error(f"创建帖子失败: {str(e)}", exc_info=True)
             raise BusinessException(
-                status_code=500,
-                code="CREATE_POST_ERROR",
-                message="创建帖子时发生错误"
+                code=BusinessErrorCode.INTERNAL_ERROR,
+                message=f"创建帖子时发生错误: {str(e)}"
             )
     
     async def update_post(self, post_id: int, post_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -584,6 +614,55 @@ class PostService(BaseService):
                 code="FAVORITE_FAILED",
                 message=f"收藏帖子失败: {str(e)}"
             )
+
+    def model_to_dict(self, model_instance):
+        """
+        将模型实例转换为字典
+        
+        参数:
+        - model_instance: SQLAlchemy模型实例或已有字典
+        
+        返回:
+        - 字典表示
+        """
+        try:
+            # 如果已经是字典，直接返回
+            if isinstance(model_instance, dict):
+                return model_instance
+            
+            # 如果是None，返回None
+            if model_instance is None:
+                return None
+            
+            # 如果模型有to_dict方法，使用此方法
+            if hasattr(model_instance, "to_dict") and callable(getattr(model_instance, "to_dict")):
+                return model_instance.to_dict()
+            
+            # 否则，尝试构建字典表示
+            result = {}
+            # 如果是SQLAlchemy模型，获取所有列
+            if hasattr(model_instance, "__table__"):
+                for column in model_instance.__table__.columns:
+                    column_name = column.name
+                    value = getattr(model_instance, column_name)
+                    # 转换datetime为ISO格式字符串
+                    if isinstance(value, datetime):
+                        value = value.isoformat()
+                    result[column_name] = value
+            else:
+                # 回退方案：尝试获取对象的__dict__
+                for key, value in model_instance.__dict__.items():
+                    if not key.startswith('_'):  # 排除私有属性
+                        # 转换datetime为ISO格式字符串
+                        if isinstance(value, datetime):
+                            value = value.isoformat()
+                        result[key] = value
+            
+            return result
+        except Exception as e:
+            logger.error(f"PostService.model_to_dict: Error converting model to dict: {str(e)}")
+            # 返回空字典而不是抛出异常，以避免中断处理流程
+            return {}
 
 def get_post_service() -> PostService:
     """创建PostService实例的依赖函数

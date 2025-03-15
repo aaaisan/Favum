@@ -25,7 +25,7 @@ from ..db.models import User
 from ..db.repositories.user_repository import UserRepository
 from ..db.repositories.post_repository import PostRepository
 from ..core.security import get_password_hash, verify_password
-from ..core.exceptions import BusinessError, BusinessException
+from ..core.exceptions import BusinessException
 from ..core.logging import get_logger
 from ..core.config import settings
 # 导入邮件任务
@@ -118,7 +118,7 @@ class UserService(BaseService):
             Dict[str, Any]: 创建的用户信息
             
         Raises:
-            BusinessError: 当用户名或邮箱已存在时
+            BusinessException: 当用户名或邮箱已存在时
         """
         # 检查用户名是否已存在
         existing_user = await self.repository.get_by_username(user_data.get("username"))
@@ -198,7 +198,7 @@ class UserService(BaseService):
             bool: 验证是否成功
             
         Raises:
-            BusinessError: 当令牌无效或已过期时
+            BusinessException: 当令牌无效或已过期时
         """
         # 从Redis中获取与邮箱关联的验证令牌
         stored_token = await self.repository.get_verification_token(email)
@@ -233,7 +233,7 @@ class UserService(BaseService):
             Optional[Dict[str, Any]]: 更新后的用户信息，不存在则返回None
             
         Raises:
-            BusinessError: 当邮箱已被其他用户使用
+            BusinessException: 当邮箱已被其他用户使用
         """
         # 检查用户是否存在
         user = await self.repository.get_by_id(user_id)
@@ -352,7 +352,7 @@ class UserService(BaseService):
             bool: 操作是否成功
             
         Raises:
-            BusinessError: 当用户不存在时
+            BusinessException: 当用户不存在时
         """
         # 检查用户是否存在
         user = await self.get(user_id)
@@ -376,7 +376,7 @@ class UserService(BaseService):
             Dict[str, Any]: 恢复后的用户信息
             
         Raises:
-            BusinessError: 如果用户不存在或恢复失败
+            BusinessException: 如果用户不存在或恢复失败
         """
         # 检查用户是否存在
         user = await self.repository.get_by_id(user_id, include_deleted=True)
@@ -421,34 +421,34 @@ class UserService(BaseService):
         
         return user_profile
         
-    async def get_user_profile_id_ref(self, user_id: int) -> Dict[str, Any]:
-        """获取用户详细资料（ID引用版本）
+    # async def get_user_profile_id_ref(self, user_id: int) -> Dict[str, Any]:
+    #     """获取用户详细资料（ID引用版本）
         
-        返回包含用户基本信息和ID引用的资料
+    #     返回包含用户基本信息和ID引用的资料
         
-        Args:
-            user_id: 用户ID
+    #     Args:
+    #         user_id: 用户ID
             
-        Returns:
-            Dict[str, Any]: 用户资料
+    #     Returns:
+    #         Dict[str, Any]: 用户资料
             
-        Raises:
-            BusinessException: 当用户不存在时抛出
-        """
-        # 使用Repository获取用户详细资料
-        user_profile = await self.repository.get_user_profile_id_ref(user_id)
+    #     Raises:
+    #         BusinessException: 当用户不存在时抛出
+    #     """
+    #     # 使用Repository获取用户详细资料
+    #     user_profile = await self.repository.get_user_profile_id_ref(user_id)
         
-        if not user_profile:
-            raise BusinessException(
-                message="用户不存在",
-                error_code="user_not_found",
-                status_code=404
-            )
+    #     if not user_profile:
+    #         raise BusinessException(
+    #             message="用户不存在",
+    #             error_code="user_not_found",
+    #             status_code=404
+    #         )
         
-        # 格式化日期时间字段
-        self._format_datetime_fields(user_profile)
+    #     # 格式化日期时间字段
+    #     self._format_datetime_fields(user_profile)
         
-        return user_profile
+    #     return user_profile
         
     async def get_user_post_count(self, user_id: int) -> int:
         """获取用户帖子数量
@@ -564,7 +564,7 @@ class UserService(BaseService):
             bool: 操作是否成功
             
         Raises:
-            BusinessError: 当令牌无效或已过期时
+            BusinessException: 当令牌无效或已过期时
         """
         # 根据令牌查找关联的邮箱
         email = await self.repository.get_email_by_reset_token(reset_token)
@@ -587,3 +587,41 @@ class UserService(BaseService):
         
         logger.info(f"用户 {user['username']} 成功重置密码")
         return True 
+
+    def model_to_dict(self, model_instance) -> Dict[str, Any]:
+        """
+        将模型实例转换为字典
+        
+        支持SQLAlchemy模型实例和已经是字典的数据
+        
+        Args:
+            model_instance: 模型实例或字典
+            
+        Returns:
+            Dict[str, Any]: 包含模型属性的字典
+        """
+        # 如果已经是字典，直接返回
+        if isinstance(model_instance, dict):
+            return model_instance
+            
+        # 如果是None，返回空字典
+        if model_instance is None:
+            return {}
+            
+        # 如果存在to_dict方法，使用它
+        if hasattr(model_instance, 'to_dict') and callable(getattr(model_instance, 'to_dict')):
+            return model_instance.to_dict()
+            
+        # 否则使用repository的方法
+        if hasattr(self.repository, 'model_to_dict'):
+            return self.repository.model_to_dict(model_instance)
+            
+        # 最后尝试自己实现
+        result = {}
+        for column in model_instance.__table__.columns:
+            value = getattr(model_instance, column.name)
+            # 将日期时间对象转换为ISO格式字符串
+            if isinstance(value, datetime):
+                value = value.isoformat()
+            result[column.name] = value
+        return result 

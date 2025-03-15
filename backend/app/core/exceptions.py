@@ -1,6 +1,7 @@
 from fastapi import HTTPException, status
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 import logging
+from enum import Enum, auto
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,10 @@ class PermissionError(APIError):
             } if required_permissions else detail
         )
 
+class PermissionDeniedError(PermissionError):
+    """权限被拒绝错误，是PermissionError的别名，提供兼容性"""
+    pass
+
 class ResourceNotFoundError(APIError):
     """资源未找到错误"""
     def __init__(
@@ -193,6 +198,16 @@ class RateLimitExceededError(APIError):
             },
             headers={"Retry-After": str(retry_after)}
         )
+
+class RateLimitError(RateLimitExceededError):
+    """速率限制错误，是RateLimitExceededError的别名，提供兼容性"""
+    def __init__(
+        self,
+        retry_after: int = 60,
+        limit: int = 100,
+        window: int = 3600
+    ) -> None:
+        super().__init__(retry_after, limit, window)
 
 class ServiceUnavailableError(APIError):
     """服务不可用错误"""
@@ -264,6 +279,30 @@ class BusinessLogicError(APIError):
             }
         )
 
+class RequestDataError(APIError):
+    """
+    请求数据错误
+    
+    当请求数据不符合业务规则时抛出此异常。
+    例如：数据格式错误、参数缺失等。
+    
+    Attributes:
+        detail: 错误详细信息，默认为"请求数据无效"
+        status_code: HTTP 400 BAD REQUEST
+    """
+    def __init__(
+        self,
+        detail: str = "请求数据无效",
+        field_errors: Optional[Dict[str, str]] = None
+    ) -> None:
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": detail,
+                "field_errors": field_errors
+            } if field_errors else detail
+        )
+
 class CaptchaError(APIError):
     """
     验证码错误
@@ -284,218 +323,74 @@ class CaptchaError(APIError):
 提供统一的业务异常处理，使错误处理更加结构化和一致。
 """
 
-class BusinessError(Exception):
-    """业务逻辑异常基类
+class BusinessErrorCode(str, Enum):
+    """业务错误码枚举"""
+    # 通用错误码
+    INTERNAL_ERROR = "INTERNAL_ERROR"  # 内部错误
+    VALIDATION_ERROR = "VALIDATION_ERROR"  # 验证错误
+    NOT_FOUND = "NOT_FOUND"  # 资源不存在
+    UNAUTHORIZED = "UNAUTHORIZED"  # 未授权
+    FORBIDDEN = "FORBIDDEN"  # 禁止访问
     
-    提供统一的业务异常接口，支持错误码、消息和HTTP状态码。
-    所有业务相关异常应继承此类。
-    """
+    # 认证相关错误码
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"  # 无效的凭证
+    TOKEN_EXPIRED = "TOKEN_EXPIRED"  # 令牌过期
+    TOKEN_INVALID = "TOKEN_INVALID"  # 无效的令牌
+    
+    # 用户相关错误码
+    USER_NOT_FOUND = "USER_NOT_FOUND"  # 用户不存在
+    USER_INACTIVE = "USER_INACTIVE"  # 用户未激活
+    USERNAME_TAKEN = "USERNAME_TAKEN"  # 用户名已被占用
+    EMAIL_TAKEN = "EMAIL_TAKEN"  # 邮箱已被占用
+    
+    # 帖子相关错误码
+    POST_NOT_FOUND = "POST_NOT_FOUND"  # 帖子不存在
+    POST_DELETED = "POST_DELETED"  # 帖子已删除
+    CREATE_ERROR = "CREATE_ERROR"  # 创建错误
+    UPDATE_ERROR = "UPDATE_ERROR"  # 更新错误
+    DELETE_ERROR = "DELETE_ERROR"  # 删除错误
+    
+    # 评论相关错误码
+    COMMENT_NOT_FOUND = "COMMENT_NOT_FOUND"  # 评论不存在
+    
+    # 标签相关错误码
+    TAG_NOT_FOUND = "TAG_NOT_FOUND"  # 标签不存在
+    
+    # 分类相关错误码
+    CATEGORY_NOT_FOUND = "CATEGORY_NOT_FOUND"  # 分类不存在
+    
+    # 版块相关错误码
+    SECTION_NOT_FOUND = "SECTION_NOT_FOUND"  # 版块不存在
+    
+    # 数据库相关错误码
+    DB_ERROR = "DB_ERROR"  # 数据库错误
+
+class BusinessException(Exception):
+    """业务异常基类"""
     
     def __init__(
         self, 
-        code: str, 
-        message: str, 
-        status_code: int = 400, 
-        details: Optional[Dict[str, Any]] = None
+        message: str = "业务处理异常", 
+        code: Optional[str] = None,
+        status_code: int = 400,
+        details: Optional[Dict[str, Any]] = None,
     ):
         """初始化业务异常
         
         Args:
-            code: 错误代码，用于客户端识别错误类型
-            message: 用户友好的错误消息
-            status_code: HTTP状态码
-            details: 错误的详细信息（可选）
+            message: 异常信息
+            code: 业务错误码，默认为None
+            status_code: HTTP状态码，默认为400
+            details: 详细错误信息，默认为None
         """
-        self.code = code
         self.message = message
+        self.code = code if code else "BUSINESS_ERROR"
         self.status_code = status_code
         self.details = details or {}
-        self.error_code = code
         super().__init__(self.message)
-        
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典表示
-        
-        Returns:
-            错误的字典表示
-        """
-        error_dict = {
-            "code": self.code,
-            "message": self.message,
-            "status_code": self.status_code
-        }
-        
-        if self.details:
-            error_dict["details"] = self.details
-            
-        return error_dict
 
-
-class ResourceNotFoundError(BusinessError):
-    """资源不存在异常"""
-    
-    def __init__(
-        self, 
-        resource_type: str, 
-        resource_id: Any, 
-        message: Optional[str] = None
-    ):
-        """初始化资源不存在异常
-        
-        Args:
-            resource_type: 资源类型（如 'post', 'user', 'comment'）
-            resource_id: 资源ID
-            message: 自定义错误消息（可选）
-        """
-        super().__init__(
-            code="resource_not_found",
-            message=message or f"{resource_type}不存在: {resource_id}",
-            status_code=404,
-            details={"resource_type": resource_type, "resource_id": resource_id}
-        )
-
-
-class PermissionDeniedError(BusinessError):
-    """权限不足异常"""
-    
-    def __init__(
-        self, 
-        required_permission: Optional[str] = None, 
-        message: Optional[str] = None
-    ):
-        """初始化权限不足异常
-        
-        Args:
-            required_permission: 所需权限（可选）
-            message: 自定义错误消息（可选）
-        """
-        details = {}
-        if required_permission:
-            details["required_permission"] = required_permission
-            
-        super().__init__(
-            code="permission_denied",
-            message=message or "权限不足，无法执行此操作",
-            status_code=403,
-            details=details
-        )
-
-
-class ValidationError(BusinessError):
-    """数据验证异常"""
-    
-    def __init__(
-        self, 
-        field: Optional[str] = None, 
-        message: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
-    ):
-        """初始化数据验证异常
-        
-        Args:
-            field: 验证失败的字段名（可选）
-            message: 自定义错误消息（可选）
-            details: 详细错误信息（可选）
-        """
-        error_details = details or {}
-        if field:
-            error_details["field"] = field
-            
-        super().__init__(
-            code="validation_error",
-            message=message or "数据验证失败",
-            status_code=422,
-            details=error_details
-        )
-
-
-class RateLimitError(BusinessError):
-    """请求频率限制异常"""
-    
-    def __init__(
-        self, 
-        limit: Optional[int] = None, 
-        reset_seconds: Optional[int] = None, 
-        message: Optional[str] = None
-    ):
-        """初始化请求频率限制异常
-        
-        Args:
-            limit: 允许的请求次数（可选）
-            reset_seconds: 重置时间（秒）（可选）
-            message: 自定义错误消息（可选）
-        """
-        details = {}
-        if limit is not None:
-            details["limit"] = limit
-        if reset_seconds is not None:
-            details["reset_seconds"] = reset_seconds
-            
-        super().__init__(
-            code="rate_limit_exceeded",
-            message=message or "请求频率超出限制，请稍后再试",
-            status_code=429,
-            details=details
-        )
-
-
-class AuthenticationError(BusinessError):
-    """认证异常"""
-    
-    def __init__(self, message: Optional[str] = None):
-        """初始化认证异常
-        
-        Args:
-            message: 自定义错误消息（可选）
-        """
-        super().__init__(
-            code="authentication_error",
-            message=message or "认证失败，请重新登录",
-            status_code=401
-        )
-
-
-class ServiceUnavailableError(BusinessError):
-    """服务不可用异常"""
-    
-    def __init__(self, service: Optional[str] = None, message: Optional[str] = None):
-        """初始化服务不可用异常
-        
-        Args:
-            service: 不可用的服务名称（可选）
-            message: 自定义错误消息（可选）
-        """
-        details = {}
-        if service:
-            details["service"] = service
-            
-        super().__init__(
-            code="service_unavailable",
-            message=message or "服务暂时不可用，请稍后再试",
-            status_code=503,
-            details=details
-        )
-
-class PostNotFoundError(BusinessError):
-    """当指定的帖子不存在时抛出"""
-    
-    def __init__(self, message: str = "帖子不存在"):
-        super().__init__(
-            code="post_not_found",
-            message=message,
-            status_code=404
-        )
-        
-class RequestDataError(BusinessError):
-    """请求数据错误"""
-    def __init__(self, message: str = "请求数据错误"):
-        super().__init__(
-            code="request_data_error",
-            message=message,
-            status_code=400
-        )
-# 为了兼容性，将BusinessException定义为BusinessError的别名
-BusinessException = BusinessError 
+# 为了兼容性，添加BusinessError作为BusinessException的别名
+BusinessError = BusinessException
 
 def handle_database_exception(e: Exception) -> None:
     """处理数据库相关异常，转换为适当的HTTP异常
@@ -551,6 +446,22 @@ def handle_business_exception(e: BusinessException) -> None:
         status_code = 409
     elif isinstance(e, RequestDataError):
         status_code = 400
+        
+    # 构造错误详情
+    detail = {
+        "message": e.message if hasattr(e, 'message') else str(e),
+        "error_code": e.code if hasattr(e, 'code') else "BUSINESS_ERROR"
+    }
+    
+    # 如果有详细信息，添加到detail中
+    if hasattr(e, 'details') and e.details:
+        detail["details"] = e.details
+        
+    # 抛出适当的HTTP异常
+    raise HTTPException(
+        status_code=status_code,
+        detail=detail
+    )
 
 def with_error_handling(default_error_message: str = "操作失败", handle_db_errors: bool = True):
     """异常处理装饰器
