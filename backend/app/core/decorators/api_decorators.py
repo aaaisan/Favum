@@ -147,8 +147,7 @@ def public_endpoint(
     rate_limit_count: Optional[int] = None,
     cache_ttl: Optional[int] = None,
     auth_required: bool = False,
-    custom_message: Optional[str] = None,
-    ownership_check_func: Optional[callable] = None
+    custom_message: Optional[str] = None
 ):
     """
     公共端点装饰器组合
@@ -162,7 +161,6 @@ def public_endpoint(
         cache_ttl: 缓存过期时间（秒），如果提供则添加缓存
         auth_required: 是否需要认证，默认为False
         custom_message: 自定义错误消息，默认使用"操作失败"
-        ownership_check_func: 权限检查函数，用于验证用户是否有权操作特定资源
         
     Returns:
         组合多个装饰器的装饰器函数
@@ -193,16 +191,11 @@ def public_endpoint(
             )(decorated_func)
         )
         
-        # 3. 添加所有权检查（如果需要）
-        # 在validate_token之后应用，确保request.state.user已设置
-        if auth_required and ownership_check_func:
-            decorated_func = owner_required(get_owner_id_func=ownership_check_func)(decorated_func)
-        
-        # 4. 可选添加速率限制
+        # 3. 可选添加速率限制
         if rate_limit_count:
             decorated_func = rate_limit(limit=rate_limit_count, window=3600)(decorated_func)
             
-        # 5. 可选添加缓存
+        # 4. 可选添加缓存
         if cache_ttl:
             decorated_func = cache(expire=cache_ttl, include_query_params=True)(decorated_func)
             
@@ -211,11 +204,12 @@ def public_endpoint(
     return decorator
 
 def owner_endpoint(
-    owner_param_name: str,
+    owner_param_name: str = None,
     *exceptions: Any,
     rate_limit_count: Optional[int] = None,
     custom_message: Optional[str] = None,
-    allow_moderator: bool = True
+    allow_moderator: bool = True,
+    resource_owner_lookup_func: Optional[callable] = None
 ):
     """
     资源所有者端点装饰器组合
@@ -224,15 +218,19 @@ def owner_endpoint(
     专为资源所有者权限的端点设计，可选允许版主和管理员访问。
     
     Args:
-        owner_param_name: 包含资源所有者ID的参数名称
+        owner_param_name: 包含资源所有者ID的参数名称，与resource_owner_lookup_func二选一
         *exceptions: 要捕获的异常类型，默认为SQLAlchemyError
         rate_limit_count: 速率限制计数，如果提供则添加速率限制
         custom_message: 自定义错误消息，默认使用"操作失败"
         allow_moderator: 是否允许版主和管理员访问，默认为True
+        resource_owner_lookup_func: 资源所有者查找函数，用于从资源ID获取所有者ID
         
     Returns:
         组合多个装饰器的装饰器函数
     """
+    if owner_param_name is None and resource_owner_lookup_func is None:
+        raise ValueError("owner_param_name 和 resource_owner_lookup_func 必须至少提供一个")
+        
     _exceptions = exceptions if exceptions else (SQLAlchemyError,)
     _message = custom_message if custom_message else "操作失败"
     
@@ -255,13 +253,26 @@ def owner_endpoint(
                 if user_role in ["admin", "super_admin", "moderator"]:
                     return await func(request, *args, **kwargs)
                 
-                # 否则检查是否为资源所有者
-                owner_id = kwargs.get(owner_param_name)
-                if owner_id is None:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"参数 {owner_param_name} 未找到"
-                    )
+                # 根据提供的方法获取资源所有者ID
+                owner_id = None
+                
+                if resource_owner_lookup_func:
+                    # 通过回调函数获取所有者ID
+                    try:
+                        owner_id = await resource_owner_lookup_func(*args, **kwargs)
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"无法确定资源所有权: {str(e)}"
+                        )
+                else:
+                    # 直接从参数获取所有者ID
+                    owner_id = kwargs.get(owner_param_name)
+                    if owner_id is None:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"参数 {owner_param_name} 未找到"
+                        )
                 
                 if str(owner_id) != str(user_id):
                     raise HTTPException(
@@ -286,7 +297,52 @@ def owner_endpoint(
                 )
             )
         else:
-            # 如果不允许版主访问，使用标准owner_required装饰器
+            # 如果不允许版主访问，使用修改后的逻辑
+            @wraps(func)
+            async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
+                if not hasattr(request.state, "user"):
+                    raise HTTPException(
+                        status_code=401,
+                        detail="需要认证"
+                    )
+                
+                user_role = request.state.user.get("role", "user")
+                user_id = request.state.user.get("id")
+                
+                # 如果是超级管理员或管理员，直接允许访问
+                if user_role in ["admin", "super_admin"]:
+                    return await func(request, *args, **kwargs)
+                
+                # 根据提供的方法获取资源所有者ID
+                owner_id = None
+                
+                if resource_owner_lookup_func:
+                    # 通过回调函数获取所有者ID
+                    try:
+                        owner_id = await resource_owner_lookup_func(*args, **kwargs)
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"无法确定资源所有权: {str(e)}"
+                        )
+                else:
+                    # 直接从参数获取所有者ID
+                    owner_id = kwargs.get(owner_param_name)
+                    if owner_id is None:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"参数 {owner_param_name} 未找到"
+                        )
+                
+                if str(owner_id) != str(user_id):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="没有权限访问此资源"
+                    )
+                
+                return await func(request, *args, **kwargs)
+                
+            # 应用其他装饰器
             _decorated = handle_exceptions(
                 *_exceptions, 
                 status_code=500, 
@@ -294,12 +350,10 @@ def owner_endpoint(
                 include_details=True
             )(
                 validate_token(
-                    owner_required(
-                        log_execution_time(
-                            level=logging.INFO, 
-                            message="{function_name} 执行完成，用时 {execution_time:.3f}秒"
-                        )(func)
-                    )
+                    log_execution_time(
+                        level=logging.INFO, 
+                        message="{function_name} 执行完成，用时 {execution_time:.3f}秒"
+                    )(wrapper)
                 )
             )
         

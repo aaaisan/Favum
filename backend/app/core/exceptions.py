@@ -1,5 +1,8 @@
 from fastapi import HTTPException, status
 from typing import Any, Optional, Dict
+import logging
+
+logger = logging.getLogger(__name__)
 
 """
 自定义异常模块
@@ -483,5 +486,130 @@ class PostNotFoundError(BusinessError):
             status_code=404
         )
         
+class RequestDataError(BusinessError):
+    """请求数据错误"""
+    def __init__(self, message: str = "请求数据错误"):
+        super().__init__(
+            code="request_data_error",
+            message=message,
+            status_code=400
+        )
 # 为了兼容性，将BusinessException定义为BusinessError的别名
 BusinessException = BusinessError 
+
+def handle_database_exception(e: Exception) -> None:
+    """处理数据库相关异常，转换为适当的HTTP异常
+    
+    识别常见的数据库异常类型并转换为对用户友好的错误信息。
+    
+    Args:
+        e: 捕获的异常对象
+        
+    Raises:
+        HTTPException: 转换后的HTTP异常
+    """
+    error_message = str(e)
+    error_code = "DATABASE_ERROR"
+    status_code = 500
+    
+    # ... existing code ...
+    
+def handle_business_exception(e: BusinessException) -> None:
+    """处理业务异常，根据异常类型转换为合适的HTTP异常
+    
+    根据异常类型返回不同的状态码和错误信息。
+    - NotFoundError: 404 资源未找到
+    - AuthenticationError: 401 身份验证失败
+    - PermissionDeniedError: 403 权限不足
+    - ValidationError: 422 数据验证失败
+    - RateLimitError: 429 请求过于频繁
+    - ResourceConflictError: 409 资源冲突
+    - RequestDataError: 400 请求数据错误
+    - 其他BusinessException: 使用异常自带的status_code或默认500
+    
+    Args:
+        e: 业务异常对象
+        
+    Raises:
+        HTTPException: 转换后的HTTP异常
+    """
+    # 根据异常类型设置默认状态码
+    status_code = e.status_code if hasattr(e, 'status_code') else 500
+    
+    # 根据异常类型调整状态码
+    if isinstance(e, NotFoundError):
+        status_code = 404
+    elif isinstance(e, AuthenticationError):
+        status_code = 401
+    elif isinstance(e, PermissionDeniedError) or isinstance(e, PermissionError):
+        status_code = 403
+    elif isinstance(e, ValidationError):
+        status_code = 422
+    elif isinstance(e, RateLimitError):
+        status_code = 429
+    elif isinstance(e, ResourceConflictError) or "conflict" in e.__class__.__name__.lower():
+        status_code = 409
+    elif isinstance(e, RequestDataError):
+        status_code = 400
+
+def with_error_handling(default_error_message: str = "操作失败", handle_db_errors: bool = True):
+    """异常处理装饰器
+    
+    为API端点提供统一的异常处理，捕获各种异常并转换为适当的HTTP响应。
+    可以处理以下类型的异常：
+    - BusinessException及其子类（NotFoundError, ValidationError等）
+    - 数据库相关异常
+    - 其他未预期的异常
+    
+    Args:
+        default_error_message: 未分类异常的默认错误消息
+        handle_db_errors: 是否尝试处理数据库异常
+        
+    Returns:
+        装饰器函数
+        
+    Example:
+        @router.get("/items/{item_id}")
+        @public_endpoint()
+        @with_error_handling(default_error_message="获取商品失败")
+        async def get_item(item_id: int):
+            return await service.get_item(item_id)
+    """
+    def decorator(func):
+        import functools
+        
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            
+            except BusinessException as e:
+                # 处理业务异常
+                handle_business_exception(e)
+                
+            except HTTPException:
+                # 直接重新抛出HTTP异常
+                raise
+                
+            except Exception as e:
+                logger.error(f"执行 {func.__name__} 时发生未预期异常: {str(e)}", exc_info=True)
+                
+                # 尝试处理数据库异常
+                if handle_db_errors:
+                    try:
+                        is_db_error = ("db" in str(e).lower() or 
+                                      (hasattr(e, "__module__") and "sqlalchemy" in e.__module__.lower()))
+                        if is_db_error:
+                            handle_database_exception(e)
+                    except:
+                        pass
+                
+                # 其他未处理的异常
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": default_error_message, "error_code": "INTERNAL_ERROR"}
+                )
+        
+        return wrapper
+    
+    return decorator 

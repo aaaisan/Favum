@@ -1,19 +1,22 @@
-from fastapi import APIRouter, HTTPException, Request, Query, Depends
-# from fastapi import APIRouter, HTTPException, status, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Query, Depends, Body
 from typing import List, Optional
-import json
 from datetime import datetime
-import traceback
 import logging
 
 from ...schemas import post as post_schema
-# from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService
-from ...core.decorators import public_endpoint, admin_endpoint
+from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...services.favorite_service import FavoriteService
 from ...services import PostService
 from ...services.post_service import get_post_service
-from ...core.exceptions import BusinessException
+from ...services import get_favorite_service, get_comment_service
+from ...core.exceptions import (
+    NotFoundError, 
+    RequestDataError,
+    AuthenticationError,
+    ValidationError,
+    with_error_handling
+)
 from ..responses.post import (
     PostResponse, 
     PostDetailResponse,
@@ -24,22 +27,22 @@ from ..responses.post import (
     PostVoteResponse,
     PostFavoriteResponse
 )
-# from ..responses.comment import CommentResponse, CommentListResponse
 from ...core.auth import get_current_user_optional, get_current_active_user
 from ...db.models import User, VoteType
-#import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-async def get_post_owner(post_id: int) -> int:
+@with_error_handling(default_error_message="获取帖子作者信息失败")
+async def get_post_owner(post_id: int, post_service: PostService = Depends(get_post_service)) -> int:
     """获取帖子作者ID
     
     用于权限验证，获取指定帖子的作者ID。
     
     Args:
         post_id: 帖子ID
+        post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
         int: 帖子作者的用户ID
@@ -47,46 +50,24 @@ async def get_post_owner(post_id: int) -> int:
     Raises:
         HTTPException: 当帖子不存在时抛出404错误
     """
-    logger.debug(f"获取帖子 {post_id} 的作者ID")
-    try:
-        post_service = PostService()
-        
-        # 获取帖子详情
-        post = await post_service.get_post_detail(post_id)
-        if not post:
-            logger.warning(f"帖子 {post_id} 不存在")
-            raise HTTPException(status_code=404, detail="帖子不存在")
-        
-        author_id = post.get("author_id")
-        if not author_id:
-            logger.warning(f"帖子 {post_id} 的作者ID为空")
-            raise HTTPException(status_code=500, detail="帖子数据不完整")
-        
-        logger.debug(f"帖子 {post_id} 的作者ID: {author_id}")
-        return author_id
-    except BusinessException as e:
-        # 业务异常转换为HTTP异常
-        logger.warning(f"获取帖子 {post_id} 作者ID时发生业务异常: {str(e)}")
-        raise HTTPException(
-            status_code=404 if e.code == "post_not_found" else 400,
-            detail=str(e)
-        )
-    except HTTPException:
-        # 重新抛出HTTP异常
-        raise
-    except Exception as e:
-        # 其他未预期的异常
-        logger.error(f"获取帖子 {post_id} 作者ID时发生未预期异常: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取帖子作者信息失败: {str(e)}"
-        )
+    # 获取帖子详情
+    post = await post_service.get_post_detail(post_id)
+    if not post:
+        raise NotFoundError(code="post_not_found", message="帖子不存在")
+    
+    author_id = post.get("author_id")
+    if not author_id:
+        raise RequestDataError(code="incomplete_post_data", message="帖子数据不完整")
+    
+    return author_id
 
 @router.post("", response_model=PostResponse)
 @public_endpoint(auth_required=True, custom_message="创建帖子失败")
+@with_error_handling(default_error_message="创建帖子失败")
 async def create_post(
     request: Request,
-    post: post_schema.PostCreate
+    post: post_schema.PostCreate,
+    post_service: PostService = Depends(get_post_service)
 ):
     """创建新帖子
     
@@ -95,10 +76,12 @@ async def create_post(
     包含以下特性：
     1. 用户认证：需要有效的访问令牌
     2. 标签处理：自动处理帖子与标签的关联
+    3. 异常处理：使用统一的异常处理装饰器
     
     Args:
         request: FastAPI请求对象
         post: 帖子创建模型，包含标题、内容、分类等
+        post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
         Post: 创建成功的帖子信息
@@ -106,80 +89,32 @@ async def create_post(
     Raises:
         HTTPException: 当权限不足或数据验证失败时抛出相应错误
     """
-    try:
-        # 创建帖子服务实例
-        post_service = PostService()
-        
-        # 从token获取当前用户ID
-        current_user_id = request.state.user.get("id")
-        
-        # 准备帖子数据
-        post_data = post.model_dump()
-        
-        # 如果未提供作者ID，使用当前用户ID
-        if "author_id" not in post_data or not post_data["author_id"]:
-            post_data["author_id"] = current_user_id
-            logger.info(f"使用当前用户ID作为作者: {current_user_id}")
-        
-        # 使用PostService的create_post方法创建帖子，包括处理标签关联
-        logger.info(f"创建帖子: {post_data.get('title')}, 标签: {post_data.get('tag_ids', [])}")
-        created_post = await post_service.create_post(post_data)
-        logger.info(f"成功创建帖子: {created_post.get('id')}")
-        
-        return created_post
-    except BusinessException as e:
-        # 业务异常转换为HTTP异常
-        logger.error(f"业务异常: {e.message}, 状态码: {e.status_code}")
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
-    except Exception as e:
-        # 处理所有其他异常
-        logger.error(f"创建帖子失败: {str(e)}", exc_info=True)
-        
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "创建帖子失败", "error_code": "INTERNAL_ERROR"}
-        )
-
-# @router.post("/test", response_model=PostResponse)
-# @public_endpoint(rate_limit_count=10, auth_required=True, custom_message="创建测试帖子失败")
-# async def create_test_post(
-#     request: Request
-# ):
-#     """测试创建帖子
+    # 从token获取当前用户ID
+    current_user_id = request.state.user.get("id")
+    if not current_user_id:
+        raise AuthenticationError(code="missing_user_id", message="无法获取用户ID")
     
-#     用于测试的简化版创建帖子API。
-#     """
-#     try:
-#         # 创建帖子服务实例
-#         post_service = PostService()
-        
-#         # 从token获取当前用户ID
-#         current_user_id = request.state.user.get("id")
-        
-#         # 准备帖子数据
-#         post_data = {
-#             "title": "Test Post",
-#             "content": "This is a test post",
-#             "category_id": 1,
-#             "section_id": 1,
-#             "author_id": current_user_id
-#         }
-        
-#         # 创建帖子
-#         created_post = await post_service.create_post(post_data)
-#         return created_post
-#     except BusinessException as e:
-#         # 业务异常转换为HTTP异常
-#         raise HTTPException(
-#             status_code=e.status_code,
-#             detail={"message": e.message, "error_code": e.code}
-#         )
+    # 准备帖子数据
+    try:
+        post_data = post.model_dump()
+    except AttributeError:
+        try:
+            post_data = post.dict()
+        except AttributeError:
+            post_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
+    
+    # 如果未提供作者ID，使用当前用户ID
+    if "author_id" not in post_data or not post_data["author_id"]:
+        post_data["author_id"] = current_user_id
+    
+    # 使用PostService的create_post方法创建帖子，包括处理标签关联
+    created_post = await post_service.create_post(post_data)
+    
+    return created_post
 
 @router.get("", response_model=PostListResponse)
 @public_endpoint(cache_ttl=30, custom_message="获取帖子列表失败")
+@with_error_handling(default_error_message="获取帖子列表失败")
 async def read_posts(
     skip: int = 0,
     limit: int = 100,
@@ -192,149 +127,122 @@ async def read_posts(
     sort_order: Optional[str] = "desc",
     post_service: PostService = Depends(get_post_service),
 ):
-    """
-    获取帖子列表
+    """获取帖子列表
     
-    同时提供完整的关联对象和ID引用(tag_ids)，前端可以选择使用哪种方式
-    支持分页、排序和多种筛选条件
-    """
-    try:
-        # post_service = PostService()
-        # 获取帖子列表
-        posts, total = await post_service.get_posts(
-            skip=skip,
-            limit=limit,
-            include_hidden=include_hidden,
-            category_id=category_id,
-            section_id=section_id,
-            author_id=author_id,
-            tag_ids=tag_ids,
-            sort_field=sort_by,
-            sort_order=sort_order
-        )
+    提供帖子列表，支持分页、排序和多种筛选条件。
+    
+    Args:
+        skip: 跳过的记录数，用于分页
+        limit: 返回的记录数，用于分页
+        include_hidden: 是否包含隐藏的帖子
+        category_id: 按分类ID筛选
+        section_id: 按版块ID筛选
+        author_id: 按作者ID筛选
+        tag_ids: 按标签ID列表筛选
+        sort_by: 排序字段
+        sort_order: 排序方向
+        post_service: 帖子服务实例（通过依赖注入获取）
         
-        # 处理帖子数据，确保结构与响应模型匹配
-        processed_posts = []
-        for post in posts:
-            # 提取标签ID
-            tag_ids = []
-            if "tags" in post and post["tags"]:
-                tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
-
-            processed_post = post_service.model_to_dict(post)
-            
-            processed_posts.append(processed_post)
-        
-        # 构建响应
-        response = {
-            "posts": processed_posts,
-            "total": total,
-            "page": skip // limit + 1 if limit > 0 else 1,
-            "size": limit
-        }
-        
-        # 返回帖子列表，让FastAPI处理响应模型验证
-        return response
-    except Exception as e:
-        logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "获取帖子列表失败", "error": str(e)}
-        )
+    Returns:
+        PostListResponse: 包含帖子列表和分页信息的响应
+    """    
+    # 获取帖子列表
+    posts, total = await post_service.get_posts(
+        skip=skip,
+        limit=limit,
+        include_hidden=include_hidden,
+        category_id=category_id,
+        section_id=section_id,
+        author_id=author_id,
+        tag_ids=tag_ids,
+        sort_field=sort_by,
+        sort_order=sort_order
+    )
+    
+    return {
+        "posts": posts,
+        "total": total,
+        "page": skip // limit + 1 if limit > 0 else 1,
+        "size": limit
+    }
 
 @router.get("/{post_id}", response_model=PostDetailResponse)
 @public_endpoint(cache_ttl=30, custom_message="获取帖子详情失败")
+@with_error_handling(default_error_message="获取帖子详情失败")
 async def read_post(
     post_id: int,
     current_user: Optional[User] = Depends(get_current_user_optional),
     post_service: PostService = Depends(get_post_service),
 ):
-    """
-    获取帖子详情
+    """获取帖子详情
     
-    同时提供完整的关联对象和ID引用(tag_ids)，前端可以选择使用哪种方式
+    获取指定ID帖子的详细信息，包括标签、作者等相关数据。
+    
+    Args:
+        post_id: 帖子ID
+        current_user: 当前用户对象（可选）
+        post_service: 帖子服务实例（通过依赖注入获取）
+        
+    Returns:
+        PostDetailResponse: 包含帖子详情的响应
+        
+    Raises:
+        HTTPException: 当帖子不存在或用户无权查看时抛出相应错误
     """
-    try:
-        # 添加调试日志
-        import logging
-        debug_logger = logging.getLogger("post_detail_debug")
-        file_handler = logging.FileHandler("logs/post_detail_debug.log")
-        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        debug_logger.addHandler(file_handler)
-        debug_logger.setLevel(logging.DEBUG)
-        
-        debug_logger.debug(f"获取帖子详情 - 帖子ID: {post_id}")
-        
-        # 获取帖子详情
-        post = await post_service.get_post_detail(post_id=post_id)
-        
-        debug_logger.debug(f"获取到的帖子数据: {post}")
-        
-        if not post:
-            debug_logger.warning(f"帖子不存在 - 帖子ID: {post_id}")
-            raise HTTPException(status_code=404, detail="帖子不存在")
-        
-        # 检查权限
-        if post.get("is_hidden", False):
-            debug_logger.debug(f"帖子被隐藏 - 帖子ID: {post_id}")
-            if not current_user:
-                debug_logger.warning(f"未授权用户尝试访问隐藏帖子 - 帖子ID: {post_id}")
-                raise HTTPException(status_code=404, detail="帖子不存在")
-                
-            can_view_hidden = hasattr(current_user, 'permissions') and any(
-                perm in current_user.permissions for perm in ["manage_content", "manage_system"]
-            )
+    # 获取帖子详情
+    post = await post_service.get_post_detail(post_id=post_id)
+    
+    if not post:
+        raise NotFoundError(code="post_not_found", message="帖子不存在")
+    
+    # 检查权限
+    if post.get("is_hidden", False):
+        if not current_user:
+            raise NotFoundError(code="post_not_found", message="帖子不存在")
             
-            if not can_view_hidden and post.get("author_id") != current_user.id:
-                debug_logger.warning(f"用户无权查看隐藏帖子 - 帖子ID: {post_id}, 用户ID: {current_user.id}")
-                raise HTTPException(status_code=404, detail="帖子不存在")
-        
-        # 确保所有必要的字段都存在
-        if "tags" not in post:
-            debug_logger.debug(f"帖子缺少tags字段，添加空列表 - 帖子ID: {post_id}")
-            post["tags"] = []
-        if "comments" not in post:
-            debug_logger.debug(f"帖子缺少comments字段，添加空列表 - 帖子ID: {post_id}")
-            post["comments"] = []
-        
-        # 添加PostDetailResponse需要的字段
-        if "view_count" not in post:
-            debug_logger.debug(f"帖子缺少view_count字段，添加默认值 - 帖子ID: {post_id}")
-            post["view_count"] = 0
-        if "favorite_count" not in post:
-            debug_logger.debug(f"帖子缺少favorite_count字段，添加默认值 - 帖子ID: {post_id}")
-            post["favorite_count"] = 0
-            
-        # 添加tag_ids字段，用于ID引用模式
-        tag_ids = []
-        if post.get("tags"):
-            tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
-        post["tag_ids"] = tag_ids
-        
-        debug_logger.debug(f"返回帖子详情 - 帖子ID: {post_id}, 数据: {post}")
-        
-        # 直接返回帖子详情对象，让FastAPI处理响应模型验证
-        return post
-    except HTTPException:
-        # 重新抛出HTTP异常
-        raise
-    except Exception as e:
-        # 记录错误并返回500错误
-        logger.error(f"获取帖子详情失败，帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
-        # 添加调试日志
-        if 'debug_logger' in locals():
-            debug_logger.error(f"获取帖子详情失败 - 帖子ID: {post_id}, 错误: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "获取帖子详情失败", "error": str(e)}
+        can_view_hidden = hasattr(current_user, 'permissions') and any(
+            perm in current_user.permissions for perm in ["manage_content", "manage_system"]
         )
+        
+        if not can_view_hidden and post.get("author_id") != current_user.id:
+            raise NotFoundError(code="post_not_found", message="帖子不存在")
+    
+    # 确保所有必要的字段都存在，防止前端渲染错误
+    if "tags" not in post:
+        post["tags"] = []
+    if "comments" not in post:
+        post["comments"] = []
+    
+    # 添加PostDetailResponse需要的字段
+    if "view_count" not in post:
+        post["view_count"] = 0
+    if "favorite_count" not in post:
+        post["favorite_count"] = 0
+        
+    # 添加tag_ids字段，用于ID引用模式
+    tag_ids = []
+    if post.get("tags"):
+        tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
+    post["tag_ids"] = tag_ids
+    
+    # 尝试记录浏览量增加（不阻塞响应）
+    try:
+        # 异步记录浏览量，不等待结果
+        post_service.increment_view_count(post_id, background=True)
+    except Exception as view_exc:
+        # 记录但不影响主请求
+        logger.warning(f"记录帖子浏览量失败: {str(view_exc)}")
+    
+    return post
 
 @router.put("/{post_id}", response_model=PostResponse)
-@public_endpoint(auth_required=True, custom_message="更新帖子失败")
+@owner_endpoint(custom_message="更新帖子失败", resource_owner_lookup_func=get_post_owner)
+@with_error_handling(default_error_message="更新帖子失败")
 async def update_post(
     request: Request,
     post_id: int,
-    post: post_schema.PostUpdate
+    post: post_schema.PostUpdate,
+    post_service: PostService = Depends(get_post_service)
 ):
     """更新帖子
     
@@ -344,6 +252,7 @@ async def update_post(
         request: FastAPI请求对象
         post_id: 帖子ID
         post: 更新的帖子数据
+        post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
         Post: 更新后的帖子信息
@@ -351,90 +260,35 @@ async def update_post(
     Raises:
         HTTPException: 当帖子不存在或权限不足时抛出相应错误
     """
+    # 获取当前用户ID
+    current_user_id = request.state.user.get("id")
+    
+    # 获取帖子详情，检查是否存在
+    existing_post = await post_service.get_post_detail(post_id)
+    if not existing_post:
+        raise NotFoundError(code="post_not_found", message="帖子不存在")
+        
+    # 更新帖子内容
+    # 兼容不同版本的Pydantic，尝试使用dict()或model_dump()
     try:
-        # 验证用户是否已登录
-        # authorization = request.headers.get('Authorization')
-        # if not authorization or not authorization.startswith('Bearer '):
-        #     raise HTTPException(
-        #         status_code=401,
-        #         detail="缺少有效的身份验证令牌",
-        #         headers={"WWW-Authenticate": "Bearer"},
-        #     )
-        
-        # token = authorization.split(' ')[1]
-        
-        # # 验证token
-        # from ...core.auth import decode_token
-        # token_data = decode_token(token)
-        # if not token_data:
-        #     raise HTTPException(
-        #         status_code=401,
-        #         detail="令牌无效或已过期",
-        #         headers={"WWW-Authenticate": "Bearer"},
-        #     )
-        
-        # # 将用户信息存储在request.state中
-        # request.state.user = token_data
-        
-        # 获取当前用户ID
-        current_user_id = request.state.user.get("id")
-        logger.info(f"用户 {current_user_id} 正在更新帖子 {post_id}")
-        
-        # 创建帖子服务实例
-        post_service = PostService()
-        
-        # 获取帖子详情，检查是否存在
-        existing_post = await post_service.get_post_detail(post_id)
-        if not existing_post:
-            raise HTTPException(
-                status_code=404,
-                detail="帖子不存在"
-            )
-        
-        # 检查权限 - 确认当前用户是帖子作者或管理员
-        user_role = request.state.user.get("role", "user")
-        is_author = existing_post.get("author_id") == current_user_id
-        is_admin = user_role in ["admin", "moderator"]
-        
-        if not (is_author or is_admin):
-            logger.warning(f"用户 {current_user_id} 无权限更新帖子 {post_id}")
-            raise HTTPException(
-                status_code=403,
-                detail="没有权限更新此帖子"
-            )
-            
-        # 更新帖子内容
-        # 兼容不同版本的Pydantic，尝试使用dict()或model_dump()
+        post_data = post.model_dump(exclude_unset=True)
+    except AttributeError:
         try:
-            post_data = post.model_dump(exclude_unset=True)
+            post_data = post.dict(exclude_unset=True)
         except AttributeError:
-            try:
-                post_data = post.dict(exclude_unset=True)
-            except AttributeError:
-                post_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
-        
-        updated_post = await post_service.update_post(post_id, post_data)
-        
-        # 确保日期时间字段为字符串格式
-        if updated_post.get("created_at") and not isinstance(updated_post.get("created_at"), str):
-            updated_post["created_at"] = updated_post["created_at"].isoformat()
-            
-        if updated_post.get("updated_at") and not isinstance(updated_post.get("updated_at"), str):
-            updated_post["updated_at"] = updated_post["updated_at"].isoformat()
-        
-        return updated_post
-    except BusinessException as e:
-        # 业务异常转换为HTTP异常
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
+            post_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
+    
+    updated_post = await post_service.update_post(post_id, post_data)
+    
+    return updated_post
 
 @router.delete("/{post_id}", response_model=PostDeleteResponse)
-@public_endpoint(auth_required=True, custom_message="删除帖子失败")
+@owner_endpoint(custom_message="删除帖子失败", resource_owner_lookup_func=get_post_owner)
+@with_error_handling(default_error_message="删除帖子失败")
 async def delete_post(
     request: Request,
-    post_id: int
+    post_id: int,
+    post_service: PostService = Depends(get_post_service)
 ):
     """删除帖子
     
@@ -443,6 +297,7 @@ async def delete_post(
     Args:
         request: FastAPI请求对象
         post_id: 帖子ID
+        post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
         dict: 操作结果消息
@@ -450,48 +305,25 @@ async def delete_post(
     Raises:
         HTTPException: 当帖子不存在或权限不足时抛出相应错误
     """
-    try:
-        # 创建帖子服务实例
-        post_service = PostService()
-        
-        # 获取帖子详情，检查是否存在
-        existing_post = await post_service.get_post_detail(post_id)
-        if not existing_post:
-            raise HTTPException(status_code=404, detail="帖子不存在")
-            
-        # 检查权限 - 确认当前用户是帖子作者或管理员
-        user_role = request.state.user.get("role", "user")
-        user_id = request.state.user.get("id")
-        is_author = existing_post.get("author_id") == user_id
-        is_admin = user_role in ["admin", "super_admin", "moderator"]
-        
-        if not (is_author or is_admin):
-            logger.warning(f"用户 {user_id} 无权限删除帖子 {post_id}")
-            raise HTTPException(
-                status_code=403,
-                detail="没有权限删除此帖子"
-            )
-        
-        # 删除帖子
-        success = await post_service.delete_post(post_id)
-        
-        if success:
-            return {"message": "帖子已成功删除", "post_id": post_id}
-        else:
-            raise HTTPException(status_code=500, detail="删除帖子失败")
-            
-    except BusinessException as e:
-        # 业务异常转换为HTTP异常
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
+    # 记录操作
+    user_id = request.state.user.get("id")
+    
+    # 删除帖子
+    success = await post_service.delete_post(post_id)
+    
+    if success:
+        return {"message": "帖子已成功删除", "post_id": post_id}
+    else:
+        logger.warning(f"删除帖子 {post_id} 失败")
+        raise HTTPException(status_code=500, detail={"message": "删除帖子失败", "error_code": "DELETE_FAILED"})
 
 @router.post("/{post_id}/restore", response_model=PostResponse)
 @admin_endpoint(custom_message="恢复帖子失败")
+@with_error_handling(default_error_message="恢复帖子失败")
 async def restore_post(
     request: Request,
-    post_id: int
+    post_id: int,
+    post_service: PostService = Depends(get_post_service)
 ):
     """恢复已删除的帖子
     
@@ -500,6 +332,7 @@ async def restore_post(
     Args:
         request: FastAPI请求对象
         post_id: 帖子ID
+        post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
         dict: 操作结果消息
@@ -507,249 +340,120 @@ async def restore_post(
     Raises:
         HTTPException: 当帖子不存在或权限不足时抛出相应错误
     """
-    try:
-        # 创建帖子服务实例
-        post_service = PostService()
-        
-        # 恢复帖子
-        restored_post = await post_service.restore_post(post_id)
-        
-        return {
-            "message": "帖子已成功恢复",
-            "post_id": post_id,
-            "post": restored_post
-        }
-    except BusinessException as e:
-        # 业务异常转换为HTTP异常
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
+    # 恢复帖子
+    restored_post = await post_service.restore_post(post_id)
+    
+    return {
+        "message": "帖子已成功恢复",
+        "post_id": post_id,
+        "post": restored_post
+    }
 
 @router.patch("/{post_id}/visibility", response_model=PostResponse)
-@public_endpoint(auth_required=True, custom_message="更改帖子可见性失败")
+@owner_endpoint(custom_message="切换帖子可见性失败", resource_owner_lookup_func=get_post_owner)
+@with_error_handling(default_error_message="切换帖子可见性失败")
 async def toggle_post_visibility(
     request: Request,
     post_id: int,
-    visibility: dict
+    visibility: dict = Body(...),
+    post_service: PostService = Depends(get_post_service)
 ):
     """切换帖子可见性
     
-    隐藏或显示指定的帖子。
-    权限规则：
-    1. 管理员可以隐藏/显示任何帖子
-    2. 版主可以隐藏/显示其管理的版块中的帖子
-    3. 普通用户只能隐藏/显示自己的帖子
+    切换指定帖子的可见性状态，仅允许帖子作者、版主和管理员操作。
     
     Args:
         request: FastAPI请求对象
         post_id: 帖子ID
-        visibility: 包含可见性设置的字典，例如 {"hidden": true}
+        visibility: 包含可见性设置的字典
+        post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
-        dict: 包含成功消息和更新后的帖子状态的响应
-        
-    Raises:
-        HTTPException: 当帖子不存在或权限不足时抛出相应错误
+        Post: 更新后的帖子信息
     """
-    try:
-        # 记录请求信息
-        with open("logs/visibility_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 请求修改帖子可见性: post_id={post_id}, visibility={visibility}\n")
-        
-        # 创建帖子服务实例
-        post_service = PostService()
-        
-        # 获取帖子详情，检查是否存在
-        existing_post = await post_service.get_post_detail(post_id)
-        if not existing_post:
-            with open("logs/visibility_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 帖子不存在: post_id={post_id}\n")
-            raise HTTPException(status_code=404, detail="帖子不存在")
-        
-        with open("logs/visibility_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 帖子存在, 当前状态: {existing_post.get('is_hidden')}\n")
-        
-        # 从token中获取用户ID和角色
-        user_data = request.state.user
-        user_id = user_data.get("id")
-        user_role = user_data.get("role", "user")
-        
-        # 检查权限
-        if user_role in ["admin", "super_admin"]:
-            # 管理员可以隐藏任何帖子
-            pass
-        elif user_role == "moderator":
-            # TODO: 使用服务层检查版主权限
-            # 此处简单实现，实际应将此逻辑迁移到服务层
-            # 直接放行，版主权限在业务逻辑层处理
-            pass
-        else:
-            # 普通用户只能隐藏自己的帖子
-            author_id = existing_post.get("author_id")
-            if author_id != user_id:
-                with open("logs/visibility_debug.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 权限错误: user_id={user_id}, author_id={author_id}\n")
-                raise HTTPException(status_code=403, detail="您只能隐藏自己的帖子")
-        
-        # 更新帖子可见性
-        is_hidden = visibility.get("hidden", not existing_post.get("is_hidden", False))
-        with open("logs/visibility_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 准备切换可见性: is_hidden={is_hidden}\n")
-        
-        try:
-            updated_post = await post_service.toggle_visibility(post_id, is_hidden)
-            
-            with open("logs/visibility_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 切换成功, 返回数据: {updated_post}\n")
-            
-            # 确保日期字段是字符串格式
-            if isinstance(updated_post, dict):
-                # 格式化日期字段
-                if isinstance(updated_post.get('created_at'), datetime):
-                    updated_post['created_at'] = updated_post['created_at'].isoformat()
-                if isinstance(updated_post.get('updated_at'), datetime):
-                    updated_post['updated_at'] = updated_post['updated_at'].isoformat()
-                if isinstance(updated_post.get('deleted_at'), datetime):
-                    updated_post['deleted_at'] = updated_post['deleted_at'].isoformat()
-                
-                # 格式化嵌套对象中的日期
-                if isinstance(updated_post.get('category'), dict) and isinstance(updated_post['category'].get('created_at'), datetime):
-                    updated_post['category']['created_at'] = updated_post['category']['created_at'].isoformat()
-            
-            # 返回完整的帖子详情，而不是简单的状态消息
-            return updated_post
-        except Exception as e:
-            with open("logs/visibility_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 切换失败, 错误: {str(e)}\n")
-                f.write(f"{datetime.now().isoformat()} - 堆栈: {traceback.format_exc()}\n")
-            raise
-    except BusinessException as e:
-        # 记录业务异常
-        with open("logs/visibility_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 业务异常: {e.message}, {e.code}\n")
-            
-        # 业务异常转换为HTTP异常
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
-    except Exception as e:
-        # 记录未处理异常
-        with open("logs/visibility_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 未处理异常: {str(e)}\n")
-            f.write(f"{datetime.now().isoformat()} - 堆栈: {traceback.format_exc()}\n")
-            
-        # 重新抛出异常
-        raise
+    
+    # 获取帖子详情，检查是否存在
+    existing_post = await post_service.get_post_detail(post_id)
+    if not existing_post:
+        raise NotFoundError(code="post_not_found", message="帖子不存在")
+    
+    # 更新帖子可见性
+    is_hidden = visibility.get("hidden", not existing_post.get("is_hidden", False))
+    
+    updated_post = await post_service.toggle_visibility(post_id, is_hidden)
+    
+    return updated_post
 
 @router.post("/{post_id}/vote", response_model=PostVoteResponse)
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="点赞操作失败")
+@with_error_handling(default_error_message="点赞操作失败")
 async def vote_post(
     post_id: int,
     vote_data: post_schema.PostVoteCreate,
-    request: Request
+    request: Request,
+    post_service: PostService = Depends(get_post_service)
 ):
     """
     为帖子投票（赞同或反对）
+    
+    Args:
+        post_id: 帖子ID
+        vote_data: 投票数据，包含vote_type字段
+        request: FastAPI请求对象
+        post_service: 帖子服务实例（通过依赖注入获取）
+        
+    Returns:
+        PostVoteResponse: 包含投票结果的响应
     """
-    try:
-        # 获取当前用户信息
-        current_user = request.state.user
-        user_id = current_user.get("id")
-        
-        logger.info("开始处理投票请求", extra={
-            "post_id": post_id,
-            "user_id": user_id,
-            "vote_type": vote_data.vote_type
-        })
-        
-        with open("logs/vote_endpoint.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 投票请求: post_id={post_id}, user_id={user_id}, vote_type={vote_data.vote_type}\n")
-        
-        # 将字符串转换为枚举
-        if vote_data.vote_type == "upvote":
-            vote_type_enum = VoteType.UPVOTE
-        elif vote_data.vote_type == "downvote":
-            vote_type_enum = VoteType.DOWNVOTE
-        else:
-            error_msg = f"无效的投票类型: {vote_data.vote_type}"
-            logger.warning(error_msg)
-            with open("logs/vote_endpoint.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 错误: {error_msg}\n")
-            raise HTTPException(
-                status_code=400, 
-                detail={"message": "无效的投票类型", "error_code": "INVALID_VOTE_TYPE"}
-            )
-        
-        logger.info("转换投票类型", extra={
-            "vote_type_str": vote_data.vote_type,
-            "vote_enum": str(vote_type_enum)
-        })
-        
-        # 创建服务实例
-        post_service = PostService()
-        
-        try:
-            vote_result = await post_service.vote_post(
-                post_id=post_id,
-                user_id=user_id,
-                vote_type=vote_type_enum
-            )
-            
-            if vote_result is None:
-                error_msg = f"帖子不存在或已删除: post_id={post_id}"
-                logger.warning(error_msg)
-                with open("logs/vote_endpoint.log", "a") as f:
-                    f.write(f"{datetime.now().isoformat()} - 错误: {error_msg}\n")
-                raise HTTPException(
-                    status_code=404, 
-                    detail={"message": "帖子不存在或已删除", "error_code": "POST_NOT_FOUND"}
-                )
-            
-            # 确保结果符合响应模型
-            processed_result = {
-                "post_id": vote_result.get("post_id"),
-                "upvotes": vote_result.get("upvotes", 0),
-                "downvotes": vote_result.get("downvotes", 0),
-                "score": vote_result.get("score", 0),
-                "user_vote": vote_result.get("user_vote"),
-                "action": vote_result.get("action", "")
-            }
-            
-            logger.info("投票成功", extra={"result": processed_result})
-            with open("logs/vote_endpoint.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 投票成功: {json.dumps(processed_result, default=str)}\n")
-            
-            return processed_result
-        except BusinessException as e:
-            error_msg = f"业务异常: {e.message}"
-            logger.error(error_msg)
-            with open("logs/vote_endpoint.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 业务异常: {error_msg}\n")
-            raise HTTPException(
-                status_code=e.status_code,
-                detail={"message": e.message, "error_code": e.code}
-            )
-    except HTTPException:
-        # 直接重新抛出HTTP异常
-        raise
-    except Exception as e:
-        error_msg = f"投票处理失败: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        with open("logs/vote_endpoint.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 未处理异常: {error_msg}\n")
-            f.write(f"{datetime.now().isoformat()} - 堆栈: {traceback.format_exc()}\n")
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "投票处理失败", "error_code": "VOTE_FAILED"}
+    # 获取当前用户信息并验证
+    current_user = request.state.user
+    user_id = current_user.get("id")
+    if not user_id:
+        raise AuthenticationError(code="missing_user_id", message="未能获取用户ID")
+    
+    # 验证投票类型
+    if vote_data.vote_type not in ["upvote", "downvote"]:
+        raise ValidationError(
+            code="invalid_vote_type", 
+            message="无效的投票类型，只允许 upvote 或 downvote"
         )
+    
+    # 将字符串转换为枚举
+    vote_type_enum = VoteType.UPVOTE if vote_data.vote_type == "upvote" else VoteType.DOWNVOTE
+    
+    # 执行投票
+    vote_result = await post_service.vote_post(
+        post_id=post_id,
+        user_id=user_id,
+        vote_type=vote_type_enum
+    )
+    
+    # 检查返回结果
+    if vote_result is None:
+        raise NotFoundError(
+            code="post_not_found", 
+            message="帖子不存在或已删除"
+        )
+    
+    # 确保结果符合响应模型
+    processed_result = {
+        "post_id": vote_result.get("post_id"),
+        "upvotes": vote_result.get("upvotes", 0),
+        "downvotes": vote_result.get("downvotes", 0),
+        "score": vote_result.get("score", 0),
+        "user_vote": vote_result.get("user_vote"),
+        "action": vote_result.get("action", "")
+    }
+    
+    return processed_result
 
 @router.get("/{post_id}/votes", response_model=PostStatsResponse)
-@public_endpoint(cache_ttl=10, custom_message="获取点赞数失败")
-async def get_post_votes(
+@public_endpoint(cache_ttl=10, custom_message="获取投票数失败")
+@with_error_handling(default_error_message="获取投票数失败")
+async def get_vote_count(
     request: Request,
-    post_id: int
+    post_id: int,
+    post_service: PostService = Depends(get_post_service)
 ):
     """获取帖子的点赞数
     
@@ -757,125 +461,102 @@ async def get_post_votes(
     
     包含以下特性：
     1. 缓存：结果缓存10秒
+    2. 异常处理：使用统一的异常处理装饰器
     
     Args:
         request: FastAPI请求对象
         post_id: 帖子ID
+        post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
         PostStatsResponse: 包含点赞数和帖子ID的响应
     """
-    try:
-        # 记录请求信息
-        with open("logs/vote_count_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 请求获取帖子投票数: post_id={post_id}\n")
-        
-        # 创建帖子服务实例
-        post_service = PostService()
-        
-        # 获取点赞数
-        try:
-            count = await post_service.get_vote_count(post_id)
-            
-            # 记录成功结果
-            with open("logs/vote_count_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 获取投票数成功: post_id={post_id}, count={count}\n")
-            
-            return {
-                "post_id": post_id,
-                "vote_count": count
-            }
-        except Exception as e:
-            # 记录服务层异常
-            with open("logs/vote_count_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 服务层异常: {str(e)}\n")
-                f.write(f"{datetime.now().isoformat()} - 堆栈: {traceback.format_exc()}\n")
-            
-            # 返回默认值
-            return {
-                "post_id": post_id,
-                "vote_count": 0
-            }
-            
-    except BusinessException as e:
-        # 记录业务异常
-        with open("logs/vote_count_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 业务异常: {e.message}, {e.code}\n")
-            
-        # 将业务异常转换为HTTP异常
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
-    except Exception as e:
-        # 记录未处理异常
-        with open("logs/vote_count_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 未处理异常: {str(e)}\n")
-            f.write(f"{datetime.now().isoformat()} - 堆栈: {traceback.format_exc()}\n")
-            
-        # 返回通用错误
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "获取投票数失败", "error_code": "GET_VOTES_FAILED"}
-        )
+    
+    # 获取点赞数
+    count = await post_service.get_vote_count(post_id)
+    
+    
+    return {
+        "post_id": post_id,
+        "vote_count": count
+    }
 
 @router.post("/{post_id}/favorite", response_model=PostFavoriteResponse)
-@public_endpoint(rate_limit_count=30, auth_required=True, custom_message="收藏操作失败")
+@public_endpoint(auth_required=True, custom_message="收藏帖子失败")
+@with_error_handling(default_error_message="收藏帖子失败")
 async def favorite_post(
+    request: Request,
     post_id: int,
-    request: Request
+    favorite_service: FavoriteService = Depends(get_favorite_service)
 ):
+    """收藏帖子
+    
+    将指定帖子添加到当前用户的收藏列表。
+    
+    包含以下特性：
+    1. 用户认证：需要有效的访问令牌
+    2. 防重复：若已收藏，不会创建重复记录
+    3. 异常处理：使用统一的异常处理装饰器
+    
+    Args:
+        request: FastAPI请求对象
+        post_id: 帖子ID
+        favorite_service: 收藏服务实例（通过依赖注入获取）
+        
+    Returns:
+        PostFavoriteResponse: 包含收藏状态和收藏ID的响应
     """
-    收藏帖子
-    """
+    
+    # 验证用户信息
+    if not hasattr(request.state, 'user') or not request.state.user:
+        raise AuthenticationError(code="not_authenticated", message="需要登录才能收藏")
+    
+    # 从token中获取用户ID
+    user_id = request.state.user.get("id")
+    if not user_id:
+        raise AuthenticationError(code="missing_user_id", message="无法获取用户ID")
+        
+    # 验证帖子是否存在
+    post_exists = await favorite_service.check_post_exists(post_id)
+    if not post_exists:
+        raise NotFoundError(code="post_not_found", message="帖子不存在或已删除")
+    
+    # 检查是否已收藏
     try:
-        # 获取当前用户信息
-        current_user = request.state.user
-        user_id = current_user.get("id")
-        
-        logger.info(f"用户 {user_id} 尝试收藏帖子 {post_id}")
-        with open("logs/favorite_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 收藏请求: user_id={user_id}, post_id={post_id}\n")
-        
-        # 创建服务实例
-        post_service = PostService()
-        
-        try:
-            result = await post_service.favorite_post(post_id=post_id, user_id=user_id)
+        is_favorited = await favorite_service.is_post_favorited(post_id, user_id)
+        if is_favorited:
+            # 已收藏，返回当前收藏信息而不是报错
+            favorite = await favorite_service.get_favorite(post_id, user_id)
             
-            logger.info(f"收藏帖子成功: {result}")
-            with open("logs/favorite_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 收藏成功: {json.dumps(result, default=str)}\n")
-            
-            return result
-        except BusinessException as e:
-            error_msg = f"业务异常: {e.message}"
-            logger.error(error_msg)
-            with open("logs/favorite_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 业务异常: {error_msg}\n")
-            raise HTTPException(
-                status_code=e.status_code,
-                detail={"message": e.message, "error_code": e.code}
-            )
-    except HTTPException:
-        # 直接重新抛出HTTP异常
-        raise
-    except Exception as e:
-        error_msg = f"收藏帖子失败: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        with open("logs/favorite_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 未处理异常: {error_msg}\n")
-            f.write(f"{datetime.now().isoformat()} - 堆栈: {traceback.format_exc()}\n")
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "收藏帖子失败", "error_code": "FAVORITE_FAILED"}
-        )
+            return {
+                "post_id": post_id,
+                "user_id": user_id,
+                "status": "already_favorited",
+                "favorite_id": favorite.get("id"),
+                "created_at": favorite.get("created_at")
+            }
+    except Exception as check_error:
+        # 检查异常不中断主流程，只记录日志
+        logger.warning(f"检查收藏状态时出错: {str(check_error)}")
+    
+    # 收藏帖子
+    favorite = await favorite_service.favorite_post(post_id, user_id)
+    
+    return {
+        "post_id": post_id,
+        "user_id": user_id,
+        "status": "favorited",
+        "favorite_id": favorite.get("id"),
+        "created_at": favorite.get("created_at")
+    }
 
 @router.delete("/{post_id}/favorite", response_model=PostFavoriteResponse)
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="取消收藏操作失败")
+@with_error_handling(default_error_message="取消收藏操作失败")
 async def unfavorite_post(
     request: Request,
-    post_id: int
+    post_id: int,
+    favorite_service: FavoriteService = Depends(get_favorite_service)
 ):
     """取消收藏帖子
     
@@ -884,6 +565,7 @@ async def unfavorite_post(
     Args:
         request: FastAPI请求对象
         post_id: 要取消收藏的帖子ID
+        favorite_service: 收藏服务实例（通过依赖注入获取）
         
     Returns:
         FavoriteResponse: 取消收藏操作结果
@@ -891,39 +573,31 @@ async def unfavorite_post(
     Raises:
         HTTPException: 当用户未登录或操作失败时抛出相应错误
     """
-    try:
-        # 获取当前用户ID
-        if not request.state.user:
-            raise HTTPException(status_code=401, detail="需要登录才能操作收藏")
-        
-        user_id = request.state.user.get("id")
-        
-        # 使用Service架构
-        favorite_service = FavoriteService()
-        
-        # 移除收藏
-        result = await favorite_service.remove_favorite(post_id, user_id)
-        
-        # 格式化返回结果
-        return {
-            "post_id": post_id,
-            "user_id": user_id,
-            "status": "unfavorited",
-            "favorite_id": None,
-            "created_at": None
-        }
-    except BusinessException as e:
-        # 将业务异常转换为HTTPException
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
+    # 获取当前用户ID
+    if not request.state.user:
+        raise HTTPException(status_code=401, detail="需要登录才能操作收藏")
+    
+    user_id = request.state.user.get("id")
+    
+    # 移除收藏
+    result = await favorite_service.remove_favorite(post_id, user_id)
+    
+    # 格式化返回结果
+    return {
+        "post_id": post_id,
+        "user_id": user_id,
+        "status": "unfavorited",
+        "favorite_id": None,
+        "created_at": None
+    }
 
 @router.get("/{post_id}/favorite/status", response_model=bool)
 @public_endpoint(auth_required=True, cache_ttl=10, custom_message="获取收藏状态失败")
+@with_error_handling(default_error_message="获取收藏状态失败")
 async def check_favorite_status(
     request: Request,
-    post_id: int
+    post_id: int,
+    favorite_service: FavoriteService = Depends(get_favorite_service)
 ):
     """检查当前用户是否已收藏指定帖子
     
@@ -932,114 +606,101 @@ async def check_favorite_status(
     Args:
         request: FastAPI请求对象
         post_id: 要检查的帖子ID
+        favorite_service: 收藏服务实例（通过依赖注入获取）
         
     Returns:
         bool: 如果用户已收藏该帖子则返回True，否则返回False
     """
-    try:
-        # 获取当前用户ID
-        if not hasattr(request.state, 'user') or not request.state.user:
-            with open("logs/favorite_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 用户未登录或token无效, post_id={post_id}\n")
-            return False
-        
-        user_id = request.state.user.get("id")
-        if not user_id:
-            with open("logs/favorite_debug.log", "a") as f:
-                f.write(f"{datetime.now().isoformat()} - 无法获取用户ID, post_id={post_id}\n")
-            return False
-            
-        # 记录查询请求
-        with open("logs/favorite_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 查询收藏状态: post_id={post_id}, user_id={user_id}\n")
-        
-        # 使用Service架构
-        favorite_service = FavoriteService()
-        
-        # 检查收藏状态
-        is_favorited = await favorite_service.is_post_favorited(post_id, user_id)
-        
-        with open("logs/favorite_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 查询结果: post_id={post_id}, user_id={user_id}, is_favorited={is_favorited}\n")
-            
-        return is_favorited
-    except Exception as e:
-        # 记录错误
-        with open("logs/favorite_debug.log", "a") as f:
-            f.write(f"{datetime.now().isoformat()} - 查询收藏状态异常: {str(e)}, post_id={post_id}\n")
-            f.write(f"{datetime.now().isoformat()} - 堆栈: {traceback.format_exc()}\n")
-        # 如果出现任何错误，默认返回未收藏状态
+    # 验证用户身份
+    if not hasattr(request.state, 'user') or not request.state.user:
+        # 未登录用户默认返回未收藏状态，而不是抛出异常
         return False
+    
+    user_id = request.state.user.get("id")
+    if not user_id:
+        return False
+        
+    
+    # 验证帖子是否存在
+    try:
+        # 检查收藏状态前验证帖子存在性
+        post_exists = await favorite_service.check_post_exists(post_id)
+        if not post_exists:
+            # 返回False而不是抛出异常，更符合前端预期
+            return False
+    except Exception as post_check_error:
+        # 如果验证帖子失败，记录错误但继续处理
+        logger.warning(f"验证帖子存在性失败: {str(post_check_error)}")
+    
+    # 检查收藏状态
+    is_favorited = await favorite_service.is_post_favorited(post_id, user_id)
+    
+        
+    return is_favorited
 
 @router.get("/{post_id}/comments", response_model=PostCommentResponse)
-@public_endpoint(cache_ttl=60, custom_message="获取帖子评论失败")
+@public_endpoint(cache_ttl=5, custom_message="获取帖子评论失败")
+@with_error_handling(default_error_message="获取帖子评论失败")
 async def read_post_comments(
     request: Request,
-    post_id: int,
-    skip: int = 0,
-    limit: int = 100
+    post_id: int, 
+    skip: int = 0, 
+    limit: int = 10,
+    sort_by: Optional[str] = "created_at",
+    sort_order: Optional[str] = "desc",
+    include_deleted: bool = False,
+    comment_service: CommentService = Depends(get_comment_service)
 ):
-    """获取帖子评论列表
+    """获取帖子的评论列表
     
-    通过RESTful风格的API获取指定帖子下的所有评论，支持分页。
-    此API端点允许游客访问，不需要身份验证。
+    返回指定帖子的评论列表，支持分页和排序。
     
     Args:
         request: FastAPI请求对象
         post_id: 帖子ID
-        skip: 分页偏移量，默认0
-        limit: 每页数量，默认100
+        skip: 跳过的记录数量，用于分页
+        limit: 返回的记录数量，用于分页
+        sort_by: 排序字段，默认为创建时间
+        sort_order: 排序方向，desc为降序，asc为升序
+        include_deleted: 是否包含已删除的评论，默认为False
+        comment_service: 评论服务实例（通过依赖注入获取）
         
     Returns:
-        PostCommentResponse: 包含评论列表和总数的响应
+        PostCommentResponse: 包含评论列表和分页信息的响应
     """
+    # 检查当前用户角色，判断是否可以查看已删除的评论
+    user_role = None
+    if hasattr(request.state, 'user') and request.state.user:
+        user_role = request.state.user.get("role", "user")
+    
+    # 只有管理员可以看到已删除的评论
+    if include_deleted and user_role not in ["admin", "super_admin", "moderator"]:
+        include_deleted = False
+        
     try:
-        # 使用 Service 架构
-        post_service = PostService()
-        comment_service = CommentService()
-        
-        # 首先检查帖子是否存在
-        await post_service.get_post_detail(post_id)
-        
         # 获取评论列表
-        comments, total = await comment_service.get_comments_by_post(
+        comments, total = await comment_service.get_post_comments(
             post_id=post_id, 
             skip=skip, 
-            limit=limit
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            include_deleted=include_deleted
         )
         
-        # 处理评论数据
-        processed_comments = []
-        for comment in comments:
-            # 如果有日期时间字段，转换为字符串
-            if isinstance(comment, dict):
-                if "created_at" in comment and comment["created_at"]:
-                    comment["created_at"] = str(comment["created_at"])
-                if "updated_at" in comment and comment["updated_at"]:
-                    comment["updated_at"] = str(comment["updated_at"])
-                processed_comments.append(comment)
-            else:
-                # 如果评论不是字典，直接添加
-                processed_comments.append(comment)
-        
-        # 返回符合PostCommentResponse格式的响应
         return {
-            "post_id": post_id,
-            "comments": processed_comments,
+            "comments": comments,
             "total": total,
             "page": skip // limit + 1 if limit > 0 else 1,
-            "size": limit
+            "size": limit,
+            "post_id": post_id
         }
-    except BusinessException as e:
-        # 将业务异常转换为HTTPException
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.code}
-        )
-
-# @router.get("/debug-test", response_model=None)
-# async def test_endpoint():
-#     """
-#     测试端点，返回简单的数据
-#     """
-#     return {"message": "测试成功", "status": "ok"}
+    except NotFoundError:
+        # 找不到帖子时，返回空列表而不是报错
+        return {
+            "comments": [],
+            "total": 0,
+            "page": 1,
+            "size": limit,
+            "post_id": post_id
+        }

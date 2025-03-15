@@ -12,7 +12,7 @@
 """
 
 from .user_service import UserService
-from .post_service import PostService
+from .post_service import PostService, get_post_service
 from .comment_service import CommentService
 from .tag_service import TagService
 from .section_service import SectionService
@@ -32,4 +32,24 @@ __all__ = [
     'FavoriteService',
     'CaptchaService',
     # 'TaskService',
-] 
+]
+
+# 添加获取FavoriteService实例的函数
+def get_favorite_service() -> FavoriteService:
+    """
+    创建并返回FavoriteService实例的依赖函数
+    
+    Returns:
+        FavoriteService: 收藏服务实例
+    """
+    return FavoriteService()
+
+# 添加获取CommentService实例的函数
+def get_comment_service() -> CommentService:
+    """
+    创建并返回CommentService实例的依赖函数
+    
+    Returns:
+        CommentService: 评论服务实例
+    """
+    return CommentService() 
