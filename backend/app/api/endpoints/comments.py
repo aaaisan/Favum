@@ -1,31 +1,32 @@
-from fastapi import APIRouter, HTTPException, Request
-from fastapi import APIRouter, HTTPException, status, Request
-from typing import List
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Request, Depends, Body, Path, status
 from fastapi.responses import JSONResponse
+from typing import List, Optional, Dict, Any
 
 from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService
-from ...core.exceptions import BusinessException
+from ...core.exceptions import BusinessException, NotFoundError, RequestDataError, with_error_handling
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
-
-# 导入响应模型
-
+from ...dependencies import get_comment_service
+from ...schemas.comment import CommentCreate, CommentUpdate
 from ..responses import (
     CommentResponse,
     CommentListResponse,
     CommentDeleteResponse
 )
+from ...core.auth import get_current_user
+from ...db.models import User
 
 router = APIRouter()
 
-async def get_comment_owner(comment_id: int) -> int:
+@with_error_handling(default_error_message="获取评论作者信息失败")
+async def get_comment_owner(comment_id: int, comment_service: CommentService = Depends(get_comment_service)) -> int:
     """获取评论作者ID
     
     用于权限验证，获取指定评论的作者ID。
     
     Args:
         comment_id: 评论ID
+        comment_service: 评论服务实例（通过依赖注入获取）
         
     Returns:
         int: 评论作者的用户ID
@@ -33,63 +34,46 @@ async def get_comment_owner(comment_id: int) -> int:
     Raises:
         HTTPException: 当评论不存在时抛出404错误
     """
-    # 使用Service架构
-    comment_service = CommentService()
+    # 获取评论详情
+    comment = await comment_service.get_comment_detail(comment_id)
+    if not comment:
+        raise NotFoundError(code="comment_not_found", message="评论不存在")
     
-    try:
-        # 直接调用异步方法
-        comment = await comment_service.get_comment_detail(comment_id)
-        return comment.author_id
-    except BusinessException as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
-        )
+    author_id = comment.author_id
+    if not author_id:
+        raise RequestDataError(code="incomplete_comment_data", message="评论数据不完整")
+    
+    return author_id
 
 @router.post("", response_model=CommentResponse)
-@public_endpoint(auth_required=True, custom_message="创建评论失败", rate_limit_count=20)
+@public_endpoint(auth_required=True, custom_message="创建评论失败", rate_limit_count=30)
+@with_error_handling(default_error_message="创建评论失败")
 async def create_comment(
     request: Request,
-    comment: comment_schema.CommentCreate
+    comment: CommentCreate,
+    user: User = Depends(get_current_user),
+    comment_service: CommentService = Depends(get_comment_service)
 ):
     """创建新评论
     
-    创建一个新的评论。
-    包含以下特性：
-    1. 异常处理：自动处理数据库异常和业务异常
-    2. 速率限制：每小时最多创建30条评论
-    3. 权限检查：需要CREATE_COMMENT权限
+    创建新的评论记录，需要用户认证。
     
     Args:
         request: FastAPI请求对象
-        comment: 评论创建模型，包含评论内容
+        comment: 评论创建模型，包含内容和关联的帖子ID
+        user: 当前用户对象
+        comment_service: 评论服务实例（通过依赖注入获取）
         
     Returns:
-        CommentResponse: 创建成功的评论信息
-        
-    Raises:
-        HTTPException: 当用户未登录或评论内容不符合要求时抛出相应错误
+        Comment: 创建成功的评论信息
     """
-    # 使用 Service 架构替代直接 CRUD 操作
-    comment_service = CommentService()
-    
-    # 从token中获取用户ID
-    user_id = request.state.user.get("id")
-    
     # 准备评论数据
     comment_data = comment.model_dump()
-    comment_data["author_id"] = user_id
+    comment_data["author_id"] = user.id
     
-    try:
-        # 创建评论
-        result = await comment_service.create_comment(comment_data)
-        return result
-    except BusinessException as e:
-        # 将业务异常转换为HTTPException
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
-        )
+    # 创建评论
+    created_comment = await comment_service.create_comment(comment_data)
+    return created_comment
 
 @router.get("/{comment_id}", response_model=CommentResponse)
 @public_endpoint(cache_ttl=300, auth_required=True, custom_message="获取评论详情失败")
@@ -132,107 +116,90 @@ async def read_comment(
         )
 
 @router.put("/{comment_id}", response_model=CommentResponse)
-@public_endpoint(rate_limit_count=20, auth_required=True, custom_message="更新评论失败")
+@owner_endpoint(owner_id_func=get_comment_owner, custom_message="更新评论失败", rate_limit_count=20)
+@with_error_handling(default_error_message="更新评论失败")
 async def update_comment(
     request: Request,
     comment_id: int,
-    comment: comment_schema.CommentUpdate
+    comment: CommentUpdate,
+    user: User = Depends(get_current_user),
+    comment_service: CommentService = Depends(get_comment_service)
 ):
     """更新评论
     
-    更新指定评论的内容。
-    包含以下特性：
-    1. 异常处理：自动处理数据库异常
-    2. 权限检查：只有评论作者或管理员可以修改
-    3. 速率限制：每小时最多修改20次
-    4. 执行时间日志：记录API执行时间
+    更新指定ID的评论内容。
+    用户只能更新自己的评论，管理员可以更新任何评论。
     
     Args:
         request: FastAPI请求对象
         comment_id: 评论ID
-        comment: 评论更新模型，包含更新的内容
+        comment: 评论更新数据
+        user: 当前用户对象
+        comment_service: 评论服务实例（通过依赖注入获取）
         
     Returns:
-        CommentResponse: 更新后的评论信息
-        
-    Raises:
-        HTTPException: 当评论不存在或权限不足时抛出404或403错误
-        BusinessException: 当业务规则验证失败时抛出业务异常
+        Comment: 更新后的评论信息
     """
-    # 使用 Service 架构替代直接 CRUD 操作
-    comment_service = CommentService()
+    # 检查评论是否存在
+    existing_comment = await comment_service.get_comment_detail(comment_id)
+    if not existing_comment:
+        raise NotFoundError(code="comment_not_found", message="评论不存在")
     
-    # 从token中获取用户ID
-    user_id = request.state.user.get("id")
+    # 检查权限
+    is_author = user.id == existing_comment.author_id
+    is_admin = user.role == "admin"
     
-    try:
-        # 更新评论
-        updated_comment = await comment_service.update_comment(
-            comment_id=comment_id,
-            user_id=user_id,
-            data=comment.model_dump()
-        )
-        return updated_comment
-    except BusinessException as e:
-        # 将业务异常转换为HTTPException
+    if not (is_author or is_admin):
         raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "没有权限修改此评论", "code": "permission_denied"}
         )
+    
+    # 更新评论
+    updated_comment = await comment_service.update_comment(comment_id, comment.model_dump())
+    return updated_comment
 
-@router.delete("/{comment_id}", response_model=CommentDeleteResponse)
-@public_endpoint(rate_limit_count=10, auth_required=True, custom_message="删除评论失败")
+@router.delete("/{comment_id}", response_model=CommentResponse)
+@owner_endpoint(owner_id_func=get_comment_owner, custom_message="删除评论失败", rate_limit_count=10)
+@with_error_handling(default_error_message="删除评论失败")
 async def delete_comment(
     request: Request,
-    comment_id: int
+    comment_id: int,
+    user: User = Depends(get_current_user),
+    comment_service: CommentService = Depends(get_comment_service)
 ):
     """删除评论
     
-    删除指定的评论。
-    包含以下特性：
-    1. 异常处理：自动处理数据库异常
-    2. 权限检查：只有评论作者或管理员可以删除
-    3. 速率限制：每小时最多删除10次
-    4. 执行时间日志：记录API执行时间
+    删除指定ID的评论。
+    用户只能删除自己的评论，管理员可以删除任何评论。
     
     Args:
         request: FastAPI请求对象
         comment_id: 评论ID
+        user: 当前用户对象
+        comment_service: 评论服务实例（通过依赖注入获取）
         
     Returns:
-        CommentDeleteResponse: 删除操作结果
-        
-    Raises:
-        HTTPException: 当评论不存在或权限不足时抛出404或403错误
-        BusinessException: 当业务规则验证失败时抛出业务异常
+        Comment: 删除的评论信息
     """
-    # 使用 Service 架构替代直接 CRUD 操作
-    comment_service = CommentService()
+    # 检查评论是否存在
+    existing_comment = await comment_service.get_comment_detail(comment_id)
+    if not existing_comment:
+        raise NotFoundError(code="comment_not_found", message="评论不存在")
     
-    # 从token中获取用户ID和角色
-    user_id = request.state.user.get("id")
-    user_role = request.state.user.get("role", "user")
-    is_admin = user_role in ["admin", "super_admin", "moderator"]
+    # 检查权限
+    is_author = user.id == existing_comment.author_id
+    is_admin = user.role == "admin"
     
-    try:
-        # 删除评论
-        await comment_service.delete_comment(
-            comment_id=comment_id,
-            user_id=user_id,
-            is_admin=is_admin
-        )
-        
-        # 构建符合CommentDeleteResponse的返回结构
-        return {
-            "id": comment_id,
-            "message": "评论已成功删除"
-        }
-    except BusinessException as e:
-        # 将业务异常转换为HTTPException
+    if not (is_author or is_admin):
         raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "没有权限删除此评论", "code": "permission_denied"}
         )
+    
+    # 删除评论
+    deleted_comment = await comment_service.delete_comment(comment_id)
+    return deleted_comment
 
 @router.post("/{comment_id}/restore", response_model=CommentResponse)
 @admin_endpoint(custom_message="恢复评论失败")

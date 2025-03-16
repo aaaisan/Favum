@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, status
 from typing import List, Optional
+from fastapi import Depends
 
 # 导入响应模型
 
@@ -7,15 +8,19 @@ from ..responses import (
     TagResponse,
     TagListResponse,
     TagWithPostsResponse,
-    TagCloudResponse
+    TagCloudResponse,
+    TagFollowResponse
 )
 from ..responses.post import PostListResponse
 
 from ...schemas import tag as tag_schema
 from ...schemas import post as post_schema
 from ...services.tag_service import TagService
-from ...core.exceptions import BusinessException
+from ...core.exceptions import BusinessException, AuthenticationError, NotFoundError
 from ...core.decorators import public_endpoint, admin_endpoint
+from ...core.utils import get_current_user
+from ...core.logger import logger
+from ...core.decorators import with_error_handling
 
 router = APIRouter()
 
@@ -591,4 +596,57 @@ async def get_tag_recommendations(
         raise HTTPException(
             status_code=500,
             detail={"message": f"获取标签推荐失败: {str(e)}", "error_code": "INTERNAL_ERROR"}
-        ) 
+        )
+
+@router.post("/{tag_id}/follow", response_model=TagFollowResponse)
+@public_endpoint(auth_required=True, custom_message="关注标签失败")
+@with_error_handling(default_error_message="关注标签失败")
+async def follow_tag(
+    request: Request,
+    tag_id: int,
+    user: User = Depends(get_current_user),
+    tag_service: TagService = Depends(get_tag_service)
+):
+    """关注标签
+    
+    将指定标签添加到当前用户的关注列表。
+    
+    Args:
+        request: FastAPI请求对象
+        tag_id: 标签ID
+        user: 当前用户对象
+        tag_service: 标签服务实例（通过依赖注入获取）
+        
+    Returns:
+        TagFollowResponse: 包含关注状态的响应
+    """
+    if not user:
+        raise AuthenticationError(code="not_authenticated", message="需要登录才能关注标签")
+    
+    # 验证标签是否存在
+    tag_exists = await tag_service.check_tag_exists(tag_id)
+    if not tag_exists:
+        raise NotFoundError(code="tag_not_found", message="标签不存在")
+    
+    # 检查是否已关注
+    try:
+        is_following = await tag_service.is_following_tag(tag_id, user.id)
+        if is_following:
+            # 已关注，返回当前状态而不是报错
+            return {
+                "tag_id": tag_id,
+                "user_id": user.id,
+                "status": "already_following"
+            }
+    except Exception as check_error:
+        # 检查异常不中断主流程，只记录日志
+        logger.warning(f"检查关注状态时出错: {str(check_error)}")
+    
+    # 关注标签
+    await tag_service.follow_tag(tag_id, user.id)
+    
+    return {
+        "tag_id": tag_id,
+        "user_id": user.id,
+        "status": "following"
+    } 

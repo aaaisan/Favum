@@ -20,7 +20,8 @@ from ..responses import (
     PasswordResetRequestResponse,
     PasswordResetResponse,
     EmailVerificationResponse,
-    EmailVerificationRedirectResponse
+    EmailVerificationRedirectResponse,
+    TokenVerifyResponse
 )
 
 from ...core.permissions import get_role_permissions, Role
@@ -40,6 +41,8 @@ from ...services.user_service import UserService
 from ...db.repositories.user_repository import UserRepository
 from fastapi.security import OAuth2PasswordRequestForm
 from ...core.decorators import public_endpoint, admin_endpoint
+from ...core.decorators import with_error_handling
+from ...core.decorators import get_current_user
 
 router = APIRouter()
 
@@ -717,3 +720,44 @@ async def get_api_key(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"认证服务器错误: {str(e)}",
         )
+
+@router.get("/verify", response_model=TokenVerifyResponse)
+@public_endpoint(auth_required=True, custom_message="Token验证失败")
+@with_error_handling(default_error_message="Token验证失败")
+async def verify_token(
+    request: Request,
+    user: User = Depends(get_current_user)
+):
+    """验证当前用户的JWT Token
+    
+    验证当前请求中的JWT Token是否有效，并返回用户信息。
+    
+    Args:
+        request: FastAPI请求对象
+        user: 当前用户对象
+        
+    Returns:
+        TokenVerifyResponse: 包含验证结果和用户信息的响应
+    """
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"message": "Token验证失败", "code": "token_invalid"}
+        )
+    
+    # 记录验证成功
+    logger.info(f"Token验证成功: user_id={user.id}, username={user.username}")
+    
+    # 返回验证结果
+    return {
+        "valid": True,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "is_active": user.is_active,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at
+        }
+    }

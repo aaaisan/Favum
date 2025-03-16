@@ -699,11 +699,11 @@ async def vote_post(
         PostVoteResponse: 包含投票结果的响应
     """
     try:
-        # 获取当前用户信息并验证
-        current_user = request.state.user
-        user_id = current_user.get("id")
-        if not user_id:
-            raise AuthenticationError(code="missing_user_id", message="未能获取用户ID")
+        # 获取用户ID
+        if not user:
+            raise AuthenticationError(code="not_authenticated", message="需要登录才能投票")
+        
+        # user_id = user.id
         
         # 记录投票数据
         logger.info(f"Vote data: {vote_type}")
@@ -732,7 +732,7 @@ async def vote_post(
         # 执行投票
         vote_result = await post_service.vote_post(
             post_id=post_id,
-            user_id=user_id,
+            user_id=user.id,
             vote_type=vote_type
         )
         
@@ -815,6 +815,7 @@ async def get_vote_count(
 async def favorite_post(
     request: Request,
     post_id: int,
+    user: User = Depends(get_current_user),
     favorite_service: FavoriteService = Depends(get_favorite_service)
 ):
     """收藏帖子
@@ -829,20 +830,14 @@ async def favorite_post(
     Args:
         request: FastAPI请求对象
         post_id: 帖子ID
+        user: 当前用户对象
         favorite_service: 收藏服务实例（通过依赖注入获取）
         
     Returns:
         PostFavoriteResponse: 包含收藏状态和收藏ID的响应
     """
-    
-    # 验证用户信息
-    if not hasattr(request.state, 'user') or not request.state.user:
+    if not user:
         raise AuthenticationError(code="not_authenticated", message="需要登录才能收藏")
-    
-    # 从token中获取用户ID
-    user_id = request.state.user.get("id")
-    if not user_id:
-        raise AuthenticationError(code="missing_user_id", message="无法获取用户ID")
         
     # 验证帖子是否存在
     post_exists = await favorite_service.check_post_exists(post_id)
@@ -851,14 +846,14 @@ async def favorite_post(
     
     # 检查是否已收藏
     try:
-        is_favorited = await favorite_service.is_post_favorited(post_id, user_id)
+        is_favorited = await favorite_service.is_post_favorited(post_id, user.id)
         if is_favorited:
             # 已收藏，返回当前收藏信息而不是报错
-            favorite = await favorite_service.get_favorite(post_id, user_id)
+            favorite = await favorite_service.get_favorite(post_id, user.id)
             
             return {
                 "post_id": post_id,
-                "user_id": user_id,
+                "user_id": user.id,
                 "status": "already_favorited",
                 "favorite_id": favorite.get("id"),
                 "created_at": favorite.get("created_at")
@@ -868,11 +863,11 @@ async def favorite_post(
         logger.warning(f"检查收藏状态时出错: {str(check_error)}")
     
     # 收藏帖子
-    favorite = await favorite_service.favorite_post(post_id, user_id)
+    favorite = await favorite_service.favorite_post(post_id, user.id)
     
     return {
         "post_id": post_id,
-        "user_id": user_id,
+        "user_id": user.id,
         "status": "favorited",
         "favorite_id": favorite.get("id"),
         "created_at": favorite.get("created_at")
@@ -884,6 +879,7 @@ async def favorite_post(
 async def unfavorite_post(
     request: Request,
     post_id: int,
+    user: User = Depends(get_current_user),
     favorite_service: FavoriteService = Depends(get_favorite_service)
 ):
     """取消收藏帖子
@@ -893,6 +889,7 @@ async def unfavorite_post(
     Args:
         request: FastAPI请求对象
         post_id: 要取消收藏的帖子ID
+        user: 当前用户对象
         favorite_service: 收藏服务实例（通过依赖注入获取）
         
     Returns:
@@ -901,19 +898,16 @@ async def unfavorite_post(
     Raises:
         HTTPException: 当用户未登录或操作失败时抛出相应错误
     """
-    # 获取当前用户ID
-    if not request.state.user:
+    if not user:
         raise HTTPException(status_code=401, detail="需要登录才能操作收藏")
     
-    user_id = request.state.user.get("id")
-    
     # 移除收藏
-    result = await favorite_service.remove_favorite(post_id, user_id)
+    result = await favorite_service.remove_favorite(post_id, user.id)
     
     # 格式化返回结果
     return {
         "post_id": post_id,
-        "user_id": user_id,
+        "user_id": user.id,
         "status": "unfavorited",
         "favorite_id": None,
         "created_at": None
@@ -925,6 +919,7 @@ async def unfavorite_post(
 async def check_favorite_status(
     request: Request,
     post_id: int,
+    user: Optional[User] = Depends(get_current_user),
     favorite_service: FavoriteService = Depends(get_favorite_service)
 ):
     """检查当前用户是否已收藏指定帖子
@@ -934,21 +929,16 @@ async def check_favorite_status(
     Args:
         request: FastAPI请求对象
         post_id: 要检查的帖子ID
+        user: 当前用户对象(可选)
         favorite_service: 收藏服务实例（通过依赖注入获取）
         
     Returns:
         bool: 如果用户已收藏该帖子则返回True，否则返回False
     """
-    # 验证用户身份
-    if not hasattr(request.state, 'user') or not request.state.user:
-        # 未登录用户默认返回未收藏状态，而不是抛出异常
-        return False
-    
-    user_id = request.state.user.get("id")
-    if not user_id:
+    # 未登录用户默认返回未收藏状态
+    if not user:
         return False
         
-    
     # 验证帖子是否存在
     try:
         # 检查收藏状态前验证帖子存在性
@@ -961,9 +951,8 @@ async def check_favorite_status(
         logger.warning(f"验证帖子存在性失败: {str(post_check_error)}")
     
     # 检查收藏状态
-    is_favorited = await favorite_service.is_post_favorited(post_id, user_id)
+    is_favorited = await favorite_service.is_post_favorited(post_id, user.id)
     
-        
     return is_favorited
 
 @router.get("/{post_id}/comments", response_model=PostCommentResponse)
@@ -977,6 +966,7 @@ async def read_post_comments(
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
     include_deleted: bool = False,
+    user: Optional[User] = Depends(get_current_user),
     comment_service: CommentService = Depends(get_comment_service)
 ):
     """获取帖子的评论列表
@@ -991,15 +981,14 @@ async def read_post_comments(
         sort_by: 排序字段，默认为创建时间
         sort_order: 排序方向，desc为降序，asc为升序
         include_deleted: 是否包含已删除的评论，默认为False
+        user: 当前用户对象(可选)
         comment_service: 评论服务实例（通过依赖注入获取）
         
     Returns:
         PostCommentResponse: 包含评论列表和分页信息的响应
     """
     # 检查当前用户角色，判断是否可以查看已删除的评论
-    user_role = None
-    if hasattr(request.state, 'user') and request.state.user:
-        user_role = request.state.user.get("role", "user")
+    user_role = user.role if user else None
     
     # 只有管理员可以看到已删除的评论
     if include_deleted and user_role not in ["admin", "super_admin", "moderator"]:

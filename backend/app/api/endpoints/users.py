@@ -7,10 +7,11 @@ from ...services import UserService, PostService, FavoriteService
 from ...dependencies import get_favorite_service, get_user_service, get_post_service
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.enums import Role, Permission
-from ...core.exceptions import APIError, BusinessException
+from ...core.exceptions import APIError, BusinessException, NotFoundError
 from ...core.logging import get_logger
 from ...db.models.user import User
 from ...core.auth import get_current_user
+from ...core.decorators import with_error_handling
 
 from ..responses import (
     UserResponse, 
@@ -120,41 +121,36 @@ async def read_users(
 
 @router.get("/me", response_model=UserResponse)
 @public_endpoint(auth_required=True, custom_message="获取当前用户信息失败")
-async def read_current_user(
+@with_error_handling(default_error_message="获取当前用户信息失败")
+async def read_user_me(
     request: Request,
+    user: User = Depends(get_current_user),
     user_service: UserService = Depends(get_user_service)
 ):
     """获取当前登录用户的信息
     
-    直接从请求中获取当前用户信息并返回。
+    返回当前登录用户的详细信息。
     
     Args:
         request: FastAPI请求对象
+        user: 当前用户对象
+        user_service: 用户服务实例（通过依赖注入获取）
         
     Returns:
-        UserResponse: 当前用户信息
-        
-    Raises:
-        HTTPException: 当用户不存在或令牌无效时抛出相应错误
+        UserResponse: 当前用户的详细信息
     """
-    try:
-        # 获取当前用户ID
-        user_id = request.state.user.get("id")
-        if not user_id:
-            raise HTTPException(
-                status_code=401,
-                detail="未授权访问或用户不存在"
-            )
-            
-        # 获取用户详情
-        user = await user_service.get_user_by_id(user_id)
-        return user
-    except Exception as e:
-        logger.error(f"获取当前用户信息失败: {str(e)}", exc_info=True)
+    if not user:
         raise HTTPException(
-            status_code=500,
-            detail=f"获取当前用户信息失败: {str(e)}"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"message": "未登录", "code": "not_authenticated"}
         )
+    
+    # 获取用户详细信息
+    user_detail = await user_service.get_user_detail(user.id)
+    if not user_detail:
+        raise NotFoundError(code="user_not_found", message="用户不存在")
+    
+    return user_detail
 
 @router.get("/{user_id}", response_model=UserResponse)
 @public_endpoint(cache_ttl=60, custom_message="获取用户详情失败")
@@ -405,83 +401,96 @@ async def read_user_posts(
 
 @router.get("/me/favorites", response_model=PostListResponse)
 @public_endpoint(auth_required=True, custom_message="获取收藏列表失败")
+@with_error_handling(default_error_message="获取收藏列表失败")
 async def get_my_favorites(
     request: Request,
     skip: int = 0,
     limit: int = 100,
+    user: User = Depends(get_current_user),
     favorite_service: FavoriteService = Depends(get_favorite_service),
     post_service: PostService = Depends(get_post_service)
 ):
-    """获取当前用户的收藏列表"""
-    try:
-        if not request.state.user:
-            raise HTTPException(status_code=401, detail="需要登录才能查看收藏")
+    """获取当前用户的收藏列表
+    
+    返回当前登录用户收藏的帖子列表。
+    
+    Args:
+        request: FastAPI请求对象
+        skip: 跳过的记录数量，用于分页
+        limit: 返回的记录数量，用于分页
+        user: 当前用户对象
+        favorite_service: 收藏服务实例（通过依赖注入获取）
+        post_service: 帖子服务实例（通过依赖注入获取）
         
-        user_id = request.state.user.get("id")
-        
-        favorites_result = await favorite_service.get_user_favorites(user_id, skip, limit)
-        favorites = favorites_result.get("posts", [])
-        total = favorites_result.get("total", 0)
-        
-        processed_posts = []
-        for post in favorites:
-            processed_post = post_service.model_to_dict(post)
-            processed_posts.append(processed_post)
-        
-        return {
-            "posts": processed_posts,
-            "total": total,
-            "page": skip // limit + 1 if limit > 0 else 1,
-            "size": limit
-        }
-    except BusinessException as e:
-        logger.error(f"Business error retrieving favorites for user {user_id}: {str(e)}")
+    Returns:
+        PostListResponse: 包含收藏帖子列表和分页信息的响应
+    """
+    if not user:
         raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"message": "未登录", "code": "not_authenticated"}
         )
-    except Exception as e:
-        logger.error(f"Error retrieving favorites for user {user_id}: {str(e)}")
-        raise APIError(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="获取收藏列表失败"
-        )
+    
+    # 获取收藏列表
+    favorites, total = await favorite_service.get_user_favorites(
+        user_id=user.id,
+        skip=skip,
+        limit=limit
+    )
+    
+    # 获取帖子详情
+    post_ids = [fav.get("post_id") for fav in favorites]
+    posts = await post_service.get_posts_by_ids(post_ids)
+    
+    return {
+        "posts": posts,
+        "total": total,
+        "page": skip // limit + 1 if limit > 0 else 1,
+        "size": limit
+    }
 
 @router.get("/{user_id}/favorites", response_model=PostListResponse)
 @public_endpoint(cache_ttl=60, custom_message="获取用户收藏列表失败")
+@with_error_handling(default_error_message="获取用户收藏列表失败")
 async def get_user_favorites(
+    request: Request,
     user_id: int,
     skip: int = 0,
     limit: int = 100,
+    user: Optional[User] = Depends(get_current_user),
     favorite_service: FavoriteService = Depends(get_favorite_service),
     post_service: PostService = Depends(get_post_service)
 ):
-    """获取指定用户的收藏列表"""
-    try:
-        favorites_result = await favorite_service.get_user_favorites(user_id, skip, limit)
-        favorites = favorites_result.get("posts", [])
-        total = favorites_result.get("total", 0)
+    """获取指定用户的收藏列表
+    
+    返回指定用户收藏的帖子列表。
+    
+    Args:
+        request: FastAPI请求对象
+        user_id: 要查看收藏的用户ID
+        skip: 跳过的记录数量，用于分页
+        limit: 返回的记录数量，用于分页
+        user: 当前用户对象(可选)
+        favorite_service: 收藏服务实例（通过依赖注入获取）
+        post_service: 帖子服务实例（通过依赖注入获取）
         
-        processed_posts = []
-        for post in favorites:
-            processed_post = post_service.model_to_dict(post)
-            processed_posts.append(processed_post)
-        
-        return {
-            "posts": processed_posts,
-            "total": total,
-            "page": skip // limit + 1 if limit > 0 else 1,
-            "size": limit
-        }
-    except BusinessException as e:
-        logger.error(f"Business error retrieving favorites for user {user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={"message": e.message, "error_code": e.error_code}
-        )
-    except Exception as e:
-        logger.error(f"Error retrieving favorites for user {user_id}: {str(e)}")
-        raise APIError(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="获取用户收藏列表失败"
-        )
+    Returns:
+        PostListResponse: 包含收藏帖子列表和分页信息的响应
+    """
+    # 获取收藏列表
+    favorites, total = await favorite_service.get_user_favorites(
+        user_id=user_id,
+        skip=skip,
+        limit=limit
+    )
+    
+    # 获取帖子详情
+    post_ids = [fav.get("post_id") for fav in favorites]
+    posts = await post_service.get_posts_by_ids(post_ids)
+    
+    return {
+        "posts": posts,
+        "total": total,
+        "page": skip // limit + 1 if limit > 0 else 1,
+        "size": limit
+    }
