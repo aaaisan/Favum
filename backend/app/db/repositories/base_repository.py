@@ -17,7 +17,7 @@ from ...schemas.responses.category import CategoryResponse
 from ...schemas.responses.section import SectionResponse
 from ...schemas.responses.tag import TagResponse
 
-ModelType = TypeVar("ModelType", bound=Base)
+ModelType = TypeVar("ModelType", bound=Base) # type: ignore
 SchemaType = TypeVar("SchemaType", bound=BaseSchema)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
