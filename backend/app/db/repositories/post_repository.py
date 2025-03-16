@@ -19,7 +19,6 @@ from .base_repository import BaseRepository
 from ..models import Post, PostVote, VoteType, Section, Category , User, Tag
 from ..models.post_tag import post_tags  # 正确导入post_tags表
 from ...core.exceptions import BusinessException, NoResultFound, SQLAlchemyError
-from ..database import AsyncSessionLocal, async_get_db
 import traceback
 import json
 import logging
@@ -53,7 +52,7 @@ class PostRepository(BaseRepository):
         try:
             logger.info(f"获取帖子详情，ID: {post_id}, include_hidden: {include_hidden}")
             
-            async with async_get_db() as db:
+            async with self.async_get_db() as db:
                 # 构建基本查询
                 query = select(Post).where(Post.id == post_id)
                 
@@ -290,7 +289,7 @@ class PostRepository(BaseRepository):
                     logger.warning(f"忽略无效的标签ID: {tag_id}")
             
             
-            async with async_get_db() as db:
+            async with self.async_get_db() as db:
                 # 开始事务
                 async with db.begin():
                     # 删除所有现有的标签关联
@@ -355,7 +354,7 @@ class PostRepository(BaseRepository):
             bool: 操作是否成功
         """
         try:
-            async with async_get_db() as db:
+            async with self.async_get_db() as db:
                 # 构建更新语句
                 stmt = (
                     update(self.model)
@@ -394,7 +393,7 @@ class PostRepository(BaseRepository):
                 PostVote.user_id == user_id
             )
         )
-        result = await async_get_db().execute(query)
+        result = await self.async_get_db().execute(query)
         vote = result.scalar_one_or_none()
         
         return vote.vote_type.value if vote else None
@@ -413,7 +412,7 @@ class PostRepository(BaseRepository):
         try:
             
             # 使用BaseRepository的session上下文管理器
-            async with async_get_db() as db:
+            async with self.async_get_db() as db:
                 # 首先检查帖子是否存在
                 post_query = select(self.model).where(
                     and_(
@@ -547,7 +546,7 @@ class PostRepository(BaseRepository):
             int: 投票计数
         """
         try:
-            async with async_get_db() as db:
+            async with self.async_get_db() as db:
                 query = select(self.model.vote_count).where(self.model.id == post_id)
                 result = await db.execute(query)
                 return result.scalar_one_or_none() or 0
@@ -569,7 +568,7 @@ class PostRepository(BaseRepository):
             bool: 操作是否成功
         """
         try:
-            async with async_get_db() as db:
+            async with self.async_get_db() as db:
                 # 构建更新语句
                 stmt = (
                     update(self.model)
@@ -619,8 +618,8 @@ class PostRepository(BaseRepository):
         )
         
         # 执行更新
-        result = await async_get_db().execute(stmt)
-        await async_get_db().commit()
+        result = await self.async_get_db().execute(stmt)
+        await self.async_get_db().commit()
         
         # 检查是否找到并更新了记录
         return result.rowcount > 0
@@ -652,7 +651,7 @@ class PostRepository(BaseRepository):
             tag_ids = filtered_tag_ids
             
         # 创建帖子
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             try:
                 # 创建帖子实例
                 post = Post(**data)

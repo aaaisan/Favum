@@ -5,11 +5,11 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 
-from ..core.config import settings
-from ..core.logging import get_logger
+from .config import settings
+from .logging import get_logger
 
 # 导入从models/base.py中的Base
-from .models.base import Base
+from ..db.models.base import Base
 
 logger = get_logger(__name__)
 
@@ -46,14 +46,6 @@ AsyncSessionLocal = async_sessionmaker(
     bind=async_engine,
     expire_on_commit=False
 )
-
-def get_db() -> Generator[Session, None, None]:
-    """获取同步数据库会话"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @asynccontextmanager
 async def async_get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -95,6 +87,6 @@ def init_db() -> None:
     - 创建初始数据（如果需要）
     """
     # 这里导入所有模型，确保它们被注册到Base的metadata中
-    from .models import User, Post, Comment, Category, Tag, Section, SectionModerator, PostVote, PostFavorite
+    from ..db.models import User, Post, Comment, Category, Tag, Section, SectionModerator, PostVote, PostFavorite
     
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine) 

@@ -2,7 +2,7 @@ from datetime import datetime
 # from datetime import datetime, timedelta
 from sqlalchemy import func
 from ..core.celery_config import celery_app
-from ..db.database import SessionLocal
+from ..core.database import SessionLocal
 from ..db.models import Post, Comment, Tag
 
 @celery_app.task(

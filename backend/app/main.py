@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from .core.config import settings
 from .core.middleware import setup_middleware
 from .api.router import api_router
-from .db.database import init_db
+from .core.database import init_db
 from .core.logging import setup_logging, get_logger
 from .core.cache import RedisClient, cache_manager
 from jose import jwt  # 导入jwt模块

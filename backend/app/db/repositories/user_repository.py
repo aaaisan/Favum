@@ -17,7 +17,7 @@ from ...core.redis import redis_client
 
 from .base_repository import BaseRepository
 from ..models import User, Post, Comment, PostFavorite
-from ..database import async_get_db, AsyncSessionLocal
+# from ...core.database import async_get_db, AsyncSessionLocal
 import logging
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class UserRepository(BaseRepository):
         Returns:
             int: 用户帖子的总数量
         """
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             count_query = select(func.count()).select_from(Post).where(
                 and_(
                     Post.author_id == user_id,
@@ -84,7 +84,7 @@ class UserRepository(BaseRepository):
         Returns:
             int: 用户评论的总数量
         """
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             count_query = select(func.count()).select_from(Comment).where(
                 and_(
                     Comment.author_id == user_id,
@@ -108,7 +108,7 @@ class UserRepository(BaseRepository):
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
         
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             query = select(self.model).where(
                 and_(
                     self.model.email == email,
@@ -128,7 +128,7 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
       
             query = select(self.model).where(
                 and_(
@@ -161,7 +161,7 @@ class UserRepository(BaseRepository):
             Tuple[List[Dict[str, Any]], int]: 帖子列表和总数
         """
         # 获取数据库会话
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
         
             # 查询帖子
             query = select(Post).where(
@@ -211,7 +211,7 @@ class UserRepository(BaseRepository):
         )
         
         # 执行更新
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             try:
                 result = await db.execute(stmt)
                 await db.commit()
@@ -231,7 +231,7 @@ class UserRepository(BaseRepository):
         Returns:
             bool: 操作成功返回True，失败返回False
         """
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             update_stmt = update(self.model).where(
                 self.model.id == user_id
             ).values(
@@ -283,7 +283,7 @@ class UserRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 用户数据字典，不存在则返回None
         """
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
         # session = await self.get_session()
         # try:
             # 构建查询条件
@@ -457,7 +457,7 @@ class UserRepository(BaseRepository):
         Returns:
             List[int]: 帖子ID列表
         """
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             query = select(Post.id).where(
                 and_(
                     Post.author_id == user_id,
@@ -482,7 +482,7 @@ class UserRepository(BaseRepository):
         Returns:
             List[int]: 收藏的帖子ID列表
         """
-        async with async_get_db() as db:
+        async with self.async_get_db() as db:
             query = select(PostFavorite.post_id).where(
                 PostFavorite.user_id == user_id
             ).order_by(PostFavorite.created_at.desc()).limit(limit)

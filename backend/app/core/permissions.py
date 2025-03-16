@@ -5,7 +5,7 @@ from typing import Dict, List, Set, Any, Tuple, TYPE_CHECKING, ForwardRef, Calla
 from collections import deque
 from ..db.models import Post, User, Section
 from ..db.models import UserRole, Post, User, Section
-from ..db.database import get_db
+from ..core.database import get_db
 # from .auth import get_current_active_user  # 不直接导入
 from .enums import Role, Permission
 from sqlalchemy.sql import select

@@ -4,7 +4,7 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.task import Task
-from ..database import get_db
+from ...core.database import get_db
 from ...core.config import settings
 from ...core.decorators import handle_exceptions, log_execution_time, retry
 from sqlalchemy.exc import SQLAlchemyError
