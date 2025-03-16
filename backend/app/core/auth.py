@@ -1,3 +1,12 @@
+"""
+认证模块
+
+提供JWT令牌认证相关的功能，包括：
+- 令牌生成和验证
+- 用户认证
+- API密钥认证
+"""
+
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from fastapi import Depends, HTTPException, status, Request, Header
@@ -9,6 +18,7 @@ from .config import settings
 from ..schemas import auth as auth_schema
 from ..db.repositories.user_repository import UserRepository
 from ..db.models import User
+from .exceptions import UserNotFoundError, UserNotActivatedError, AuthenticationError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,18 +26,12 @@ logger = logging.getLogger(__name__)
 # OAuth2密码流认证方案，指定token获取URL
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/v1/auth/login",  # 修改为正确的登录端点
-    scheme_name="JWT"  # 明确指定为JWT认证方案
+    scheme_name="JWT",  # 明确指定为JWT认证方案
+    auto_error=False  # 不自动抛出错误
 )
 
 # 添加API密钥认证方案，使用Authorization头
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
-
-# 可选的OAuth2密码流，不自动抛出错误
-oauth2_scheme_optional = OAuth2PasswordBearer(
-    tokenUrl="/api/v1/auth/login",  # 修改为与上面相同的URL
-    auto_error=False,
-    scheme_name="JWT"  # 明确指定为JWT认证方案
-)
 
 def decode_token(token: str) -> Optional[Dict[str, Any]]:
     """解析JWT令牌
@@ -84,30 +88,32 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         logger.error(f"创建访问令牌失败: {str(e)}", exc_info=True)
         raise
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+async def get_current_user(
+    token: str = Depends(oauth2_scheme)
+) -> Optional[User]:
     """获取当前用户
     
-    从JWT令牌中解析用户信息，并验证用户是否存在。
+    从JWT令牌中解析用户信息并返回用户对象。如果:
+    1. 未提供token或token无效 -> 返回None
+    2. 用户不存在 -> 抛出UserNotFoundError异常
+    3. 用户存在但未激活 -> 抛出用户未激活异常
+    4. 用户存在且激活 -> 返回用户对象
     
     Args:
-        token: JWT令牌
+        token: JWT令牌(可选)
         
     Returns:
-        Dict[str, Any]: 当前用户信息
+        Optional[User]: 当前用户对象,未认证时返回None
         
     Raises:
-        HTTPException: 当令牌无效或用户不存在时抛出401错误
+        UserNotFoundError: 当用户不存在时抛出此异常
+        HTTPException: 当用户未激活时抛出相应异常
     """
     logger.debug(f"开始验证用户令牌: {token[:20] if token else None}...")
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="令牌无效或已过期",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     
     if token is None:
-        logger.warning("未提供令牌，认证失败")
-        raise credentials_exception
+        logger.debug("未提供令牌，返回None")
+        return None
         
     try:
         logger.debug("开始解码令牌")
@@ -119,33 +125,21 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
             logger.info(f"令牌内容解码 (不验证签名): {debug_payload}")
         except Exception as e:
             logger.warning(f"令牌解码失败 (不验证签名): {str(e)}")
+            return None
         
         # 正常解码并验证令牌
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             logger.warning("令牌中未包含用户ID (sub)")
-            raise credentials_exception
+            return None
         logger.debug(f"令牌解码成功，用户名: {username}")
     except JWTError as e:
         logger.warning(f"令牌解码失败: {str(e)}")
-        
-        # 添加更多调试信息
-        try:
-            # 检查令牌格式
-            parts = token.split('.')
-            if len(parts) != 3:
-                logger.error(f"令牌格式错误，应有3部分但有{len(parts)}部分")
-            else:
-                # 检查签名问题
-                logger.info(f"令牌头部: {parts[0][:10]}...")
-                logger.info(f"令牌载荷: {parts[1][:10]}...")
-                logger.info(f"令牌签名: {parts[2][:10]}...")
-                logger.info(f"使用的密钥: {settings.SECRET_KEY[:10]}...")
-        except Exception as debug_e:
-            logger.error(f"调试令牌过程中出错: {str(debug_e)}")
-        
-        raise credentials_exception
+        return None
+    except Exception as e:
+        logger.error(f"令牌解码过程中发生未预期的错误: {str(e)}", exc_info=True)
+        return None
     
     try:
         logger.debug(f"查询用户信息: {username}")
@@ -153,86 +147,40 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
         user = await user_repository.get_by_username(username=username)
         if user is None:
             logger.warning(f"用户 {username} 不存在")
-            raise credentials_exception
+            raise UserNotFoundError(username)
+            
+        # 检查用户激活状态
+        if not user.is_active:
+            logger.warning(f"用户 {username} 未激活")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"message": "请先激活您的账号", "code": "user_not_activated"}
+            )
         
         logger.info(f"用户 {username} 认证成功")
         return user
-    except Exception as e:
-        if not isinstance(e, HTTPException):
-            logger.error(f"获取用户信息时发生错误: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"服务器错误: {str(e)}",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+    except UserNotFoundError:
         raise
-
-async def get_current_active_user(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-    """获取当前活跃用户（验证用户是否被禁用）
-    
-    Args:
-        current_user: 当前认证用户信息
-        
-    Returns:
-        Dict[str, Any]: 当前活跃用户信息
-        
-    Raises:
-        HTTPException: 用户被禁用时抛出401错误
-    """
-    user_id = current_user.get("id", "未知")
-    username = current_user.get("username", "未知")
-    logger.debug(f"检查用户 ID:{user_id} ({username}) 是否处于活跃状态")
-    
-    if not current_user.get("is_active", False):
-        logger.warning(f"用户 ID:{user_id} ({username}) 已被禁用，拒绝访问")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="账号已被禁用"
-        )
-    
-    logger.debug(f"用户 ID:{user_id} ({username}) 处于活跃状态，允许访问")
-    return current_user
-
-async def get_current_user_optional(token: str = Depends(oauth2_scheme_optional)) -> Optional[User]:
-    """获取当前用户（可选）
-    
-    与get_current_user不同，此函数在未提供token时返回None而不是抛出异常
-    
-    Args:
-        token: JWT令牌，可选
-        
-    Returns:
-        Optional[User]: 当前用户，未认证时为None
-    """
-    logger.debug(f"可选获取当前用户，令牌: {token[:10] if token else None}")
-    
-    if not token:
-        logger.debug("未提供令牌，返回None")
-        return None
-    
-    try:
-        user = await get_current_user(token)
-        user_id = user.get("id", "未知") if user else "未知"
-        logger.debug(f"可选获取用户成功，用户ID: {user_id}")
-        return user
-    except HTTPException as e:
-        logger.debug(f"认证失败 (可选): {e.detail}")
-        return None
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"可选获取用户时发生未预期的错误: {str(e)}", exc_info=True)
+        logger.error(f"获取用户信息时发生错误: {str(e)}", exc_info=True)
         return None
 
 async def get_current_user_from_api_key(
     api_key: str = Depends(api_key_header)
-) -> Optional[auth_schema.TokenData]:
-    """
-    从API密钥头部提取Bearer令牌并获取当前用户
+) -> Optional[User]:
+    """从API密钥头部提取Bearer令牌并获取当前用户
     
     Args:
         api_key: Authorization头部值，应包含Bearer令牌
         
     Returns:
-        Optional[auth_schema.TokenData]: 令牌数据或None
+        Optional[User]: 用户对象或None
+        
+    Raises:
+        UserNotFoundError: 当用户不存在时抛出此异常
+        HTTPException: 当用户未激活时抛出相应异常
     """
     if not api_key:
         return None
@@ -250,15 +198,50 @@ async def get_current_user_from_api_key(
     payload = decode_token(token)
     if not payload:
         return None
+        
+    # 获取用户信息
+    try:
+        username: str = payload.get("sub")
+        if not username:
+            return None
+            
+        user_repository = UserRepository()
+        user = await user_repository.get_by_username(username=username)
+        if not user:
+            raise UserNotFoundError(username)
+            
+        # 检查用户激活状态
+        if not user.is_active:
+            logger.warning(f"用户 {username} 未激活")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"message": "请先激活您的账号", "code": "user_not_activated"}
+            )
+            
+        return user
+    except UserNotFoundError:
+        raise
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"从API密钥获取用户信息时发生错误: {str(e)}", exc_info=True)
+        return None 
+
+def require_active_user(user: Optional[User]) -> User:
+    """要求用户存在且处于激活状态
     
-    # 从payload中提取用户信息
-    username = payload.get("sub")
-    if not username:
-        return None
-    
-    # 创建令牌数据
-    return auth_schema.TokenData(
-        username=username,
-        role=payload.get("role", "user"),
-        permissions=payload.get("permissions", [])
-    ) 
+    Args:
+        user: 用户对象
+        
+    Returns:
+        User: 用户对象
+        
+    Raises:
+        AuthenticationError: 当用户不存在时抛出
+        UserNotActivatedError: 当用户未激活时抛出
+    """
+    if not user:
+        raise AuthenticationError(detail="需要认证")
+    if not user.is_active:
+        raise UserNotActivatedError()
+    return user 

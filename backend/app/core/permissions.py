@@ -1,444 +1,242 @@
-from fastapi import HTTPException, Depends
+"""
+权限检查模块
+
+提供权限检查相关的功能，包括：
+- 角色权限定义
+- 权限检查
+- 资源所有权检查
+"""
+
+from typing import Optional, Dict, Any, List, Set, Tuple
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Dict, List, Set, Any, Tuple, TYPE_CHECKING, ForwardRef, Callable
-# from typing import Optional, Dict, List, Set, Any, Tuple, TYPE_CHECKING, ForwardRef, Callable
-from collections import deque
-from ..db.models import Post, User, Section
-from ..db.models import UserRole, Post, User, Section
-from ..core.database import get_db
-# from .auth import get_current_active_user  # 不直接导入
-from .enums import Role, Permission
-from sqlalchemy.sql import select
+from functools import lru_cache as memo
+from enum import Enum, auto
 
-# 处理循环导入
-def get_current_active_user():
-    from .auth import get_current_active_user as _get_current_active_user
-    return _get_current_active_user
+from ..db.models import User
+from .exceptions import PermissionError, UserNotFoundError
+from .auth import get_current_user, require_active_user
 
-# 统一角色配置：包含权限和继承关系
-ROLE_CONFIG = {
-    Role.GUEST: {
-        "permissions": [],  # 访客无权限
-        "inherits": []
-    },
-    Role.USER: {
-        "permissions": [
-            Permission.CREATE_POST,
-            Permission.EDIT_POST,
-            Permission.DELETE_POST,
-            Permission.CREATE_COMMENT,
-            Permission.EDIT_COMMENT,
-            Permission.DELETE_COMMENT,
-            Permission.EDIT_PROFILE,
-            Permission.HIDE_POST,
-        ],
-        "inherits": [Role.GUEST]
-    },
-    Role.MODERATOR: {
-        "permissions": [
-            Permission.VIEW_USERS,
-            Permission.MANAGE_CONTENT,
-        ],
-        "inherits": [Role.USER]
-    },
-    Role.ADMIN: {
-        "permissions": [
-            Permission.MANAGE_USERS,
-            Permission.MANAGE_SECTIONS,
-            Permission.MANAGE_SYSTEM,
-        ],
-        "inherits": [Role.MODERATOR]
-    },
-    Role.SUPER_ADMIN: {
-        "permissions": [
-            # 超级管理员拥有所有权限
-            # 可以添加任何系统特定的权限
-        ],
-        "inherits": [Role.ADMIN]  # 继承管理员的所有权限
-    }
-}
+class Role(str, Enum):
+    """用户角色枚举"""
+    ADMIN = "admin"  # 管理员
+    MODERATOR = "moderator"  # 版主
+    USER = "user"  # 普通用户
+    GUEST = "guest"  # 访客
 
-# 从统一配置生成权限和继承关系
-ROLE_PERMISSIONS = {role: config["permissions"] for role, config in ROLE_CONFIG.items()}
-ROLE_HIERARCHY = {role: config.get("inherits", []) for role, config in ROLE_CONFIG.items()}
-
-def safe_enum_parse(enum_class, value, default=None):
-    """安全解析枚举值
+class Permission(str, Enum):
+    """权限枚举"""
+    # 帖子权限
+    CREATE_POST = "create_post"  # 创建帖子
+    READ_POST = "read_post"  # 读取帖子
+    UPDATE_POST = "update_post"  # 更新帖子
+    DELETE_POST = "delete_post"  # 删除帖子
+    RESTORE_POST = "restore_post"  # 恢复帖子
     
-    Args:
-        enum_class: 枚举类
-        value: 要解析的值
-        default: 解析失败时的默认值
-        
-    Returns:
-        解析后的枚举值或默认值
-    """
-    try:
-        return enum_class(value)
-    except (ValueError, KeyError):
-        return default
-
-def get_role_permissions(role: Role) -> Set[Permission]:
-    """
-    获取角色所有权限（包含继承的权限）
+    # 评论权限
+    CREATE_COMMENT = "create_comment"  # 创建评论
+    READ_COMMENT = "read_comment"  # 读取评论
+    UPDATE_COMMENT = "update_comment"  # 更新评论
+    DELETE_COMMENT = "delete_comment"  # 删除评论
     
-    使用内存缓存优化重复计算，使用迭代方式替代递归，避免重复遍历角色层次结构。
+    # 用户权限
+    UPDATE_PROFILE = "update_profile"  # 更新个人资料
+    READ_PROFILE = "read_profile"  # 读取个人资料
     
-    Args:
-        role: 角色
-        
-    Returns:
-        角色拥有的所有权限集合
-    """
-    # 在函数内部导入避免循环引用
-    from .decorators.cache import memo
-    
-    # 定义内部函数并使用缓存
-    @memo
-    def _get_permissions(r: Role) -> Set[Permission]:
-        # 使用BFS代替递归，更高效处理大型层次结构
-        result = set(ROLE_PERMISSIONS.get(r, []))
-        
-        # 使用队列进行广度优先遍历
-        queue = deque(ROLE_HIERARCHY.get(r, []))
-        processed = {r}
-        
-        while queue:
-            current_role = queue.popleft()
-            if current_role in processed:
-                continue
-                
-            processed.add(current_role)
-            result.update(ROLE_PERMISSIONS.get(current_role, []))
-            queue.extend(r for r in ROLE_HIERARCHY.get(current_role, []) if r not in processed)
-                
-        return result
-    
-    return _get_permissions(role)
-
-def has_permission(user_role: str, permission: Permission) -> bool:
-    """
-    检查角色是否拥有指定权限
-    
-    使用内存缓存优化重复检查，提高权限验证性能。
-    
-    Args:
-        user_role: 用户角色名称
-        permission: 要检查的权限
-        
-    Returns:
-        是否拥有权限
-    """
-    # 在函数内部导入避免循环引用
-    from .decorators.cache import memo
-    
-    # 定义内部函数并使用缓存
-    @memo
-    def _check_permission(role_name: str, perm: Permission) -> bool:
-        role = safe_enum_parse(Role, role_name)
-        if role is None:
-            return False
-            
-        role_permissions = get_role_permissions(role)
-        return perm in role_permissions
-    
-    return _check_permission(user_role, permission)
-
-def get_user_permissions(user_role: str) -> List[str]:
-    """
-    获取用户所有权限列表
-    
-    使用内存缓存优化重复计算，加速权限列表获取。
-    
-    Args:
-        user_role: 用户角色名称
-        
-    Returns:
-        权限列表
-    """
-    # 在函数内部导入避免循环引用
-    from .decorators.cache import memo
-    
-    # 定义内部函数并使用缓存
-    @memo
-    def _get_permissions(role_name: str) -> List[str]:
-        role = safe_enum_parse(Role, role_name)
-        if role is None:
-            return []
-            
-        return [p.value for p in get_role_permissions(role)]
-    
-    return _get_permissions(user_role)
-
-def check_resource_permission(
-    user: User,
-    resource_id: int,
-    resource_type: str,
-    action: str,
-    db: Session,
-    owner_id_field: str = "author_id"
-) -> Tuple[bool, Any]:
-    """通用资源权限检查
-    
-    Args:
-        user: 用户对象
-        resource_id: 资源ID
-        resource_type: 资源类型 ('post', 'comment', 'section')
-        action: 操作类型 ('edit', 'delete', 'hide')
-        db: 数据库会话
-        owner_id_field: 资源所有者ID字段名
-        
-    Returns:
-        (是否有权限, 资源对象)
-    """
-    # 选择资源类型
-    if resource_type == 'post':
-        ResourceModel = Post
-        admin_permission = Permission.MANAGE_CONTENT
-    elif resource_type == 'comment':
-        ResourceModel = Post  # 假设注释模型
-        admin_permission = Permission.MANAGE_CONTENT
-    elif resource_type == 'section':
-        ResourceModel = Section
-        admin_permission = Permission.MANAGE_SECTIONS
-    else:
-        return False, None
-    
-    # 获取资源
-    resource = db.query(ResourceModel).filter(ResourceModel.id == resource_id).first()
-    if not resource:
-        return False, None
-    
-    # 管理员权限检查
-    if has_permission(user.role, Permission.MANAGE_SYSTEM) or has_permission(user.role, admin_permission):
-        return True, resource
-    
-    # 版主权限检查 (对于帖子和评论)
-    if resource_type in ['post', 'comment'] and has_permission(user.role, Permission.MANAGE_CONTENT):
-        # 检查版主是否管理该版块
-        if resource_type == 'post' and hasattr(resource, 'section_id'):
-            return any(section.id == resource.section_id for section in user.moderated_sections), resource
-    
-    # 普通用户权限：检查是否资源所有者
-    action_permission = None
-    if action == 'edit':
-        action_permission = Permission.EDIT_POST if resource_type == 'post' else Permission.EDIT_COMMENT
-    elif action == 'delete':
-        action_permission = Permission.DELETE_POST if resource_type == 'post' else Permission.DELETE_COMMENT
-    elif action == 'hide':
-        action_permission = Permission.HIDE_POST
-    
-    if action_permission and has_permission(user.role, action_permission):
-        # 检查是否资源所有者
-        return getattr(resource, owner_id_field) == user.id, resource
-    
-    return False, resource
+    # 管理权限
+    MANAGE_USERS = "manage_users"  # 管理用户
+    MANAGE_POSTS = "manage_posts"  # 管理帖子
+    MANAGE_COMMENTS = "manage_comments"  # 管理评论
+    MANAGE_TAGS = "manage_tags"  # 管理标签
+    MANAGE_CATEGORIES = "manage_categories"  # 管理分类
+    MANAGE_SECTIONS = "manage_sections"  # 管理版块
 
 class PermissionChecker:
-    """权限检查器"""
+    """权限检查器类"""
     
-    def __init__(self, db: Session = Depends(get_db)):
-        """初始化权限检查器"""
-        self.db = db
-    
-    def _is_role(self, user: User, roles: List[Role]) -> bool:
-        """检查用户是否具有指定角色之一"""
-        if not user:
-            return False
+    def __init__(self):
+        """初始化权限检查器
         
-        user_role = user.role
-        if not user_role:
+        设置角色-权限映射关系
+        """
+        # 定义每个角色拥有的权限
+        self.role_permissions = {
+            Role.ADMIN: {
+                Permission.CREATE_POST, Permission.READ_POST,
+                Permission.UPDATE_POST, Permission.DELETE_POST,
+                Permission.RESTORE_POST, Permission.CREATE_COMMENT,
+                Permission.READ_COMMENT, Permission.UPDATE_COMMENT,
+                Permission.DELETE_COMMENT, Permission.UPDATE_PROFILE,
+                Permission.READ_PROFILE, Permission.MANAGE_USERS,
+                Permission.MANAGE_POSTS, Permission.MANAGE_COMMENTS,
+                Permission.MANAGE_TAGS, Permission.MANAGE_CATEGORIES,
+                Permission.MANAGE_SECTIONS
+            },
+            Role.MODERATOR: {
+                Permission.CREATE_POST, Permission.READ_POST,
+                Permission.UPDATE_POST, Permission.DELETE_POST,
+                Permission.CREATE_COMMENT, Permission.READ_COMMENT,
+                Permission.UPDATE_COMMENT, Permission.DELETE_COMMENT,
+                Permission.UPDATE_PROFILE, Permission.READ_PROFILE,
+                Permission.MANAGE_POSTS, Permission.MANAGE_COMMENTS
+            },
+            Role.USER: {
+                Permission.CREATE_POST, Permission.READ_POST,
+                Permission.UPDATE_POST, Permission.DELETE_POST,
+                Permission.CREATE_COMMENT, Permission.READ_COMMENT,
+                Permission.UPDATE_COMMENT, Permission.DELETE_COMMENT,
+                Permission.UPDATE_PROFILE, Permission.READ_PROFILE
+            },
+            Role.GUEST: {
+                Permission.READ_POST, Permission.READ_COMMENT,
+                Permission.READ_PROFILE
+            }
+        }
+    
+    async def has_permission(
+        self,
+        user: Optional[User],
+        permission: Permission
+    ) -> bool:
+        """检查用户是否具有指定权限
+        
+        Args:
+            user: 用户对象
+            permission: 要检查的权限
+            
+        Returns:
+            bool: 是否具有权限
+        """
+        if not user:
+            return permission in self.role_permissions[Role.GUEST]
+            
+        user_role = user.role or Role.GUEST
+        if user_role not in self.role_permissions:
             return False
             
-        return user_role in [role.value for role in roles]
+        # 检查权限
+        return permission in self.role_permissions[user_role]
     
-    async def is_admin(self, user: User = Depends(get_current_active_user())) -> bool:
+    async def is_admin(
+        self,
+        user: Optional[User] = Depends(get_current_user)
+    ) -> bool:
         """检查用户是否为管理员
         
         Args:
             user: 用户对象
             
         Returns:
-            bool: 如果用户是管理员或超级管理员则返回True
+            bool: 是否为管理员
         """
-        return self._is_role(user, [Role.ADMIN, Role.SUPER_ADMIN])
+        if not user:
+            return False
+        return user.role == Role.ADMIN
     
-    async def is_moderator(self, user: User = Depends(get_current_active_user())) -> bool:
+    async def is_moderator(
+        self,
+        user: Optional[User] = Depends(get_current_user)
+    ) -> bool:
         """检查用户是否为版主
         
         Args:
             user: 用户对象
             
         Returns:
-            bool: 如果用户是版主、管理员或超级管理员则返回True
+            bool: 是否为版主
         """
-        return self._is_role(user, [Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN])
+        if not user:
+            return False
+        return user.role in [Role.ADMIN, Role.MODERATOR]
     
-    async def can_modify_post(
+    async def check_permission(
         self,
-        post_id: int,
-        user: User = Depends(get_current_active_user())
-    ) -> bool:
-        """检查用户是否可以修改帖子
-        
-        用户可以修改自己的帖子，管理员可以修改任何帖子。
+        permission: Permission,
+        user: Optional[User] = Depends(get_current_user)
+    ) -> User:
+        """检查用户是否具有指定权限,不具有则抛出异常
         
         Args:
-            post_id: 帖子ID
+            permission: 要检查的权限
             user: 用户对象
             
         Returns:
-            bool: 如果用户可以修改帖子则返回True
+            User: 用户对象
+            
+        Raises:
+            HTTPException: 当用户不具有权限时抛出
         """
-        # 管理员可以修改任何帖子
-        if self._is_role(user, [Role.ADMIN, Role.SUPER_ADMIN]):
-            return True
-            
-        # 查询帖子
-        result = await self.db.execute(
-            select(Post).where(Post.id == post_id)
-        )
-        post = result.scalar_one_or_none()
+        # 要求用户存在且激活
+        user = require_active_user(user)
         
-        if not post:
-            return False
-            
-        # 用户可以修改自己的帖子
-        return post.user_id == user.id
+        # 检查权限
+        if not await self.has_permission(user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="没有足够的权限执行此操作"
+            )
+        return user
     
-    async def can_delete_post(
+    async def check_owner(
         self,
-        post_id: int,
-        user: User = Depends(get_current_active_user())
-    ) -> bool:
-        """检查用户是否可以删除帖子
-        
-        用户可以删除自己的帖子，管理员可以删除任何帖子。
+        resource_owner_id: int,
+        user: Optional[User] = Depends(get_current_user)
+    ) -> User:
+        """检查用户是否为资源所有者或管理员
         
         Args:
-            post_id: 帖子ID
+            resource_owner_id: 资源所有者ID
             user: 用户对象
             
         Returns:
-            bool: 如果用户可以删除帖子则返回True
+            User: 用户对象
+            
+        Raises:
+            HTTPException: 当用户不是所有者且不是管理员时抛出
         """
-        # 管理员可以删除任何帖子
-        if self._is_role(user, [Role.ADMIN, Role.SUPER_ADMIN]):
-            return True
-            
-        # 查询帖子
-        result = await self.db.execute(
-            select(Post).where(Post.id == post_id)
-        )
-        post = result.scalar_one_or_none()
+        # 要求用户存在且激活
+        user = require_active_user(user)
         
-        if not post:
-            return False
-            
-        # 用户可以删除自己的帖子
-        return post.user_id == user.id
+        # 检查是否为所有者或管理员
+        if user.id != resource_owner_id and not await self.is_admin(user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="没有权限修改此资源"
+            )
+        return user
     
-    async def can_hide_post(
+    async def check_moderator(
         self,
-        post_id: int,
-        user: User = Depends(get_current_active_user())
-    ) -> bool:
-        """检查用户是否可以隐藏帖子
-        
-        只有管理员和版主可以隐藏帖子。
+        user: Optional[User] = Depends(get_current_user)
+    ) -> User:
+        """检查用户是否为版主
         
         Args:
-            post_id: 帖子ID
             user: 用户对象
             
         Returns:
-            bool: 如果用户可以隐藏帖子则返回True
+            User: 用户对象
+            
+        Raises:
+            HTTPException: 当用户不是版主时抛出
         """
-        # 只有管理员和版主可以隐藏帖子
-        if not self._is_role(user, [Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN]):
-            return False
-            
-        # 查询帖子
-        result = await self.db.execute(
-            select(Post).where(Post.id == post_id)
-        )
-        post = result.scalar_one_or_none()
+        # 要求用户存在且激活
+        user = require_active_user(user)
         
-        return post is not None
-    
-    async def can_manage_section(
-        self,
-        section_id: int,
-        user: User = Depends(get_current_active_user())
-    ) -> bool:
-        """检查用户是否可以管理版块
-        
-        只有管理员和版主可以管理版块。
-        
-        Args:
-            section_id: 版块ID
-            user: 用户对象
-            
-        Returns:
-            bool: 如果用户可以管理版块则返回True
-        """
-        # 只有管理员和版主可以管理版块
-        if not self._is_role(user, [Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN]):
-            return False
-            
-        # 查询版块
-        result = await self.db.execute(
-            select(Section).where(Section.id == section_id)
-        )
-        section = result.scalar_one_or_none()
-        
-        return section is not None
+        # 检查是否为版主
+        if not await self.is_moderator(user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="需要版主权限"
+            )
+        return user
 
-def get_permission_checker(db: Session = Depends(get_db)):
-    """获取权限检查器实例
-    
-    Args:
-        db: 数据库会话实例
-        
-    Returns:
-        PermissionChecker: 权限检查器实例
-    """
-    return PermissionChecker(db)
+# 创建权限检查器实例
+permission_checker = PermissionChecker()
 
-def check_admin(user: User = Depends(get_current_active_user())):
-    """检查用户是否为管理员
-    
-    用于FastAPI依赖项，验证当前用户是否具有管理员权限。
-    如果不是管理员，则抛出403错误。
-    
-    Args:
-        user: 当前用户实例
-        
-    Raises:
-        HTTPException: 当用户不是管理员时抛出403错误
-    """
-    if user.role not in [Role.ADMIN.value, Role.SUPER_ADMIN.value]:
-        raise HTTPException(
-            status_code=403,
-            detail="需要管理员权限"
-        )
-    return user
-
-def check_moderator(user: User = Depends(get_current_active_user())):
-    """检查用户是否为版主
-    
-    用于FastAPI依赖项，验证当前用户是否具有版主权限。
-    如果不是版主或管理员，则抛出403错误。
-    
-    Args:
-        user: 当前用户实例
-        
-    Raises:
-        HTTPException: 当用户不是版主或管理员时抛出403错误
-    """
-    if user.role not in [Role.MODERATOR.value, Role.ADMIN.value, Role.SUPER_ADMIN.value]:
-        raise HTTPException(
-            status_code=403,
-            detail="需要版主权限"
-        )
-    return user 
+# 导出便捷函数
+check_permission = permission_checker.check_permission
+check_owner = permission_checker.check_owner
+check_moderator = permission_checker.check_moderator
+is_admin = permission_checker.is_admin
+is_moderator = permission_checker.is_moderator 

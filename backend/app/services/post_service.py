@@ -664,12 +664,12 @@ class PostService(BaseService):
             # 返回空字典而不是抛出异常，以避免中断处理流程
             return {}
 
-def get_post_service() -> PostService:
-    """创建PostService实例的依赖函数
+# def get_post_service() -> PostService:
+#     """创建PostService实例的依赖函数
     
-    用于FastAPI依赖注入系统
+#     用于FastAPI依赖注入系统
     
-    Returns:
-        PostService: 帖子服务实例
-    """
-    return PostService() 
+#     Returns:
+#         PostService: 帖子服务实例
+#     """
+#     return PostService() 

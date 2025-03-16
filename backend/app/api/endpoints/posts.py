@@ -9,8 +9,7 @@ from ...services.comment_service import CommentService
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...services.favorite_service import FavoriteService
 from ...services import PostService
-from ...services import get_post_service
-from ...services import get_favorite_service, get_comment_service
+from ...dependencies import get_post_service, get_favorite_service, get_comment_service
 from ...core.exceptions import (
     NotFoundError, 
     RequestDataError,
@@ -28,7 +27,8 @@ from ..responses.post import (
     PostVoteResponse,
     PostFavoriteResponse
 )
-from ...core.auth import get_current_user_optional, get_current_active_user
+from ...core.auth import get_current_user
+from ...core.permissions import require_active_user
 from ...db.models import User, VoteType
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,7 @@ async def get_post_owner(post_id: int, post_service: PostService = Depends(get_p
 async def create_post(
     request: Request,
     post: post_schema.PostCreate,
+    user: Optional[User] = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """创建新帖子
@@ -82,6 +83,7 @@ async def create_post(
     Args:
         request: FastAPI请求对象
         post: 帖子创建模型，包含标题、内容、分类等
+        user: 当前用户对象
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
@@ -91,10 +93,9 @@ async def create_post(
         HTTPException: 当权限不足或数据验证失败时抛出相应错误
     """
     try:
-        # 从token获取当前用户ID
-        current_user_id = request.state.user.get("id")
-        if not current_user_id:
-            raise AuthenticationError(code="missing_user_id", message="无法获取用户ID")
+        # 检查用户认证和激活状态
+        user = require_active_user(user)
+        current_user_id = user.get("id")
         
         # 准备帖子数据
         try:
@@ -171,6 +172,7 @@ async def read_posts(
     tag_ids: Optional[List[int]] = Query(None),
     sort_by: Optional[str] = Query(None, regex="^[a-zA-Z0-9_]+$", description="排序字段"),
     sort_order: Optional[str] = Query("desc", regex="^(asc|desc)$", description="排序方向(asc或desc)"),
+    user: Optional[User] = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service),
 ):
     """获取帖子列表
@@ -188,6 +190,7 @@ async def read_posts(
         tag_ids: 按标签ID列表筛选
         sort_by: 排序字段
         sort_order: 排序方向
+        user: 当前用户对象(可选)
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
@@ -253,8 +256,6 @@ async def read_posts(
             "page": skip // limit + 1 if limit > 0 else 1,
             "size": limit
         }
-    except HTTPException:
-        raise
     except BusinessException as be:
         # 业务异常处理
         if hasattr(be, 'status_code') and be.status_code:
@@ -271,7 +272,7 @@ async def read_posts(
         logger.error(f"获取帖子列表失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": f"获取帖子列表失败: {str(e)}", "code": "get_posts_error"}
+            detail={"message": f"获取帖子列表失败: {str(e)}", "code": "list_posts_error"}
         )
 
 @router.get("/{post_id}", response_model=PostDetailResponse)
@@ -279,236 +280,389 @@ async def read_posts(
 @with_error_handling(default_error_message="获取帖子详情失败")
 async def read_post(
     post_id: int = Path(..., ge=1),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    user: Optional[User] = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service),
 ):
     """获取帖子详情
     
-    获取指定ID帖子的详细信息，包括标签、作者等相关数据。
+    获取指定ID的帖子详细信息。
     
     Args:
         post_id: 帖子ID
-        current_user: 当前用户对象（可选）
+        user: 当前用户对象(可选)
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
-        PostDetailResponse: 包含帖子详情的响应
+        PostDetailResponse: 帖子详细信息
         
     Raises:
-        HTTPException: 当帖子不存在或用户无权查看时抛出相应错误
+        HTTPException: 当帖子不存在时抛出404错误
     """
-    try:
-        # 获取帖子详情
-        post = await post_service.get_post_detail(post_id=post_id)
-        
-        if not post:
+    # 获取帖子详情
+    post = await post_service.get_post_detail(post_id)
+    if not post:
+        raise NotFoundError(code="post_not_found", message="帖子不存在")
+    
+    # 如果帖子已隐藏且当前用户不是作者或管理员，则不允许查看
+    if post.get("is_hidden", False):
+        # 未登录用户不能查看隐藏帖子
+        if not user:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"message": "帖子不存在", "code": "post_not_found"}
-            )
-        
-        # 检查权限
-        if post.get("is_hidden", False):
-            if not current_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"message": "帖子不存在", "code": "post_not_found"}
-                )
-                
-            can_view_hidden = hasattr(current_user, 'permissions') and any(
-                perm in current_user.permissions for perm in ["manage_content", "manage_system"]
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "没有权限查看此帖子", "code": "post_hidden"}
             )
             
-            if not can_view_hidden and post.get("author_id") != current_user.id:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"message": "帖子不存在", "code": "post_not_found"}
-                )
+        # 检查是否为作者或管理员
+        is_author = user.get("id") == post.get("author_id")
+        is_admin = user.get("role") == "admin"
         
-        # 确保所有必要的字段都存在，防止前端渲染错误
-        if "tags" not in post:
-            post["tags"] = []
-        if "comments" not in post:
-            post["comments"] = []
-        
-        # 添加PostDetailResponse需要的字段
-        if "view_count" not in post:
-            post["view_count"] = 0
-        if "favorite_count" not in post:
-            post["favorite_count"] = 0
-        
-        # 添加tag_ids字段，用于ID引用模式
-        tag_ids = []
-        if post.get("tags"):
-            tag_ids = [tag.get("id") for tag in post["tags"] if tag.get("id")]
-        post["tag_ids"] = tag_ids
-        
-        # 尝试记录浏览量增加（不阻塞响应）
-        try:
-            # 异步记录浏览量，不等待结果
-            post_service.increment_view_count(post_id, background=True)
-        except Exception as view_exc:
-            # 记录但不影响主请求
-            logger.warning(f"记录帖子浏览量失败: {str(view_exc)}")
-        
-        return post
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取帖子详情失败: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": f"获取帖子详情失败: {str(e)}", "code": "get_post_detail_error"}
-        )
+        if not (is_author or is_admin):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "没有权限查看此帖子", "code": "post_hidden"}
+            )
+    
+    return post
 
 @router.put("/{post_id}", response_model=PostResponse)
-@owner_endpoint(custom_message="更新帖子失败", resource_owner_lookup_func=get_post_owner)
+@owner_endpoint(owner_param_name="post_id", custom_message="更新帖子失败")
 @with_error_handling(default_error_message="更新帖子失败")
 async def update_post(
-    request: Request,
-    post_id: int,
-    post: post_schema.PostUpdate,
+    post_id: int = Path(..., ge=1),
+    post_update: post_schema.PostUpdate = Body(...),
+    user: Optional[User] = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """更新帖子
     
-    更新指定ID的帖子信息，仅允许帖子作者、版主和管理员操作。
+    更新指定ID的帖子信息。
+    用户只能更新自己的帖子，管理员可以更新任何帖子。
     
     Args:
-        request: FastAPI请求对象
         post_id: 帖子ID
-        post: 更新的帖子数据
+        post_update: 帖子更新数据
+        user: 当前用户对象
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
-        Post: 更新后的帖子信息
+        PostResponse: 更新后的帖子信息
         
     Raises:
-        HTTPException: 当帖子不存在或权限不足时抛出相应错误
+        HTTPException: 当帖子不存在、权限不足或数据验证失败时抛出相应错误
     """
-    # 获取当前用户ID
-    current_user_id = request.state.user.get("id")
-    
-    # 获取帖子详情，检查是否存在
-    existing_post = await post_service.get_post_detail(post_id)
-    if not existing_post:
-        raise NotFoundError(code="post_not_found", message="帖子不存在")
-        
-    # 更新帖子内容
-    # 兼容不同版本的Pydantic，尝试使用dict()或model_dump()
     try:
-        post_data = post.model_dump(exclude_unset=True)
-    except AttributeError:
+        # 检查用户认证和激活状态
+        user = require_active_user(user)
+        current_user_id = user.get("id")
+        
+        # 获取帖子详情
+        post = await post_service.get_post_detail(post_id)
+        if not post:
+            raise NotFoundError(code="post_not_found", message="帖子不存在")
+            
+        # 检查权限
+        is_author = current_user_id == post.get("author_id")
+        is_admin = user.get("role") == "admin"
+        
+        if not (is_author or is_admin):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "没有权限修改此帖子", "code": "permission_denied"}
+            )
+        
+        # 准备更新数据
         try:
-            post_data = post.dict(exclude_unset=True)
+            update_data = post_update.model_dump(exclude_unset=True)
         except AttributeError:
-            post_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
-    
-    updated_post = await post_service.update_post(post_id, post_data)
-    
-    return updated_post
+            try:
+                update_data = post_update.dict(exclude_unset=True)
+            except AttributeError:
+                update_data = {k: v for k, v in post_update.__dict__.items() if not k.startswith('_')}
+        
+        # 基本验证
+        if "title" in update_data and (not update_data["title"] or len(update_data["title"]) < 3):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "标题不能为空且长度至少为3个字符", "code": "invalid_title"}
+            )
+            
+        if "content" in update_data and not update_data["content"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"message": "内容不能为空", "code": "invalid_content"}
+            )
+        
+        # 更新帖子
+        updated_post = await post_service.update_post(post_id, update_data)
+        return updated_post
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
+        )
+    except Exception as e:
+        logger.error(f"更新帖子失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"更新帖子失败: {str(e)}", "code": "update_post_error"}
+        )
 
 @router.delete("/{post_id}", response_model=PostDeleteResponse)
-@owner_endpoint(custom_message="删除帖子失败", resource_owner_lookup_func=get_post_owner)
+@owner_endpoint(owner_param_name="post_id", custom_message="删除帖子失败")
 @with_error_handling(default_error_message="删除帖子失败")
 async def delete_post(
-    request: Request,
-    post_id: int,
+    post_id: int = Path(..., ge=1),
+    user: Optional[User] = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """删除帖子
     
-    软删除指定的帖子，仅允许帖子作者、版主和管理员操作。
+    删除指定ID的帖子。
+    用户只能删除自己的帖子，管理员可以删除任何帖子。
     
     Args:
-        request: FastAPI请求对象
         post_id: 帖子ID
+        user: 当前用户对象
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
-        dict: 操作结果消息
+        PostDeleteResponse: 删除操作的结果
         
     Raises:
         HTTPException: 当帖子不存在或权限不足时抛出相应错误
     """
-    # 记录操作
-    user_id = request.state.user.get("id")
-    
-    # 删除帖子
-    success = await post_service.delete_post(post_id)
-    
-    if success:
-        return {"message": "帖子已成功删除", "post_id": post_id}
-    else:
-        logger.warning(f"删除帖子 {post_id} 失败")
-        raise HTTPException(status_code=500, detail={"message": "删除帖子失败", "error_code": "DELETE_FAILED"})
+    try:
+        # 检查用户认证和激活状态
+        user = require_active_user(user)
+        current_user_id = user.get("id")
+        
+        # 获取帖子详情
+        post = await post_service.get_post_detail(post_id)
+        if not post:
+            raise NotFoundError(code="post_not_found", message="帖子不存在")
+            
+        # 检查权限
+        is_author = current_user_id == post.get("author_id")
+        is_admin = user.get("role") == "admin"
+        
+        if not (is_author or is_admin):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "没有权限删除此帖子", "code": "permission_denied"}
+            )
+        
+        # 删除帖子
+        await post_service.delete_post(post_id)
+        
+        return {
+            "id": post_id,
+            "message": "帖子已成功删除"
+        }
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
+        )
+    except Exception as e:
+        logger.error(f"删除帖子失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"删除帖子失败: {str(e)}", "code": "delete_post_error"}
+        )
 
 @router.post("/{post_id}/restore", response_model=PostResponse)
 @admin_endpoint(custom_message="恢复帖子失败")
 @with_error_handling(default_error_message="恢复帖子失败")
 async def restore_post(
-    request: Request,
-    post_id: int,
+    post_id: int = Path(..., ge=1),
+    user: Optional[User] = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """恢复已删除的帖子
     
-    恢复指定的已删除帖子，仅允许版主和管理员操作。
+    恢复软删除状态的帖子。
+    仅管理员可执行此操作。
     
     Args:
-        request: FastAPI请求对象
         post_id: 帖子ID
+        user: 当前用户对象
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
-        dict: 操作结果消息
+        PostResponse: 恢复后的帖子信息
+        
+    Raises:
+        HTTPException: 当帖子不存在、未被删除或权限不足时抛出相应错误
+    """
+    try:
+        # 检查用户认证和激活状态
+        user = require_active_user(user)
+        
+        # 检查是否为管理员
+        if user.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "需要管理员权限", "code": "permission_denied"}
+            )
+        
+        # 恢复帖子
+        restored_post = await post_service.restore_post(post_id)
+        if not restored_post:
+            raise NotFoundError(code="post_not_found", message="帖子不存在")
+            
+        return restored_post
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
+        )
+    except Exception as e:
+        logger.error(f"恢复帖子失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"恢复帖子失败: {str(e)}", "code": "restore_post_error"}
+        )
+
+@router.post("/{post_id}/hide", response_model=PostResponse)
+@admin_endpoint(custom_message="隐藏帖子失败")
+@with_error_handling(default_error_message="隐藏帖子失败")
+async def hide_post(
+    post_id: int = Path(..., ge=1),
+    user: Optional[User] = Depends(get_current_user),
+    post_service: PostService = Depends(get_post_service)
+):
+    """隐藏帖子
+    
+    将帖子标记为隐藏状态。
+    仅管理员和版主可执行此操作。
+    
+    Args:
+        post_id: 帖子ID
+        user: 当前用户对象
+        post_service: 帖子服务实例（通过依赖注入获取）
+        
+    Returns:
+        PostResponse: 隐藏后的帖子信息
         
     Raises:
         HTTPException: 当帖子不存在或权限不足时抛出相应错误
     """
-    # 恢复帖子
-    restored_post = await post_service.restore_post(post_id)
-    
-    return {
-        "message": "帖子已成功恢复",
-        "post_id": post_id,
-        "post": restored_post
-    }
+    try:
+        # 检查用户认证和激活状态
+        user = require_active_user(user)
+        
+        # 检查是否为管理员或版主
+        if user.get("role") not in ["admin", "moderator"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "需要管理员或版主权限", "code": "permission_denied"}
+            )
+        
+        # 隐藏帖子
+        hidden_post = await post_service.hide_post(post_id)
+        if not hidden_post:
+            raise NotFoundError(code="post_not_found", message="帖子不存在")
+            
+        return hidden_post
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
+        )
+    except Exception as e:
+        logger.error(f"隐藏帖子失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"隐藏帖子失败: {str(e)}", "code": "hide_post_error"}
+        )
 
-@router.patch("/{post_id}/visibility", response_model=PostResponse)
-@owner_endpoint(custom_message="切换帖子可见性失败", resource_owner_lookup_func=get_post_owner)
-@with_error_handling(default_error_message="切换帖子可见性失败")
-async def toggle_post_visibility(
-    request: Request,
-    post_id: int,
-    visibility: dict = Body(...),
+@router.post("/{post_id}/unhide", response_model=PostResponse)
+@admin_endpoint(custom_message="取消隐藏帖子失败")
+@with_error_handling(default_error_message="取消隐藏帖子失败")
+async def unhide_post(
+    post_id: int = Path(..., ge=1),
+    user: Optional[User] = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
-    """切换帖子可见性
+    """取消隐藏帖子
     
-    切换指定帖子的可见性状态，仅允许帖子作者、版主和管理员操作。
+    将帖子从隐藏状态恢复为可见状态。
+    仅管理员和版主可执行此操作。
     
     Args:
-        request: FastAPI请求对象
         post_id: 帖子ID
-        visibility: 包含可见性设置的字典
+        user: 当前用户对象
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
-        Post: 更新后的帖子信息
+        PostResponse: 恢复显示后的帖子信息
+        
+    Raises:
+        HTTPException: 当帖子不存在或权限不足时抛出相应错误
     """
-    
-    # 获取帖子详情，检查是否存在
-    existing_post = await post_service.get_post_detail(post_id)
-    if not existing_post:
-        raise NotFoundError(code="post_not_found", message="帖子不存在")
-    
-    # 更新帖子可见性
-    is_hidden = visibility.get("hidden", not existing_post.get("is_hidden", False))
-    
-    updated_post = await post_service.toggle_visibility(post_id, is_hidden)
-    
-    return updated_post
+    try:
+        # 检查用户认证和激活状态
+        user = require_active_user(user)
+        
+        # 检查是否为管理员或版主
+        if user.get("role") not in ["admin", "moderator"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"message": "需要管理员或版主权限", "code": "permission_denied"}
+            )
+        
+        # 取消隐藏帖子
+        unhidden_post = await post_service.unhide_post(post_id)
+        if not unhidden_post:
+            raise NotFoundError(code="post_not_found", message="帖子不存在")
+            
+        return unhidden_post
+    except BusinessException as be:
+        # 业务异常处理
+        if hasattr(be, 'status_code') and be.status_code:
+            status_code = be.status_code
+        else:
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        raise HTTPException(
+            status_code=status_code,
+            detail={"message": be.message if hasattr(be, 'message') else str(be), 
+                   "code": be.code if hasattr(be, 'code') else "business_error"}
+        )
+    except Exception as e:
+        logger.error(f"取消隐藏帖子失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"取消隐藏帖子失败: {str(e)}", "code": "unhide_post_error"}
+        )
 
 @router.post("/{post_id}/vote", response_model=PostVoteResponse)
 @public_endpoint(rate_limit_count=30, auth_required=True, custom_message="点赞操作失败")

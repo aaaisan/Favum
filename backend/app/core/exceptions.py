@@ -95,6 +95,24 @@ class AuthenticationError(APIError):
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+class UserNotActivatedError(AuthenticationError):
+    """
+    用户未激活错误
+    
+    当用户账号未激活时抛出此异常。
+    例如：用户注册后未验证邮箱、账号被管理员禁用等。
+    
+    Attributes:
+        detail: 错误详细信息，默认为"请先激活您的账号"
+        error_code: 固定为"user_not_activated"
+        status_code: HTTP 401 UNAUTHORIZED
+    """
+    def __init__(self, detail: str = "请先激活您的账号") -> None:
+        super().__init__(
+            detail=detail,
+            error_code="user_not_activated"
+        )
+
 class TokenExpiredError(AuthenticationError):
     """Token过期错误"""
     def __init__(self) -> None:
@@ -349,6 +367,31 @@ class NoResultFound(APIError):
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=message
+        )
+
+class UserNotFoundError(APIError):
+    """
+    用户不存在错误
+    
+    当请求的用户不存在时抛出此异常。
+    
+    Attributes:
+        user_id: 用户ID或用户名
+        detail: 错误详细信息
+        status_code: HTTP 404 NOT FOUND
+    """
+    def __init__(
+        self,
+        user_id: Any,
+        detail: str = None
+    ) -> None:
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "message": detail or f"用户 {user_id} 不存在",
+                "code": "user_not_found",
+                "user_id": user_id
+            }
         )
 
 """

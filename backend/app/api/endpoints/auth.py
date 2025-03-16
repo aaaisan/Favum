@@ -27,7 +27,6 @@ from ...core.permissions import get_role_permissions, Role
 from ...core.security import (
     authenticate_user,
     create_access_token,
-    get_current_active_user,
     get_password_hash,
 )
 from ...core.decorators.error import handle_exceptions

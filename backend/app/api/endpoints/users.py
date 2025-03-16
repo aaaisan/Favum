@@ -4,13 +4,13 @@ from typing import List, Optional
 from ...schemas import user as user_schema
 from ...schemas import post as post_schema
 from ...services import UserService, PostService, FavoriteService
-from ...services import get_favorite_service, get_user_service, get_post_service
+from ...dependencies import get_favorite_service, get_user_service, get_post_service
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.enums import Role, Permission
 from ...core.exceptions import APIError, BusinessException
 from ...core.logging import get_logger
 from ...db.models.user import User
-from ...core.auth import get_current_active_user
+from ...core.auth import get_current_user
 
 from ..responses import (
     UserResponse, 

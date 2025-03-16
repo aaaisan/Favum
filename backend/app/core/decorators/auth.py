@@ -15,6 +15,7 @@ from typing import List, Callable, TypeVar, Any
 # from ..auth import decode_token
 from ...core.logging import get_logger
 from ...core.permissions import Permission, Role
+from ...db.models import User
 
 logger = get_logger(__name__)
 
@@ -80,7 +81,7 @@ def require_permissions(permissions: List[Permission]):
     """
     权限检查装饰器
     
-    检查当前用户是否拥有所需的所有权限。
+    检查当前用户是否拥有所需的所有权限，并且用户处于激活状态。
     
     Args:
         permissions: 所需的权限列表
@@ -89,7 +90,7 @@ def require_permissions(permissions: List[Permission]):
         Callable: 装饰器函数
         
     Raises:
-        HTTPException: 当用户未登录或权限不足时抛出相应错误
+        HTTPException: 当用户未登录、未激活或权限不足时抛出相应错误
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
@@ -119,11 +120,19 @@ def require_permissions(permissions: List[Permission]):
                     detail="需要登录才能访问"
                 )
             
+            # 检查用户是否激活
+            user = request.state.user
+            if not user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={"message": "请先激活您的账号", "code": "user_not_activated"}
+                )
+            
             # 检查权限
-            user_permissions = request.state.user.get("permissions", [])
+            user_permissions = user.get("permissions", [])
             
             # 管理员拥有所有权限
-            if "admin" in request.state.user.get("role", []):
+            if "admin" in user.get("role", []):
                 return await func(*args, **kwargs)
             
             # 检查是否有所需的所有权限
