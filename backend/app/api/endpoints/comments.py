@@ -39,7 +39,7 @@ async def get_comment_owner(comment_id: int) -> int:
     try:
         # 直接调用异步方法
         comment = await comment_service.get_comment_detail(comment_id)
-        return comment.get("author_id")
+        return comment.author_id
     except BusinessException as e:
         raise HTTPException(
             status_code=e.status_code,

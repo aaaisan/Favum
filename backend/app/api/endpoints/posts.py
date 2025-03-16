@@ -63,12 +63,12 @@ async def get_post_owner(post_id: int, post_service: PostService = Depends(get_p
     return author_id
 
 @router.post("", response_model=PostResponse)
-@public_endpoint(auth_required=True, custom_message="创建帖子失败")
+@public_endpoint(auth_required=True, custom_message="创建帖子失败", rate_limit_count=20)
 @with_error_handling(default_error_message="创建帖子失败")
 async def create_post(
     request: Request,
     post: post_schema.PostCreate,
-    user: Optional[User] = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """创建新帖子
@@ -95,7 +95,6 @@ async def create_post(
     try:
         # 检查用户认证和激活状态
         user = require_active_user(user)
-        current_user_id = user.get("id")
         
         # 准备帖子数据
         try:
@@ -108,7 +107,7 @@ async def create_post(
         
         # 如果未提供作者ID，使用当前用户ID
         if "author_id" not in post_data or not post_data["author_id"]:
-            post_data["author_id"] = current_user_id
+            post_data["author_id"] = user.id
         
         # 基本验证
         if not post_data.get("title") or len(post_data.get("title", "")) < 3:
@@ -276,12 +275,13 @@ async def read_posts(
         )
 
 @router.get("/{post_id}", response_model=PostDetailResponse)
-@public_endpoint(cache_ttl=30, custom_message="获取帖子详情失败")
+@public_endpoint(cache_ttl=300, custom_message="获取帖子详情失败")
 @with_error_handling(default_error_message="获取帖子详情失败")
 async def read_post(
-    post_id: int = Path(..., ge=1),
+    request: Request,
+    post_id: int = Path(..., title="帖子ID", description="要获取的帖子ID"),
     user: Optional[User] = Depends(get_current_user),
-    post_service: PostService = Depends(get_post_service),
+    post_service: PostService = Depends(get_post_service)
 ):
     """获取帖子详情
     
@@ -313,8 +313,8 @@ async def read_post(
             )
             
         # 检查是否为作者或管理员
-        is_author = user.get("id") == post.get("author_id")
-        is_admin = user.get("role") == "admin"
+        is_author = user.id == post.get("author_id")
+        is_admin = user.role == "admin"
         
         if not (is_author or is_admin):
             raise HTTPException(
@@ -325,12 +325,17 @@ async def read_post(
     return post
 
 @router.put("/{post_id}", response_model=PostResponse)
-@owner_endpoint(owner_param_name="post_id", custom_message="更新帖子失败")
+@owner_endpoint(
+    owner_id_func=get_post_owner,
+    custom_message="更新帖子失败",
+    rate_limit_count=20
+)
 @with_error_handling(default_error_message="更新帖子失败")
 async def update_post(
-    post_id: int = Path(..., ge=1),
-    post_update: post_schema.PostUpdate = Body(...),
-    user: Optional[User] = Depends(get_current_user),
+    request: Request,
+    post_id: int = Path(..., title="帖子ID", description="要更新的帖子ID"),
+    post: post_schema.PostUpdate = Body(...),
+    user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """更新帖子
@@ -340,7 +345,7 @@ async def update_post(
     
     Args:
         post_id: 帖子ID
-        post_update: 帖子更新数据
+        post: 帖子更新数据
         user: 当前用户对象
         post_service: 帖子服务实例（通过依赖注入获取）
         
@@ -353,7 +358,6 @@ async def update_post(
     try:
         # 检查用户认证和激活状态
         user = require_active_user(user)
-        current_user_id = user.get("id")
         
         # 获取帖子详情
         post = await post_service.get_post_detail(post_id)
@@ -361,8 +365,8 @@ async def update_post(
             raise NotFoundError(code="post_not_found", message="帖子不存在")
             
         # 检查权限
-        is_author = current_user_id == post.get("author_id")
-        is_admin = user.get("role") == "admin"
+        is_author = user.id == post.get("author_id")
+        is_admin = user.role == "admin"
         
         if not (is_author or is_admin):
             raise HTTPException(
@@ -372,12 +376,12 @@ async def update_post(
         
         # 准备更新数据
         try:
-            update_data = post_update.model_dump(exclude_unset=True)
+            update_data = post.model_dump(exclude_unset=True)
         except AttributeError:
             try:
-                update_data = post_update.dict(exclude_unset=True)
+                update_data = post.dict(exclude_unset=True)
             except AttributeError:
-                update_data = {k: v for k, v in post_update.__dict__.items() if not k.startswith('_')}
+                update_data = {k: v for k, v in post.__dict__.items() if not k.startswith('_')}
         
         # 基本验证
         if "title" in update_data and (not update_data["title"] or len(update_data["title"]) < 3):
@@ -415,11 +419,16 @@ async def update_post(
         )
 
 @router.delete("/{post_id}", response_model=PostDeleteResponse)
-@owner_endpoint(owner_param_name="post_id", custom_message="删除帖子失败")
+@owner_endpoint(
+    owner_id_func=get_post_owner,
+    custom_message="删除帖子失败",
+    rate_limit_count=10
+)
 @with_error_handling(default_error_message="删除帖子失败")
 async def delete_post(
-    post_id: int = Path(..., ge=1),
-    user: Optional[User] = Depends(get_current_user),
+    request: Request,
+    post_id: int = Path(..., title="帖子ID", description="要删除的帖子ID"),
+    user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """删除帖子
@@ -441,7 +450,6 @@ async def delete_post(
     try:
         # 检查用户认证和激活状态
         user = require_active_user(user)
-        current_user_id = user.get("id")
         
         # 获取帖子详情
         post = await post_service.get_post_detail(post_id)
@@ -449,8 +457,8 @@ async def delete_post(
             raise NotFoundError(code="post_not_found", message="帖子不存在")
             
         # 检查权限
-        is_author = current_user_id == post.get("author_id")
-        is_admin = user.get("role") == "admin"
+        is_author = user.id == post.get("author_id")
+        is_admin = user.role == "admin"
         
         if not (is_author or is_admin):
             raise HTTPException(
@@ -488,8 +496,9 @@ async def delete_post(
 @admin_endpoint(custom_message="恢复帖子失败")
 @with_error_handling(default_error_message="恢复帖子失败")
 async def restore_post(
-    post_id: int = Path(..., ge=1),
-    user: Optional[User] = Depends(get_current_user),
+    request: Request,
+    post_id: int = Path(..., title="帖子ID", description="要恢复的帖子ID"),
+    user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """恢复已删除的帖子
@@ -513,7 +522,7 @@ async def restore_post(
         user = require_active_user(user)
         
         # 检查是否为管理员
-        if user.get("role") != "admin":
+        if user.role != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"message": "需要管理员权限", "code": "permission_denied"}
@@ -545,11 +554,12 @@ async def restore_post(
         )
 
 @router.post("/{post_id}/hide", response_model=PostResponse)
-@admin_endpoint(custom_message="隐藏帖子失败")
+@admin_endpoint(custom_message="隐藏帖子失败", rate_limit_count=10)
 @with_error_handling(default_error_message="隐藏帖子失败")
 async def hide_post(
-    post_id: int = Path(..., ge=1),
-    user: Optional[User] = Depends(get_current_user),
+    request: Request,
+    post_id: int = Path(..., title="帖子ID", description="要隐藏的帖子ID"),
+    user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """隐藏帖子
@@ -573,7 +583,7 @@ async def hide_post(
         user = require_active_user(user)
         
         # 检查是否为管理员或版主
-        if user.get("role") not in ["admin", "moderator"]:
+        if user.role not in ["admin", "moderator"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"message": "需要管理员或版主权限", "code": "permission_denied"}
@@ -605,11 +615,12 @@ async def hide_post(
         )
 
 @router.post("/{post_id}/unhide", response_model=PostResponse)
-@admin_endpoint(custom_message="取消隐藏帖子失败")
+@admin_endpoint(custom_message="取消隐藏帖子失败", rate_limit_count=10)
 @with_error_handling(default_error_message="取消隐藏帖子失败")
 async def unhide_post(
-    post_id: int = Path(..., ge=1),
-    user: Optional[User] = Depends(get_current_user),
+    request: Request,
+    post_id: int = Path(..., title="帖子ID", description="要取消隐藏的帖子ID"),
+    user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """取消隐藏帖子
@@ -633,7 +644,7 @@ async def unhide_post(
         user = require_active_user(user)
         
         # 检查是否为管理员或版主
-        if user.get("role") not in ["admin", "moderator"]:
+        if user.role not in ["admin", "moderator"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"message": "需要管理员或版主权限", "code": "permission_denied"}
@@ -665,12 +676,13 @@ async def unhide_post(
         )
 
 @router.post("/{post_id}/vote", response_model=PostVoteResponse)
-@public_endpoint(rate_limit_count=30, auth_required=True, custom_message="点赞操作失败")
-@with_error_handling(default_error_message="点赞操作失败")
+@public_endpoint(auth_required=True, custom_message="投票失败", rate_limit_count=50)
+@with_error_handling(default_error_message="投票失败")
 async def vote_post(
-    post_id: int = Path(..., ge=1),
-    vote_data: post_schema.PostVoteCreate = Body(...),
-    request: Request = None,
+    request: Request,
+    post_id: int = Path(..., title="帖子ID", description="要投票的帖子ID"),
+    vote_type: VoteType = Body(..., embed=True),
+    user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
     """
@@ -678,8 +690,9 @@ async def vote_post(
     
     Args:
         post_id: 帖子ID
-        vote_data: 投票数据，包含vote_type字段
+        vote_type: 投票类型，包含vote_type字段
         request: FastAPI请求对象
+        user: 当前用户对象
         post_service: 帖子服务实例（通过依赖注入获取）
         
     Returns:
@@ -693,12 +706,12 @@ async def vote_post(
             raise AuthenticationError(code="missing_user_id", message="未能获取用户ID")
         
         # 记录投票数据
-        logger.info(f"Vote data: {vote_data}")
-        logger.info(f"Vote type: {vote_data.vote_type}")
-        logger.info(f"Vote type type: {type(vote_data.vote_type)}")
+        logger.info(f"Vote data: {vote_type}")
+        logger.info(f"Vote type: {vote_type.value}")
+        logger.info(f"Vote type type: {type(vote_type.value)}")
         
         # 验证投票类型
-        vote_type_str = str(vote_data.vote_type)
+        vote_type_str = str(vote_type.value)
         if vote_type_str not in ["upvote", "downvote"]:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
