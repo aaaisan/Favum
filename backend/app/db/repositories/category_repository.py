@@ -6,7 +6,7 @@ import logging
 
 from ..models.category import Category
 from .base_repository import BaseRepository
-from ...core.exceptions import BusinessException
+from ...core.exceptions import BusinessException, SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +30,13 @@ class CategoryRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 分类信息字典，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             query = select(Category).where(Category.id == category_id)
             
             if not include_deleted:
                 query = query.where(Category.is_deleted == False)
                 
-            result = await session.execute(query)
+            result = await db.execute(query)
             category = result.scalar_one_or_none()
             
             if category is None:
@@ -48,7 +48,7 @@ class CategoryRepository(BaseRepository):
                 Category.is_deleted == False
             ).order_by(Category.order)
             
-            children_result = await session.execute(children_query)
+            children_result = await db.execute(children_query)
             children = children_result.scalars().all()
             
             # 转换为字典并添加子分类
@@ -66,13 +66,13 @@ class CategoryRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 分类信息字典，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             query = select(Category).where(
                 Category.name == name,
                 Category.is_deleted == False
             )
             
-            result = await session.execute(query)
+            result = await db.execute(query)
             category = result.scalar_one_or_none()
             
             if category is None:
@@ -90,71 +90,71 @@ class CategoryRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 分类列表和总数
         """
-        session = await self.get_session()
-        try:
-            # 查询顶级分类
-            query = (
-                select(Category)
-                .where(
-                    Category.parent_id.is_(None),
-                    Category.is_deleted == False
-                )
-                .order_by(Category.order)
-                .offset(skip)
-                .limit(limit)
-            )
-            
-            result = await session.execute(query)
-            categories = result.scalars().all()
-            
-            # 查询总记录数
-            count_query = (
-                select(func.count(Category.id))
-                .where(
-                    Category.parent_id.is_(None),
-                    Category.is_deleted == False
-                )
-            )
-            count_result = await session.execute(count_query)
-            total = count_result.scalar_one()
-            
-            # 获取每个分类的子分类
-            categories_data = []
-            for category in categories:
-                category_dict = category.to_dict() if hasattr(category, 'to_dict') else {
-                    "id": category.id,
-                    "name": category.name,
-                    "description": category.description,
-                    "order": category.order,
-                    "created_at": category.created_at,
-                    "updated_at": category.updated_at if hasattr(category, 'updated_at') else None,
-                    "is_deleted": category.is_deleted,
-                    "parent_id": category.parent_id
-                }
-                
-                # 查询子分类
-                children_query = (
+        async with self.async_get_db() as db:
+            try:
+                # 查询顶级分类
+                query = (
                     select(Category)
                     .where(
-                        Category.parent_id == category.id,
+                        Category.parent_id.is_(None),
                         Category.is_deleted == False
                     )
                     .order_by(Category.order)
+                    .offset(skip)
+                    .limit(limit)
                 )
-                children_result = await session.execute(children_query)
-                children = children_result.scalars().all()
-                
-                # 将子分类添加到父分类中
-                category_dict["children"] = []
-                for child in children:
-                    child_dict = self.model_to_dict(child)
-                    category_dict["children"].append(child_dict)
-                
-                categories_data.append(category_dict)
             
-            return categories_data, total
-        finally:
-            await session.close()
+                result = await db.execute(query)
+                categories = result.scalars().all()
+                
+                # 查询总记录数
+                count_query = (
+                    select(func.count(Category.id))
+                    .where(
+                        Category.parent_id.is_(None),
+                        Category.is_deleted == False
+                    )
+                )
+                count_result = await db.execute(count_query)
+                total = count_result.scalar_one()
+                
+            # 获取每个分类的子分类
+                categories_data = []
+                for category in categories:
+                    category_dict = category.to_dict() if hasattr(category, 'to_dict') else {
+                        "id": category.id,
+                        "name": category.name,
+                        "description": category.description,
+                        "order": category.order,
+                        "created_at": category.created_at,
+                        "updated_at": category.updated_at if hasattr(category, 'updated_at') else None,
+                        "is_deleted": category.is_deleted,
+                        "parent_id": category.parent_id
+                    }
+                
+                # 查询子分类
+                    children_query = (
+                        select(Category)
+                        .where(
+                            Category.parent_id == category.id,
+                            Category.is_deleted == False
+                        )
+                        .order_by(Category.order)
+                    )
+                    children_result = await db.execute(children_query)
+                    children = children_result.scalars().all()
+                    
+                    # 将子分类添加到父分类中
+                    category_dict["children"] = []
+                    for child in children:
+                        child_dict = self.model_to_dict(child)
+                        category_dict["children"].append(child_dict)
+                    
+                    categories_data.append(category_dict)
+                
+                return categories_data, total
+            except SQLAlchemyError as e:
+                raise e
     
     async def create(self, category_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建分类
@@ -165,14 +165,14 @@ class CategoryRepository(BaseRepository):
         Returns:
             Dict[str, Any]: 创建的分类
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查父分类是否存在
             if category_data.get("parent_id"):
                 parent_query = select(Category).where(
                     Category.id == category_data["parent_id"],
                     Category.is_deleted == False
                 )
-                parent_result = await session.execute(parent_query)
+                parent_result = await db.execute(parent_query)
                 parent = parent_result.scalar_one_or_none()
                 
                 if parent is None:
@@ -187,7 +187,7 @@ class CategoryRepository(BaseRepository):
                 Category.name == category_data["name"],
                 Category.is_deleted == False
             )
-            name_result = await session.execute(name_query)
+            name_result = await db.execute(name_query)
             existing = name_result.scalar_one_or_none()
             
             if existing is not None:
@@ -202,15 +202,15 @@ class CategoryRepository(BaseRepository):
                 order_query = select(func.max(Category.order)).where(
                     Category.parent_id == category_data.get("parent_id")
                 )
-                order_result = await session.execute(order_query)
+                order_result = await db.execute(order_query)
                 max_order = order_result.scalar() or -1
                 category_data["order"] = max_order + 1
             
             # 创建分类
             category = Category(**category_data)
-            session.add(category)
-            await session.commit()
-            await session.refresh(category)
+            db.add(category)
+            await db.commit()
+            await db.refresh(category)
             
             # 返回创建的分类
             category_dict = self.model_to_dict(category)
@@ -228,9 +228,9 @@ class CategoryRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 更新后的分类，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查分类是否存在
-            category = await session.get(Category, category_id)
+            category = await db.get(Category, category_id)
             if not category or category.is_deleted:
                 return None
             
@@ -248,7 +248,7 @@ class CategoryRepository(BaseRepository):
                     Category.id == data["parent_id"],
                     Category.is_deleted == False
                 )
-                parent_result = await session.execute(parent_query)
+                parent_result = await db.execute(parent_query)
                 parent = parent_result.scalar_one_or_none()
                 
                 if parent is None:
@@ -267,7 +267,7 @@ class CategoryRepository(BaseRepository):
                     Category.name == data["name"],
                     Category.is_deleted == False
                 )
-                name_result = await session.execute(name_query)
+                name_result = await db.execute(name_query)
                 existing = name_result.scalar_one_or_none()
                 
                 if existing is not None:
@@ -282,8 +282,8 @@ class CategoryRepository(BaseRepository):
                 if hasattr(category, key) and key != "id":
                     setattr(category, key, value)
             
-            await session.commit()
-            await session.refresh(category)
+            await db.commit()
+            await db.refresh(category)
             
             # 获取子分类
             children_query = select(Category).where(
@@ -291,7 +291,7 @@ class CategoryRepository(BaseRepository):
                 Category.is_deleted == False
             ).order_by(Category.order)
             
-            children_result = await session.execute(children_query)
+            children_result = await db.execute(children_query)
             children = children_result.scalars().all()
             
             # 返回更新后的分类
@@ -310,9 +310,9 @@ class CategoryRepository(BaseRepository):
             bool: 操作是否成功
         """
         try:
-            async with self.session() as session:
+            async with self.async_get_db() as db:
                 # 查询分类
-                category = await session.get(Category, category_id)
+                category = await db.get(Category, category_id)
                 if not category or category.is_deleted:
                     return False
                 
@@ -321,7 +321,7 @@ class CategoryRepository(BaseRepository):
                     Category.parent_id == category_id,
                     Category.is_deleted == False
                 )
-                children_result = await session.execute(children_query)
+                children_result = await db.execute(children_query)
                 children_count = children_result.scalar() or 0
                 
                 if children_count > 0:
@@ -337,7 +337,7 @@ class CategoryRepository(BaseRepository):
                     Post.category_id == category_id,
                     Post.is_deleted == False
                 )
-                posts_result = await session.execute(posts_query)
+                posts_result = await db.execute(posts_query)
                 posts_count = posts_result.scalar() or 0
                 
                 if posts_count > 0:
@@ -351,7 +351,7 @@ class CategoryRepository(BaseRepository):
                 category.is_deleted = True
                 category.deleted_at = datetime.now()
                 
-                await session.commit()
+                await db.commit()
                 return True
         except BusinessException:
             # 重新抛出业务异常
@@ -369,9 +369,9 @@ class CategoryRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 恢复后的分类，如果分类不存在或未被删除则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询分类
-            category = await session.get(Category, category_id)
+            category = await db.get(Category, category_id)
             if not category:
                 return None
             
@@ -381,7 +381,7 @@ class CategoryRepository(BaseRepository):
             
             # 如果有父分类，检查父分类是否已被删除
             if category.parent_id:
-                parent = await session.get(Category, category.parent_id)
+                parent = await db.get(Category, category.parent_id)
                 if parent and parent.is_deleted:
                     raise BusinessException(
                         status_code=400,
@@ -393,8 +393,8 @@ class CategoryRepository(BaseRepository):
             category.is_deleted = False
             category.deleted_at = None
             
-            await session.commit()
-            await session.refresh(category)
+            await db.commit()
+            await db.refresh(category)
             
             # 获取子分类
             children_query = select(Category).where(
@@ -402,7 +402,7 @@ class CategoryRepository(BaseRepository):
                 Category.is_deleted == False
             ).order_by(Category.order)
             
-            children_result = await session.execute(children_query)
+            children_result = await db.execute(children_query)
             children = children_result.scalars().all()
             
             # 返回恢复后的分类
@@ -421,14 +421,14 @@ class CategoryRepository(BaseRepository):
         Returns:
             List[Dict[str, Any]]: 更新后的分类列表
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询所有要排序的分类
             query = select(Category).where(
                 Category.id.in_(category_ids),
                 Category.parent_id == parent_id,
                 Category.is_deleted == False
             )
-            result = await session.execute(query)
+            result = await db.execute(query)
             categories = result.scalars().all()
             
             # 检查是否所有分类都存在
@@ -444,7 +444,7 @@ class CategoryRepository(BaseRepository):
             for index, category_id in enumerate(category_ids):
                 category_map[category_id].order = index
             
-            await session.commit()
+            await db.commit()
             
             # 获取更新后的分类
             updated_categories = []
@@ -454,16 +454,16 @@ class CategoryRepository(BaseRepository):
             
             return updated_categories
 
-    def model_to_dict(self, model) -> Dict[str, Any]:
-        """将模型对象转换为字典
+    # def model_to_dict(self, model) -> Dict[str, Any]:
+    #     """将模型对象转换为字典
         
-        Args:
-            model: 模型对象
+    #     Args:
+    #         model: 模型对象
             
-        Returns:
-            Dict[str, Any]: 字典表示
-        """
-        result = {}
-        for column in model.__table__.columns:
-            result[column.name] = getattr(model, column.name)
-        return result 
+    #     Returns:
+    #         Dict[str, Any]: 字典表示
+    #     """
+    #     result = {}
+    #     for column in model.__table__.columns:
+    #         result[column.name] = getattr(model, column.name)
+    #     return result 

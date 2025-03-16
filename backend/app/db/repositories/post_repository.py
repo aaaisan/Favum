@@ -18,7 +18,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from .base_repository import BaseRepository
 from ..models import Post, PostVote, VoteType, Section, Category , User, Tag
 from ..models.post_tag import post_tags  # 正确导入post_tags表
-from ...core.exceptions import BusinessException
+from ...core.exceptions import BusinessException, NoResultFound, SQLAlchemyError
 from ..database import AsyncSessionLocal, async_get_db
 import traceback
 import json
@@ -78,7 +78,7 @@ class PostRepository(BaseRepository):
                 
                 # 获取关联的标签
                 tags_query = select(Tag).join(
-                    post_tag, (post_tag.c.tag_id == Tag.id) & (post_tag.c.post_id == post_id)
+                    post_tags, (post_tags.c.tag_id == Tag.id) & (post_tags.c.post_id == post_id)
                 )
                 tags_result = await db.execute(tags_query)
                 tags = tags_result.scalars().all()
@@ -452,6 +452,7 @@ class PostRepository(BaseRepository):
                         )
                             
                         await db.execute(delete_query)
+                        await db.commit()  # 添加 commit 操作
                         action = "removed"
                     else:
                         # 如果已投票但投票类型不同，则更新投票类型
@@ -467,6 +468,7 @@ class PostRepository(BaseRepository):
                         )
                             
                         await db.execute(update_query)
+                        await db.commit()  # 添加 commit 操作
                         action = "updated"
                 else:
                     # 如果尚未投票，则创建新投票
@@ -478,6 +480,7 @@ class PostRepository(BaseRepository):
                     )
                         
                     await db.execute(insert_query)
+                    await db.commit()  # 添加 commit 操作
                     action = "added"
                 
                 # 获取最新的投票统计

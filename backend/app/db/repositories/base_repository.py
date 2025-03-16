@@ -41,25 +41,6 @@ class BaseRepository:
             result[column.name] = value
         return result
     
-    async def get_session(self) -> AsyncSession:
-        """获取数据库会话"""
-        return AsyncSessionLocal()
-    
-    @asynccontextmanager
-    async def session(self):
-        """获取数据库会话的上下文管理器
-        
-        用于with语句，自动关闭会话
-        
-        Returns:
-            AsyncSession: 数据库会话
-        """
-        session = await self.get_session()
-        try:
-            yield session
-        finally:
-            await session.close()
-    
     async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """创建记录"""
         async with async_get_db() as db:
@@ -78,10 +59,7 @@ class BaseRepository:
         async with async_get_db() as db:
             try:
                 result = await db.execute(
-                    select(self.model).where(
-                        (self.model.id == id) & 
-                        (self.model.is_deleted == False)
-                    )
+                    select(self.model).where(self.model.id == id)
                 )
                 item = result.scalar_one_or_none()
                 if not item:

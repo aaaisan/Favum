@@ -5,6 +5,7 @@ from .tag import Tag
 from .category import Category
 from .comment import Comment
 from enum import Enum
+from pydantic import ConfigDict
 
 # 添加点赞类型枚举
 class VoteType(str, Enum):
@@ -62,7 +63,9 @@ class PublicPost(BaseModel):
 
 # 添加点赞请求模型
 class PostVoteCreate(BaseModel):
-    vote_type: VoteType
+    vote_type: str
+    
+    model_config = ConfigDict(from_attributes=True)
 
 # 添加点赞响应模型
 class PostVote(BaseModel):

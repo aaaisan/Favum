@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Request, Query, Depends, Body, Path, status
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 
+from ...schemas.post import VoteType
 from ...schemas import post as post_schema
 from ...services.comment_service import CommentService
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
@@ -537,6 +538,11 @@ async def vote_post(
         if not user_id:
             raise AuthenticationError(code="missing_user_id", message="未能获取用户ID")
         
+        # 记录投票数据
+        logger.info(f"Vote data: {vote_data}")
+        logger.info(f"Vote type: {vote_data.vote_type}")
+        logger.info(f"Vote type type: {type(vote_data.vote_type)}")
+        
         # 验证投票类型
         vote_type_str = str(vote_data.vote_type)
         if vote_type_str not in ["upvote", "downvote"]:
@@ -554,13 +560,13 @@ async def vote_post(
             )
         
         # 将字符串转换为枚举
-        vote_type_enum = VoteType.UPVOTE if vote_type_str == "upvote" else VoteType.DOWNVOTE
+        vote_type = VoteType.UPVOTE if vote_type_str == "upvote" else VoteType.DOWNVOTE
         
         # 执行投票
         vote_result = await post_service.vote_post(
             post_id=post_id,
             user_id=user_id,
-            vote_type=vote_type_enum
+            vote_type=vote_type
         )
         
         # 检查返回结果

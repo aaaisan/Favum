@@ -31,12 +31,12 @@ class FavoriteRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 收藏的帖子列表和总数
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询用户收藏的帖子总数
             count_query = select(func.count(PostFavorite.id)).where(
                 PostFavorite.user_id == user_id
             )
-            count_result = await session.execute(count_query)
+            count_result = await db.execute(count_query)
             total = count_result.scalar() or 0
             
             # 查询用户收藏的帖子
@@ -53,7 +53,7 @@ class FavoriteRepository(BaseRepository):
                 .limit(limit)
             )
             
-            result = await session.execute(query)
+            result = await db.execute(query)
             posts = result.scalars().all()
             
             # 转换帖子为字典形式
@@ -71,12 +71,12 @@ class FavoriteRepository(BaseRepository):
         Returns:
             bool: 如果用户已收藏该帖子则返回True，否则返回False
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             query = select(PostFavorite).where(
                 PostFavorite.post_id == post_id,
                 PostFavorite.user_id == user_id
             )
-            result = await session.execute(query)
+            result = await db.execute(query)
             favorite = result.scalar_one_or_none()
             
             return favorite is not None
@@ -94,13 +94,13 @@ class FavoriteRepository(BaseRepository):
         Raises:
             BusinessException: 当帖子不存在、已被删除或操作失败时抛出业务异常
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查帖子是否存在且未被删除
             post_query = select(Post).where(
                 Post.id == post_id,
                 Post.is_deleted == False
             )
-            post_result = await session.execute(post_query)
+            post_result = await db.execute(post_query)
             post = post_result.scalar_one_or_none()
             
             if not post:
@@ -111,8 +111,14 @@ class FavoriteRepository(BaseRepository):
                 )
             
             # 检查用户是否已经收藏了该帖子
-            already_favorited = await self.is_post_favorited(post_id, user_id)
-            if already_favorited:
+            favorite_query = select(PostFavorite).where(
+                PostFavorite.post_id == post_id,
+                PostFavorite.user_id == user_id
+            )
+            favorite_result = await db.execute(favorite_query)
+            existing_favorite = favorite_result.scalar_one_or_none()
+            
+            if existing_favorite:
                 return {
                     "success": False,
                     "message": "您已经收藏过该帖子"
@@ -125,15 +131,15 @@ class FavoriteRepository(BaseRepository):
             )
             
             try:
-                session.add(favorite)
-                await session.commit()
+                db.add(favorite)
+                await db.commit()
                 
                 return {
                     "success": True,
                     "message": "收藏成功"
                 }
             except IntegrityError:
-                await session.rollback()
+                await db.rollback()
                 raise BusinessException(
                     status_code=400,
                     error_code="FAVORITE_FAILED",
@@ -150,13 +156,13 @@ class FavoriteRepository(BaseRepository):
         Returns:
             Dict[str, Any]: 操作结果
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查找收藏记录
             query = select(PostFavorite).where(
                 PostFavorite.post_id == post_id,
                 PostFavorite.user_id == user_id
             )
-            result = await session.execute(query)
+            result = await db.execute(query)
             favorite = result.scalar_one_or_none()
             
             if not favorite:
@@ -166,10 +172,33 @@ class FavoriteRepository(BaseRepository):
                 }
             
             # 删除收藏记录
-            await session.delete(favorite)
-            await session.commit()
+            await db.delete(favorite)
+            await db.commit()
             
             return {
                 "success": True,
                 "message": "已取消收藏"
-            } 
+            }
+    
+    async def get_favorite(self, post_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+        """获取收藏记录
+        
+        Args:
+            post_id: 帖子ID
+            user_id: 用户ID
+            
+        Returns:
+            Optional[Dict[str, Any]]: 收藏记录，不存在则返回None
+        """
+        async with self.async_get_db() as db:
+            query = select(PostFavorite).where(
+                PostFavorite.post_id == post_id,
+                PostFavorite.user_id == user_id
+            )
+            result = await db.execute(query)
+            favorite = result.scalar_one_or_none()
+            
+            if not favorite:
+                return None
+                
+            return self.model_to_dict(favorite) 

@@ -55,7 +55,7 @@ class SectionRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 版块列表和总数
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询版块，不包括已删除的
             query = (
                 select(Section)
@@ -64,12 +64,12 @@ class SectionRepository(BaseRepository):
                 .limit(limit)
             )
             
-            result = await session.execute(query)
+            result = await db.execute(query)
             sections = result.scalars().all()
             
             # 查询总数
             count_query = select(func.count(Section.id)).where(Section.is_deleted == False)
-            count_result = await session.execute(count_query)
+            count_result = await db.execute(count_query)
             total = count_result.scalar() or 0
             
             # 处理结果
@@ -86,13 +86,13 @@ class SectionRepository(BaseRepository):
         Returns:
             Dict[str, Any]: 创建的版块
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查版块名称是否已存在
             name_query = select(Section).where(
                 Section.name == section_data["name"],
                 Section.is_deleted == False
             )
-            name_result = await session.execute(name_query)
+            name_result = await db.execute(name_query)
             existing = name_result.scalar_one_or_none()
             
             if existing is not None:
@@ -104,9 +104,9 @@ class SectionRepository(BaseRepository):
             
             # 创建版块
             section = Section(**section_data)
-            session.add(section)
-            await session.commit()
-            await session.refresh(section)
+            db.add(section)
+            await db.commit()
+            await db.refresh(section)
             
             # 返回创建的版块
             return self.model_to_dict(section)
@@ -121,9 +121,9 @@ class SectionRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 更新后的版块，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查版块是否存在
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section or section.is_deleted:
                 return None
             
@@ -133,7 +133,7 @@ class SectionRepository(BaseRepository):
                     Section.name == data["name"],
                     Section.is_deleted == False
                 )
-                name_result = await session.execute(name_query)
+                name_result = await db.execute(name_query)
                 existing = name_result.scalar_one_or_none()
                 
                 if existing is not None:
@@ -148,8 +148,8 @@ class SectionRepository(BaseRepository):
                 if hasattr(section, key) and key != "id":
                     setattr(section, key, value)
             
-            await session.commit()
-            await session.refresh(section)
+            await db.commit()
+            await db.refresh(section)
             
             # 返回更新后的版块
             return self.model_to_dict(section)
@@ -163,9 +163,9 @@ class SectionRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询版块
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section or section.is_deleted:
                 return False
                 
@@ -174,7 +174,7 @@ class SectionRepository(BaseRepository):
                 Post.section_id == section_id,
                 Post.is_deleted == False
             )
-            posts_result = await session.execute(posts_query)
+            posts_result = await db.execute(posts_query)
             post_count = posts_result.scalar() or 0
             
             if post_count > 0:
@@ -187,7 +187,7 @@ class SectionRepository(BaseRepository):
             if hasattr(section, "deleted_at"):
                 section.deleted_at = datetime.now()
             
-            await session.commit()
+            await db.commit()
             return True
     
     async def restore(self, section_id: int) -> Optional[Dict[str, Any]]:
@@ -199,9 +199,9 @@ class SectionRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 恢复后的版块，如果版块不存在或未被删除则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询版块
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section:
                 return None
             
@@ -217,8 +217,8 @@ class SectionRepository(BaseRepository):
             section.is_deleted = False
             section.deleted_at = None
             
-            await session.commit()
-            await session.refresh(section)
+            await db.commit()
+            await db.refresh(section)
             
             # 返回恢复后的版块
             return self.model_to_dict(section)
@@ -233,9 +233,9 @@ class SectionRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查版块是否存在
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section or section.is_deleted:
                 raise BusinessException(
                     status_code=404,
@@ -244,7 +244,7 @@ class SectionRepository(BaseRepository):
                 )
             
             # 检查用户是否存在
-            user = await session.get(User, user_id)
+            user = await db.get(User, user_id)
             if not user:
                 raise BusinessException(
                     status_code=404,
@@ -258,7 +258,7 @@ class SectionRepository(BaseRepository):
                 SectionModerator.user_id == user_id,
                 SectionModerator.is_deleted == False
             )
-            moderator_result = await session.execute(moderator_query)
+            moderator_result = await db.execute(moderator_query)
             existing_moderator = moderator_result.scalar_one_or_none()
             
             if existing_moderator is not None:
@@ -274,7 +274,7 @@ class SectionRepository(BaseRepository):
                 SectionModerator.user_id == user_id,
                 SectionModerator.is_deleted == True
             )
-            deleted_result = await session.execute(deleted_query)
+            deleted_result = await db.execute(deleted_query)
             deleted_record = deleted_result.scalar_one_or_none()
             
             if deleted_record:
@@ -283,13 +283,13 @@ class SectionRepository(BaseRepository):
             else:
                 # 创建新记录
                 moderator = SectionModerator(section_id=section_id, user_id=user_id)
-                session.add(moderator)
+                db.add(moderator)
             
             # 更新用户角色为版主（如果不是管理员）
             if user.role not in ["admin", "super_admin", "moderator"]:
                 user.role = "moderator"
             
-            await session.commit()
+            await db.commit()
             return True
     
     async def remove_moderator(self, section_id: int, user_id: int) -> bool:
@@ -302,9 +302,9 @@ class SectionRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查版块是否存在
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section or section.is_deleted:
                 raise BusinessException(
                     status_code=404,
@@ -318,7 +318,7 @@ class SectionRepository(BaseRepository):
                 SectionModerator.user_id == user_id,
                 SectionModerator.is_deleted == False
             )
-            moderator_result = await session.execute(moderator_query)
+            moderator_result = await db.execute(moderator_query)
             moderator = moderator_result.scalar_one_or_none()
             
             if moderator is None:
@@ -337,16 +337,16 @@ class SectionRepository(BaseRepository):
                 SectionModerator.section_id != section_id,
                 SectionModerator.is_deleted == False
             )
-            other_sections_result = await session.execute(other_sections_query)
+            other_sections_result = await db.execute(other_sections_query)
             other_sections_count = other_sections_result.scalar() or 0
             
             # 如果不是其他版块的版主，且不是管理员，则更新角色为普通用户
             if other_sections_count == 0:
-                user = await session.get(User, user_id)
+                user = await db.get(User, user_id)
                 if user and user.role == "moderator":
                     user.role = "user"
             
-            await session.commit()
+            await db.commit()
             return True
     
     async def restore_moderator(self, section_id: int, user_id: int) -> bool:
@@ -359,9 +359,9 @@ class SectionRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查版块是否存在
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section or section.is_deleted:
                 raise BusinessException(
                     status_code=404,
@@ -370,7 +370,7 @@ class SectionRepository(BaseRepository):
                 )
             
             # 检查用户是否存在
-            user = await session.get(User, user_id)
+            user = await db.get(User, user_id)
             if not user:
                 raise BusinessException(
                     status_code=404,
@@ -383,7 +383,7 @@ class SectionRepository(BaseRepository):
                 SectionModerator.section_id == section_id,
                 SectionModerator.user_id == user_id
             )
-            moderator_result = await session.execute(moderator_query)
+            moderator_result = await db.execute(moderator_query)
             moderator = moderator_result.scalar_one_or_none()
             
             if moderator is None:
@@ -407,7 +407,7 @@ class SectionRepository(BaseRepository):
             if user.role not in ["admin", "super_admin", "moderator"]:
                 user.role = "moderator"
             
-            await session.commit()
+            await db.commit()
             return True
     
     async def get_section_posts(self, section_id: int, skip: int = 0, limit: int = 20) -> Tuple[List[Dict[str, Any]], int]:
@@ -423,9 +423,9 @@ class SectionRepository(BaseRepository):
         """
         from ..models.post_tag import post_tags
         
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查版块是否存在
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section or section.is_deleted:
                 raise BusinessException(
                     code="SECTION_NOT_FOUND",
@@ -444,7 +444,7 @@ class SectionRepository(BaseRepository):
                 .offset(skip)
                 .limit(limit)
             )
-            posts_result = await session.execute(posts_query)
+            posts_result = await db.execute(posts_query)
             posts = posts_result.unique().scalars().all()
             
             # 查询总数
@@ -452,7 +452,7 @@ class SectionRepository(BaseRepository):
                 Post.section_id == section_id,
                 Post.is_deleted == False
             )
-            count_result = await session.execute(count_query)
+            count_result = await db.execute(count_query)
             total = count_result.scalar() or 0
             
             # 处理结果
@@ -519,9 +519,9 @@ class SectionRepository(BaseRepository):
         Raises:
             BusinessException: 当版块不存在时抛出业务异常
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查版块是否存在
-            section = await session.get(Section, section_id)
+            section = await db.get(Section, section_id)
             if not section or section.is_deleted:
                 raise BusinessException(
                     status_code=404,
@@ -540,7 +540,7 @@ class SectionRepository(BaseRepository):
                 )
             )
             
-            result = await session.execute(query)
+            result = await db.execute(query)
             moderators = result.scalars().all()
             
             # 返回版主列表

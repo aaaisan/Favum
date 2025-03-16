@@ -3,6 +3,7 @@ from typing import Dict, Optional, Any, Tuple
 import logging
 
 from ..db.repositories.favorite_repository import FavoriteRepository
+from ..db.repositories.post_repository import PostRepository
 from ..core.exceptions import BusinessException
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ class FavoriteService:
     def __init__(self):
         """初始化收藏服务"""
         self.favorite_repository = FavoriteRepository()
+        self.post_repository = PostRepository()
     
     async def get_user_favorites(self, user_id: int, skip: int = 0, limit: int = 100, only_public: bool = False) -> Dict[str, Any]:
         """获取用户收藏的帖子列表
@@ -115,4 +117,82 @@ class FavoriteService:
                 status_code=500,
                 error_code="REMOVE_FAVORITE_FAILED",
                 message="取消收藏失败"
+            )
+    
+    async def check_post_exists(self, post_id: int) -> bool:
+        """检查帖子是否存在
+        
+        Args:
+            post_id: 帖子ID
+            
+        Returns:
+            bool: 如果帖子存在且未被删除则返回True，否则返回False
+        """
+        try:
+            post = await self.post_repository.get_with_relations(post_id)
+            return post is not None
+        except Exception as e:
+            logger.error(f"检查帖子存在性失败: {str(e)}")
+            return False
+    
+    async def get_favorite(self, post_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+        """获取收藏记录
+        
+        Args:
+            post_id: 帖子ID
+            user_id: 用户ID
+            
+        Returns:
+            Optional[Dict[str, Any]]: 收藏记录，不存在则返回None
+        """
+        try:
+            return await self.favorite_repository.get_favorite(post_id, user_id)
+        except Exception as e:
+            logger.error(f"获取收藏记录失败: {str(e)}")
+            return None
+    
+    async def favorite_post(self, post_id: int, user_id: int) -> Dict[str, Any]:
+        """收藏帖子
+        
+        Args:
+            post_id: 帖子ID
+            user_id: 用户ID
+            
+        Returns:
+            Dict[str, Any]: 包含收藏操作结果的字典
+            
+        Raises:
+            BusinessException: 当帖子不存在或操作失败时抛出业务异常
+        """
+        try:
+            # 添加收藏
+            result = await self.favorite_repository.add_favorite(post_id, user_id)
+            
+            if not result.get("success"):
+                raise BusinessException(
+                    status_code=400,
+                    error_code="FAVORITE_FAILED",
+                    message=result.get("message", "收藏失败")
+                )
+            
+            # 获取收藏记录
+            favorite = await self.get_favorite(post_id, user_id)
+            if not favorite:
+                raise BusinessException(
+                    status_code=500,
+                    error_code="FAVORITE_NOT_FOUND",
+                    message="收藏记录不存在"
+                )
+            
+            return favorite
+        except BusinessException:
+            # 继续抛出业务异常
+            raise
+        except Exception as e:
+            # 记录错误
+            logger.error(f"收藏帖子失败: {str(e)}")
+            raise BusinessException(
+                status_code=500,
+                error_code="FAVORITE_FAILED",
+                message="收藏帖子失败"
             ) 

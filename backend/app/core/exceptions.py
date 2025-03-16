@@ -317,6 +317,40 @@ class CaptchaError(APIError):
     def __init__(self, detail: str = "验证码错误或已过期") -> None:
         super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
+class SQLAlchemyError(APIError):
+    """SQLAlchemy数据库操作错误"""
+    def __init__(
+        self,
+        detail: str = "数据库操作失败",
+        status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
+    ) -> None:
+        super().__init__(
+            status_code=status_code,
+            detail=detail
+        )
+
+class NoResultFound(APIError):
+    """查询无结果错误
+    
+    当在数据库中查询不到预期结果时抛出此异常。
+    
+    Attributes:
+        detail: 错误详细信息，默认为"未找到查询结果"
+        status_code: HTTP 404 NOT FOUND
+    """
+    def __init__(
+        self,
+        detail: str = "未找到查询结果",
+        entity_name: Optional[str] = None
+    ) -> None:
+        message = detail
+        if entity_name:
+            message = f"{entity_name}: {detail}"
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=message
+        )
+
 """
 业务异常模块
 

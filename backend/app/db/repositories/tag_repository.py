@@ -34,13 +34,13 @@ class TagRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 标签信息字典，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             query = select(Tag).where(Tag.id == tag_id)
             
             if not include_deleted:
                 query = query.where(Tag.is_deleted == False)
                 
-            result = await session.execute(query)
+            result = await db.execute(query)
             tag = result.scalar_one_or_none()
             
             if tag is None:
@@ -57,13 +57,13 @@ class TagRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 标签信息字典，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             query = select(Tag).where(
                 Tag.name == name,
                 Tag.is_deleted == False
             )
             
-            result = await session.execute(query)
+            result = await db.execute(query)
             tag = result.scalar_one_or_none()
             
             if tag is None:
@@ -81,40 +81,41 @@ class TagRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 标签列表和总数
         """
-        session = await self.get_session()
-        try:
-            # 查询标签
-            query = (
-                select(Tag)
-                .where(Tag.is_deleted == False)
-                .offset(skip)
-                .limit(limit)
-            )
-            
-            result = await session.execute(query)
-            tags = result.scalars().all()
-            
-            # 查询总数
-            count_query = select(func.count(Tag.id)).where(Tag.is_deleted == False)
-            count_result = await session.execute(count_query)
-            total = count_result.scalar_one()
-            
-            # 处理结果
-            tags_data = []
-            for tag in tags:
-                tag_dict = tag.to_dict() if hasattr(tag, 'to_dict') else {
-                    "id": tag.id,
-                    "name": tag.name,
-                    "created_at": tag.created_at,
-                    "updated_at": tag.updated_at if hasattr(tag, 'updated_at') else None,
-                    "is_deleted": tag.is_deleted,
-                    "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
-                }
-                tags_data.append(tag_dict)
-            
-            return tags_data, total
-        finally:
-            await session.close()
+        async with self.async_get_db() as db:
+            try:
+                # 查询标签
+                query = (
+                    select(Tag)
+                    .where(Tag.is_deleted == False)
+                    .offset(skip)
+                    .limit(limit)
+                )
+                
+                result = await db.execute(query)
+                tags = result.scalars().all()
+                
+                # 查询总数
+                count_query = select(func.count(Tag.id)).where(Tag.is_deleted == False)
+                count_result = await db.execute(count_query)
+                total = count_result.scalar_one()
+                
+                # 处理结果
+                tags_data = []
+                for tag in tags:
+                    tag_dict = tag.to_dict() if hasattr(tag, 'to_dict') else {
+                        "id": tag.id,
+                        "name": tag.name,
+                        "created_at": tag.created_at,
+                        "updated_at": tag.updated_at if hasattr(tag, 'updated_at') else None,
+                        "is_deleted": tag.is_deleted,
+                        "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
+                    }
+                    tags_data.append(tag_dict)
+                
+                return tags_data, total
+            except Exception as e:
+                logger.error(f"获取所有标签失败: {str(e)}", exc_info=True)
+                return [], 0
     
     async def get_popular_tags(self, limit: int = 10) -> List[Dict[str, Any]]:
         """获取热门标签
@@ -127,7 +128,7 @@ class TagRepository(BaseRepository):
         Returns:
             List[Dict[str, Any]]: 热门标签列表
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             query = (
                 select(Tag)
                 .where(Tag.is_deleted == False)
@@ -135,7 +136,7 @@ class TagRepository(BaseRepository):
                 .limit(limit)
             )
             
-            result = await session.execute(query)
+            result = await db.execute(query)
             tags = result.scalars().all()
             
             return [self.model_to_dict(tag) for tag in tags]
@@ -151,7 +152,7 @@ class TagRepository(BaseRepository):
         Returns:
             List[Dict[str, Any]]: 最近使用的标签列表
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             query = (
                 select(Tag)
                 .where(
@@ -162,7 +163,7 @@ class TagRepository(BaseRepository):
                 .limit(limit)
             )
             
-            result = await session.execute(query)
+            result = await db.execute(query)
             tags = result.scalars().all()
             
             return [self.model_to_dict(tag) for tag in tags]
@@ -176,13 +177,13 @@ class TagRepository(BaseRepository):
         Returns:
             Dict[str, Any]: 创建的标签
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查标签名称是否已存在
             name_query = select(Tag).where(
                 Tag.name == tag_data["name"],
                 Tag.is_deleted == False
             )
-            name_result = await session.execute(name_query)
+            name_result = await db.execute(name_query)
             existing = name_result.scalar_one_or_none()
             
             if existing is not None:
@@ -194,9 +195,9 @@ class TagRepository(BaseRepository):
             
             # 创建标签
             tag = Tag(**tag_data)
-            session.add(tag)
-            await session.commit()
-            await session.refresh(tag)
+            db.add(tag)
+            await db.commit()
+            await db.refresh(tag)
             
             # 返回创建的标签
             return self.model_to_dict(tag)
@@ -211,9 +212,9 @@ class TagRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 更新后的标签，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查标签是否存在
-            tag = await session.get(Tag, tag_id)
+            tag = await db.get(Tag, tag_id)
             if not tag or tag.is_deleted:
                 return None
             
@@ -223,7 +224,7 @@ class TagRepository(BaseRepository):
                     Tag.name == data["name"],
                     Tag.is_deleted == False
                 )
-                name_result = await session.execute(name_query)
+                name_result = await db.execute(name_query)
                 existing = name_result.scalar_one_or_none()
                 
                 if existing is not None:
@@ -238,8 +239,8 @@ class TagRepository(BaseRepository):
                 if hasattr(tag, key) and key != "id":
                     setattr(tag, key, value)
             
-            await session.commit()
-            await session.refresh(tag)
+            await db.commit()
+            await db.refresh(tag)
             
             # 返回更新后的标签
             return self.model_to_dict(tag)
@@ -253,9 +254,9 @@ class TagRepository(BaseRepository):
         Returns:
             bool: 操作是否成功
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询标签
-            tag = await session.get(Tag, tag_id)
+            tag = await db.get(Tag, tag_id)
             if not tag or tag.is_deleted:
                 return False
             
@@ -263,7 +264,7 @@ class TagRepository(BaseRepository):
             posts_query = select(func.count()).select_from(post_tags).where(
                 post_tags.c.tag_id == tag_id
             )
-            posts_result = await session.execute(posts_query)
+            posts_result = await db.execute(posts_query)
             posts_count = posts_result.scalar() or 0
             
             if posts_count > 0:
@@ -277,7 +278,7 @@ class TagRepository(BaseRepository):
             tag.is_deleted = True
             tag.deleted_at = datetime.now()
             
-            await session.commit()
+            await db.commit()
             return True
     
     async def restore(self, tag_id: int) -> Optional[Dict[str, Any]]:
@@ -289,9 +290,9 @@ class TagRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 恢复后的标签，如果标签不存在或未被删除则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 查询标签
-            tag = await session.get(Tag, tag_id)
+            tag = await db.get(Tag, tag_id)
             if not tag:
                 return None
             
@@ -309,7 +310,7 @@ class TagRepository(BaseRepository):
                 Tag.id != tag_id,
                 Tag.is_deleted == False
             )
-            existing_result = await session.execute(existing_query)
+            existing_result = await db.execute(existing_query)
             existing = existing_result.scalar_one_or_none()
             
             if existing is not None:
@@ -323,8 +324,8 @@ class TagRepository(BaseRepository):
             tag.is_deleted = False
             tag.deleted_at = None
             
-            await session.commit()
-            await session.refresh(tag)
+            await db.commit()
+            await db.refresh(tag)
             
             # 返回恢复后的标签
             return self.model_to_dict(tag)
@@ -340,9 +341,9 @@ class TagRepository(BaseRepository):
         Returns:
             Optional[Dict[str, Any]]: 更新后的标签，不存在则返回None
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 检查标签是否存在
-            tag = await session.get(Tag, tag_id)
+            tag = await db.get(Tag, tag_id)
             if not tag or tag.is_deleted:
                 return None
             
@@ -350,7 +351,7 @@ class TagRepository(BaseRepository):
             posts_query = select(func.count()).select_from(post_tags).where(
                 post_tags.c.tag_id == tag_id
             )
-            posts_result = await session.execute(posts_query)
+            posts_result = await db.execute(posts_query)
             post_count = posts_result.scalar() or 0
             
             # 更新统计信息
@@ -360,8 +361,8 @@ class TagRepository(BaseRepository):
             if post_count > 0:
                 tag.last_used_at = datetime.now()
             
-            await session.commit()
-            await session.refresh(tag)
+            await db.commit()
+            await db.refresh(tag)
             
             # 返回更新后的标签
             return self.model_to_dict(tag)
@@ -392,7 +393,7 @@ class TagRepository(BaseRepository):
                     status_code=404
                 )
                 
-            async with async_get_db() as session:
+            async with self.async_get_db() as db:
                 # 构建查询 - 使用left join确保能获取到帖子的所有相关标签
                 query = (
                     select(Post)
@@ -406,7 +407,7 @@ class TagRepository(BaseRepository):
                     .limit(limit)
                 )
                 
-                result = await session.execute(query)
+                result = await db.execute(query)
                 posts = result.unique().scalars().all()
                 
                 logger.info(f"查询到 {len(posts)} 篇帖子")
@@ -421,7 +422,7 @@ class TagRepository(BaseRepository):
                         Post.is_deleted == False
                     )
                 )
-                count_result = await session.execute(count_query)
+                count_result = await db.execute(count_query)
                 total = count_result.scalar() or 0
                 
                 # 处理结果
@@ -508,7 +509,7 @@ class TagRepository(BaseRepository):
         Returns:
             Tuple[List[Dict[str, Any]], int]: 标签列表和总数
         """
-        async with self.session() as session:
+        async with self.async_get_db() as db:
             # 构建搜索条件
             search_term = f"%{query}%"
             
@@ -527,7 +528,7 @@ class TagRepository(BaseRepository):
                 .limit(limit)
             )
             
-            result = await session.execute(query_obj)
+            result = await db.execute(query_obj)
             tags = result.scalars().all()
             
             # 查询总数
@@ -538,7 +539,7 @@ class TagRepository(BaseRepository):
                     Tag.description.ilike(search_term)
                 )
             )
-            count_result = await session.execute(count_query)
+            count_result = await db.execute(count_query)
             total = count_result.scalar() or 0
             
             # 处理结果
@@ -559,7 +560,7 @@ class TagRepository(BaseRepository):
             List[Dict[str, Any]]: 关联标签列表
         """
         try:
-            async with async_get_db() as session:
+            async with self.async_get_db() as db:
                 # 使用SQL子查询找出包含该标签的所有帖子
                 posts_with_tag_subquery = (
                     select(post_tags.c.post_id)
@@ -582,7 +583,7 @@ class TagRepository(BaseRepository):
                     .limit(limit)
                 )
                 
-                result = await session.execute(query)
+                result = await db.execute(query)
                 related_tags = result.all()
                 
                 # 处理结果
@@ -611,7 +612,7 @@ class TagRepository(BaseRepository):
             Tuple[List[Dict[str, Any]], int]: 标签列表和总数
         """
         try:
-            async with async_get_db() as session:
+            async with self.async_get_db() as db:
                 # 构建OR条件，匹配任一关键词
                 conditions = []
                 for keyword in keywords:
@@ -628,7 +629,7 @@ class TagRepository(BaseRepository):
                     .limit(limit)
                 )
                 
-                result = await session.execute(query)
+                result = await db.execute(query)
                 tags = result.scalars().all()
                 
                 # 查询总数
@@ -639,7 +640,7 @@ class TagRepository(BaseRepository):
                         Tag.is_deleted == False
                     )
                 )
-                count_result = await session.execute(count_query)
+                count_result = await db.execute(count_query)
                 total = count_result.scalar() or 0
                 
                 # 处理结果
@@ -659,7 +660,7 @@ class TagRepository(BaseRepository):
             List[Dict[str, Any]]: 标签列表
         """
         try:
-            async with async_get_db() as session:
+            async with self.async_get_db() as db:
                 # 找出用户发布的所有帖子
                 user_posts_subquery = (
                     select(Post.id)
@@ -683,7 +684,7 @@ class TagRepository(BaseRepository):
                     .limit(limit)
                 )
                 
-                result = await session.execute(query)
+                result = await db.execute(query)
                 user_tags = result.all()
                 
                 # 处理结果
@@ -714,7 +715,7 @@ class TagRepository(BaseRepository):
             List[Dict[str, Any]]: 趋势标签列表
         """
         try:
-            async with async_get_db() as session:
+            async with self.async_get_db() as db:
                 # 计算日期范围
                 from datetime import datetime, timedelta
                 end_date = datetime.now()
@@ -744,7 +745,7 @@ class TagRepository(BaseRepository):
                     .limit(limit)
                 )
                 
-                result = await session.execute(query)
+                result = await db.execute(query)
                 trending_tags = result.all()
                 
                 # 处理结果
