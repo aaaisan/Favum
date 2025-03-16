@@ -22,26 +22,22 @@ from .captcha_service import CaptchaService
 # 暂时注释掉，待tasks功能启用时取消注释
 # from .task_service import TaskService
 
-__all__ = [
-    'UserService',
-    'PostService',
-    'CommentService',
-    'TagService',
-    'SectionService',
-    'CategoryService',
-    'FavoriteService',
-    'CaptchaService',
-    # 'TaskService',
-]
+def get_user_service() -> UserService:
+    """获取用户服务实例"""
+    return UserService()
 
-# 添加获取FavoriteService实例的函数
-def get_favorite_service() -> FavoriteService:
-    """
-    创建并返回FavoriteService实例的依赖函数
+def get_post_service() -> PostService:
+    """创建PostService实例的依赖函数
+    
+    用于FastAPI依赖注入系统
     
     Returns:
-        FavoriteService: 收藏服务实例
+        PostService: 帖子服务实例
     """
+    return PostService() 
+
+def get_favorite_service() -> FavoriteService:
+    """获取收藏服务实例"""
     return FavoriteService()
 
 # 添加获取CommentService实例的函数
@@ -52,4 +48,20 @@ def get_comment_service() -> CommentService:
     Returns:
         CommentService: 评论服务实例
     """
-    return CommentService() 
+    return CommentService()
+
+# 导出服务类和获取服务实例的函数
+__all__ = [
+    'UserService',
+    'PostService',
+    'CommentService',
+    'TagService',
+    'SectionService',
+    'CategoryService',
+    'FavoriteService',
+    'CaptchaService',
+    'get_user_service',
+    'get_favorite_service',
+    'get_comment_service',
+    # 'TaskService',
+] 

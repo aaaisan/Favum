@@ -3,9 +3,8 @@ from typing import List, Optional
 
 from ...schemas import user as user_schema
 from ...schemas import post as post_schema
-from ...services.favorite_service import FavoriteService
-from ...services.user_service import UserService
-from ...services.post_service import PostService
+from ...services import UserService, PostService, FavoriteService
+from ...services import get_favorite_service, get_user_service, get_post_service
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.enums import Role, Permission
 from ...core.exceptions import APIError, BusinessException
@@ -29,8 +28,9 @@ router = APIRouter()
 @router.post("", response_model=UserResponse)
 @admin_endpoint(custom_message="创建用户失败")
 async def create_user(
-    request: Request,
-    user: user_schema.UserCreate
+    # request: Request,
+    user: user_schema.UserCreate,
+    user_service: UserService = Depends(get_user_service)
 ):
     """创建新用户
     
@@ -52,12 +52,7 @@ async def create_user(
         HTTPException: 当用户名或邮箱已存在、或创建过程中出现其他错误时抛出
     """
     try:
-        # 创建服务实例
-        user_service = UserService()
-        
-        # 调用服务创建用户
         result = await user_service.create_user(user.model_dump())
-        
         return result
     except BusinessException as e:
         # 将业务异常转换为HTTPException
@@ -69,11 +64,12 @@ async def create_user(
 @router.get("", response_model=UserListResponse)
 @public_endpoint(auth_required=True, custom_message="获取用户列表失败")
 async def read_users(
-    request: Request,
+    # request: Request,
     skip: int = 0,
     limit: int = 100,
     sort: Optional[str] = None,
-    order: str = "asc"
+    order: str = "asc",
+    user_service: UserService = Depends(get_user_service)
 ):
     """获取用户列表
     
@@ -90,9 +86,6 @@ async def read_users(
     try:
         # 从请求中获取用户信息
         # user_info = request.state.user
-        
-        # 创建用户服务实例
-        user_service = UserService()
         
         # 从数据库获取用户列表
         users, total = await user_service.get_users(skip, limit, sort, order)
@@ -128,7 +121,8 @@ async def read_users(
 @router.get("/me", response_model=UserResponse)
 @public_endpoint(auth_required=True, custom_message="获取当前用户信息失败")
 async def read_current_user(
-    request: Request
+    request: Request,
+    user_service: UserService = Depends(get_user_service)
 ):
     """获取当前登录用户的信息
     
@@ -152,16 +146,9 @@ async def read_current_user(
                 detail="未授权访问或用户不存在"
             )
             
-        # 创建用户服务实例
-        user_service = UserService()
-        
         # 获取用户详情
         user = await user_service.get_user_by_id(user_id)
-
-        processed_user = user_service.model_to_dict(user)
-            
-        return processed_user
-        
+        return user
     except Exception as e:
         logger.error(f"获取当前用户信息失败: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -172,8 +159,9 @@ async def read_current_user(
 @router.get("/{user_id}", response_model=UserResponse)
 @public_endpoint(cache_ttl=60, custom_message="获取用户详情失败")
 async def read_user(
-    request: Request,
-    user_id: int
+    # request: Request,
+    user_id: int,
+    user_service: UserService = Depends(get_user_service)
 ):
     """获取指定用户详情
     
@@ -191,7 +179,6 @@ async def read_user(
         HTTPException: 当用户不存在或令牌无效时抛出相应错误
     """
     try:
-        user_service = UserService()
         
         # 获取用户详情
         user = await user_service.get_user_by_id(user_id)
@@ -210,7 +197,8 @@ async def read_user(
 async def update_user(
     request: Request,
     user_id: int,
-    user_update: user_schema.UserUpdate
+    user_update: user_schema.UserUpdate,
+    user_service: UserService = Depends(get_user_service)
 ):
     """更新用户信息
     
@@ -231,7 +219,6 @@ async def update_user(
         BusinessException: 当更新的邮箱已被其他用户使用时抛出
     """
     try:
-        user_service = UserService()
         
         # 获取当前用户ID
         current_user_id = request.state.user.get("id")
@@ -243,9 +230,7 @@ async def update_user(
             current_user_id=current_user_id
         )
 
-        processed_user = user_service.model_to_dict(updated_user)
-        
-        return processed_user
+        return user_service.model_to_dict(updated_user)
         
     except Exception as e:
         logger.error(f"Error updating user {user_id}: {str(e)}")
@@ -258,7 +243,8 @@ async def update_user(
 @admin_endpoint(custom_message="删除用户失败")
 async def delete_user(
     request: Request,
-    user_id: int
+    user_id: int,
+    user_service: UserService = Depends(get_user_service)
 ):
     """删除用户（软删除）
     
@@ -277,7 +263,6 @@ async def delete_user(
         HTTPException: 当用户不存在、权限不足或令牌无效时抛出相应错误
     """
     try:
-        user_service = UserService()
         
         # 获取当前用户ID
         current_user_id = request.state.user.get("id")
@@ -301,8 +286,9 @@ async def delete_user(
 @router.post("/{user_id}/restore", response_model=UserResponse)
 @admin_endpoint(custom_message="恢复用户失败")
 async def restore_user(
-    request: Request,
-    user_id: int
+    # request: Request,
+    user_id: int,
+    user_service: UserService = Depends(get_user_service)
 ):
     """恢复已删除用户
     
@@ -321,14 +307,11 @@ async def restore_user(
         HTTPException: 当用户不存在、已处于激活状态或令牌无效时抛出相应错误
     """
     try:
-        user_service = UserService()
         
         # 恢复用户
         restored_user = await user_service.restore_user(user_id)
 
-        processed_user = user_service.model_to_dict(restored_user)
-        
-        return processed_user
+        return user_service.model_to_dict(restored_user)
     except BusinessException as e:
         raise HTTPException(
             status_code=e.status_code,
@@ -338,7 +321,8 @@ async def restore_user(
 @router.get("/me/profile", response_model=UserProfileResponse)
 @public_endpoint(auth_required=True, custom_message="获取个人资料失败")
 async def read_user_profile(
-    request: Request
+    request: Request,
+    user_service: UserService = Depends(get_user_service)
 ):
     """获取当前用户的个人资料
     
@@ -355,7 +339,6 @@ async def read_user_profile(
         HTTPException: 当用户不存在或令牌无效时抛出相应错误
     """
     try:
-        user_service = UserService()
         
         # 获取当前用户ID
         user_id = request.state.user.get("id")
@@ -363,9 +346,7 @@ async def read_user_profile(
         # 获取用户详情
         profile = await user_service.get_user_profile(user_id)
 
-        processed_profile = user_service.model_to_dict(profile)
-        
-        return processed_profile
+        return user_service.model_to_dict(profile)
     except BusinessException as e:
         raise HTTPException(
             status_code=e.status_code,
@@ -375,10 +356,12 @@ async def read_user_profile(
 @router.get("/{user_id}/posts", response_model=PostListResponse)
 @public_endpoint(auth_required=True, custom_message="获取用户帖子失败")
 async def read_user_posts(
-    request: Request,
+    # request: Request,
     user_id: int,
     skip: int = 0,
-    limit: int = 20
+    limit: int = 20,
+    user_service: UserService = Depends(get_user_service),
+    post_service: PostService = Depends(get_post_service)
 ):
     """获取用户发布的帖子列表
     
@@ -398,8 +381,6 @@ async def read_user_posts(
         HTTPException: 当用户不存在时抛出404错误
     """
     try:
-        user_service = UserService()
-        post_service = PostService()
         posts, total = await user_service.get_user_posts(user_id=user_id, skip=skip, limit=limit)
         
         # 处理帖子数据，确保日期时间字段为字符串格式
@@ -427,46 +408,26 @@ async def read_user_posts(
 async def get_my_favorites(
     request: Request,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    favorite_service: FavoriteService = Depends(get_favorite_service),
+    post_service: PostService = Depends(get_post_service)
 ):
-    """获取当前用户的收藏列表
-    
-    user_service = UserService()
-    返回用户收藏的帖子列表和总数
-    
-    Args:
-        request: FastAPI请求对象
-        skip: 分页偏移量，默认0
-        limit: 每页数量，默认100
-        
-    Returns:
-        PostListResponse: 收藏的帖子列表和总数
-        
-    Raises:
-        HTTPException: 当用户未登录或操作失败时抛出相应错误
-    """
+    """获取当前用户的收藏列表"""
     try:
-        # 获取当前用户
         if not request.state.user:
             raise HTTPException(status_code=401, detail="需要登录才能查看收藏")
         
         user_id = request.state.user.get("id")
         
-        # 使用Service架构
-        favorite_service = FavoriteService()
-        post_service = PostService()
-        # 获取收藏列表
         favorites_result = await favorite_service.get_user_favorites(user_id, skip, limit)
         favorites = favorites_result.get("posts", [])
         total = favorites_result.get("total", 0)
         
-        # 处理帖子数据，确保日期时间字段为字符串格式
         processed_posts = []
         for post in favorites:
             processed_post = post_service.model_to_dict(post)
             processed_posts.append(processed_post)
         
-        # 构建符合PostListResponse的返回结构
         return {
             "posts": processed_posts,
             "total": total,
@@ -474,7 +435,6 @@ async def get_my_favorites(
             "size": limit
         }
     except BusinessException as e:
-        # 处理业务异常
         logger.error(f"Business error retrieving favorites for user {user_id}: {str(e)}")
         raise HTTPException(
             status_code=e.status_code,
@@ -492,41 +452,21 @@ async def get_my_favorites(
 async def get_user_favorites(
     user_id: int,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    favorite_service: FavoriteService = Depends(get_favorite_service),
+    post_service: PostService = Depends(get_post_service)
 ):
-    """获取指定用户的收藏列表
-    
-    返回用户收藏的帖子列表和总数
-    
-    注意：此接口仅返回公开的收藏内容
-    
-    Args:
-        user_id: 用户ID
-        skip: 分页偏移量，默认0
-        limit: 每页数量，默认100
-        
-    Returns:
-        PostListResponse: 收藏的帖子列表和总数
-        
-    Raises:
-        HTTPException: 当用户不存在或操作失败时抛出404错误
-    """
+    """获取指定用户的收藏列表"""
     try:
-        # 使用Service架构
-        favorite_service = FavoriteService()
-        post_service = PostService()
-        # 获取收藏列表
         favorites_result = await favorite_service.get_user_favorites(user_id, skip, limit)
         favorites = favorites_result.get("posts", [])
         total = favorites_result.get("total", 0)
         
-        # 处理帖子数据，确保日期时间字段为字符串格式
         processed_posts = []
         for post in favorites:
             processed_post = post_service.model_to_dict(post)
             processed_posts.append(processed_post)
         
-        # 构建符合PostListResponse的返回结构
         return {
             "posts": processed_posts,
             "total": total,
@@ -534,7 +474,6 @@ async def get_user_favorites(
             "size": limit
         }
     except BusinessException as e:
-        # 处理业务异常
         logger.error(f"Business error retrieving favorites for user {user_id}: {str(e)}")
         raise HTTPException(
             status_code=e.status_code,

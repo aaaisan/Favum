@@ -9,7 +9,7 @@ from ...services.comment_service import CommentService
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...services.favorite_service import FavoriteService
 from ...services import PostService
-from ...services.post_service import get_post_service
+from ...services import get_post_service
 from ...services import get_favorite_service, get_comment_service
 from ...core.exceptions import (
     NotFoundError, 
