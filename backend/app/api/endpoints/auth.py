@@ -30,6 +30,7 @@ from ...core.security import (
     create_access_token,
     get_password_hash,
 )
+from ...db.models import User
 from ...core.decorators.error import handle_exceptions
 from ...core.decorators.auth import validate_token
 from ...core.decorators.performance import rate_limit, cache

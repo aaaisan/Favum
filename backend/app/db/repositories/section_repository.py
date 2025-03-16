@@ -10,6 +10,13 @@ from ..models.section_moderator import SectionModerator
 from ..models.post import Post
 from .base_repository import BaseRepository
 from ...core.exceptions import BusinessException
+from ...core.database import async_get_db
+from ...schemas.responses.section import (
+    SectionResponse, 
+    SectionDetailResponse,
+    SectionListResponse,
+    SectionStatsResponse
+)
 
 class SectionRepository(BaseRepository):
     """版块仓库
@@ -554,6 +561,328 @@ class SectionRepository(BaseRepository):
                 }
                 for moderator in moderators
             ] 
+
+    async def get_sections(
+        self,
+        skip: int = 0,
+        limit: int = 20,
+        category_id: Optional[int] = None,
+        include_post_count: bool = False
+    ) -> Tuple[List[SectionResponse], int]:
+        """获取版块列表
+        
+        Args:
+            skip: 分页偏移量
+            limit: 每页数量
+            category_id: 分类ID过滤
+            include_post_count: 是否包含帖子数量
+            
+        Returns:
+            Tuple[List[SectionResponse], int]: 版块列表和总数
+        """
+        # 构建查询条件
+        conditions = [Section.is_deleted == False]
+        
+        # 如果指定了分类ID，添加过滤条件
+        if category_id is not None:
+            conditions.append(Section.category_id == category_id)
+        
+        async with self.async_get_db() as db:
+            try:
+                # 构建查询
+                query = select(Section).where(and_(*conditions))
+                
+                # 排序：按照排序值和名称排序
+                query = query.order_by(Section.sort_order, Section.name)
+                
+                # 获取总数
+                count_query = select(func.count()).select_from(query.subquery())
+                count_result = await db.execute(count_query)
+                total = count_result.scalar_one() or 0
+                
+                # 应用分页
+                query = query.offset(skip).limit(limit)
+                
+                # 执行查询
+                result = await db.execute(query)
+                sections = result.scalars().all()
+                
+                # 转换为响应对象
+                section_responses = []
+                for section in sections:
+                    section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                    
+                    # 如果需要包含帖子数量
+                    if include_post_count:
+                        posts_count_query = select(func.count()).select_from(Post).where(
+                            and_(
+                                Post.section_id == section.id,
+                                Post.is_deleted == False
+                            )
+                        )
+                        posts_count_result = await db.execute(posts_count_query)
+                        posts_count = posts_count_result.scalar_one() or 0
+                        section_dict["posts_count"] = posts_count
+                    
+                    section_responses.append(SectionResponse(**section_dict))
+                
+                return section_responses, total
+            except Exception as e:
+                logger.error(f"获取版块列表失败: {str(e)}")
+                return [], 0
+
+    async def get_section_detail(self, section_id: int) -> Optional[SectionDetailResponse]:
+        """获取版块详情
+        
+        Args:
+            section_id: 版块ID
+            
+        Returns:
+            Optional[SectionDetailResponse]: 版块详情，不存在则返回None
+        """
+        async with self.async_get_db() as db:
+            try:
+                # 获取版块
+                result = await db.execute(
+                    select(Section).where(
+                        and_(
+                            Section.id == section_id,
+                            Section.is_deleted == False
+                        )
+                    )
+                )
+                section = result.scalar_one_or_none()
+                
+                if not section:
+                    return None
+                
+                # 获取该版块下的帖子数量
+                posts_count_query = select(func.count()).select_from(Post).where(
+                    and_(
+                        Post.section_id == section_id,
+                        Post.is_deleted == False
+                    )
+                )
+                posts_count_result = await db.execute(posts_count_query)
+                posts_count = posts_count_result.scalar_one() or 0
+                
+                # 获取所属分类信息
+                category_info = None
+                if section.category_id:
+                    category_query = select(Category).where(
+                        and_(
+                            Category.id == section.category_id,
+                            Category.is_deleted == False
+                        )
+                    )
+                    category_result = await db.execute(category_query)
+                    category = category_result.scalar_one_or_none()
+                    
+                    if category:
+                        category_info = {
+                            "id": category.id,
+                            "name": category.name,
+                            "description": category.description
+                        }
+                
+                # 转换为响应对象
+                section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                section_dict["posts_count"] = posts_count
+                section_dict["category"] = category_info
+                
+                return SectionDetailResponse(**section_dict)
+            except Exception as e:
+                logger.error(f"获取版块详情失败: {str(e)}")
+                return None
+
+    async def create_section(self, data: Dict[str, Any]) -> Optional[SectionResponse]:
+        """创建版块
+        
+        Args:
+            data: 版块数据
+            
+        Returns:
+            Optional[SectionResponse]: 创建的版块，失败则返回None
+        """
+        async with self.async_get_db() as db:
+            try:
+                # 验证分类是否存在
+                if "category_id" in data and data["category_id"]:
+                    category_query = select(Category).where(
+                        and_(
+                            Category.id == data["category_id"],
+                            Category.is_deleted == False
+                        )
+                    )
+                    category_result = await db.execute(category_query)
+                    category = category_result.scalar_one_or_none()
+                    
+                    if not category:
+                        logger.warning(f"创建版块失败: 分类不存在，ID={data['category_id']}")
+                        return None
+                
+                # 创建版块
+                section = Section(**data)
+                db.add(section)
+                await db.commit()
+                await db.refresh(section)
+                
+                # 转换为响应对象
+                section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                return SectionResponse(**section_dict)
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"创建版块失败: {str(e)}")
+                return None
+
+    async def update_section(
+        self, 
+        section_id: int, 
+        data: Dict[str, Any]
+    ) -> Optional[SectionResponse]:
+        """更新版块
+        
+        Args:
+            section_id: 版块ID
+            data: 更新数据
+            
+        Returns:
+            Optional[SectionResponse]: 更新后的版块，失败则返回None
+        """
+        async with self.async_get_db() as db:
+            try:
+                # 获取版块
+                result = await db.execute(
+                    select(Section).where(
+                        and_(
+                            Section.id == section_id,
+                            Section.is_deleted == False
+                        )
+                    )
+                )
+                section = result.scalar_one_or_none()
+                
+                if not section:
+                    return None
+                
+                # 如果更新分类ID，验证分类是否存在
+                if "category_id" in data and data["category_id"]:
+                    category_query = select(Category).where(
+                        and_(
+                            Category.id == data["category_id"],
+                            Category.is_deleted == False
+                        )
+                    )
+                    category_result = await db.execute(category_query)
+                    category = category_result.scalar_one_or_none()
+                    
+                    if not category:
+                        logger.warning(f"更新版块失败: 分类不存在，ID={data['category_id']}")
+                        return None
+                
+                # 更新版块字段
+                for key, value in data.items():
+                    if hasattr(section, key):
+                        setattr(section, key, value)
+                
+                section.updated_at = datetime.now()
+                
+                await db.commit()
+                await db.refresh(section)
+                
+                # 转换为响应对象
+                section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                return SectionResponse(**section_dict)
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"更新版块失败: {str(e)}")
+                return None
+
+    async def delete_section(self, section_id: int) -> bool:
+        """删除版块
+        
+        Args:
+            section_id: 版块ID
+            
+        Returns:
+            bool: 操作是否成功
+        """
+        async with self.async_get_db() as db:
+            try:
+                # 软删除版块
+                stmt = (
+                    update(Section)
+                    .where(
+                        and_(
+                            Section.id == section_id,
+                            Section.is_deleted == False
+                        )
+                    )
+                    .values(
+                        is_deleted=True,
+                        deleted_at=datetime.now(),
+                        updated_at=datetime.now()
+                    )
+                )
+                
+                result = await db.execute(stmt)
+                await db.commit()
+                
+                return result.rowcount > 0
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"删除版块失败: {str(e)}")
+                return False
+
+    async def get_section_stats(self) -> List[SectionStatsResponse]:
+        """获取版块统计
+        
+        返回各个版块的帖子数量统计
+        
+        Returns:
+            List[SectionStatsResponse]: 版块统计列表
+        """
+        async with self.async_get_db() as db:
+            try:
+                # 获取所有非删除版块
+                sections_query = select(Section).where(Section.is_deleted == False)
+                sections_result = await db.execute(sections_query)
+                sections = sections_result.scalars().all()
+                
+                stats_list = []
+                
+                # 获取每个版块的帖子数量
+                for section in sections:
+                    posts_count_query = select(func.count()).select_from(Post).where(
+                        and_(
+                            Post.section_id == section.id,
+                            Post.is_deleted == False
+                        )
+                    )
+                    posts_count_result = await db.execute(posts_count_query)
+                    posts_count = posts_count_result.scalar_one() or 0
+                    
+                    # 获取所属分类信息
+                    category_name = None
+                    if section.category_id:
+                        category_query = select(Category.name).where(Category.id == section.category_id)
+                        category_result = await db.execute(category_query)
+                        category_name = category_result.scalar_one_or_none()
+                    
+                    # 构建统计对象
+                    section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                    section_dict["posts_count"] = posts_count
+                    section_dict["category_name"] = category_name
+                    
+                    stats_list.append(SectionStatsResponse(**section_dict))
+                
+                # 按照帖子数量降序排序
+                stats_list.sort(key=lambda x: x.posts_count, reverse=True)
+                
+                return stats_list
+            except Exception as e:
+                logger.error(f"获取版块统计失败: {str(e)}")
+                return []
 
     # def model_to_dict(self, model) -> Dict[str, Any]:
     #     """将模型对象转换为字典
