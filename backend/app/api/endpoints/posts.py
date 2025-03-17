@@ -3,8 +3,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 
-from ...schemas.post import VoteType
-from ...schemas import post as post_schema
+from ...schemas.inputs.post import VoteType
+from ...schemas.inputs import post as post_schema
 from ...services.comment_service import CommentService
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...services.favorite_service import FavoriteService
@@ -14,9 +14,9 @@ from ...core.exceptions import (
     NotFoundError, 
     RequestDataError,
     AuthenticationError,
-    BusinessException,
-    with_error_handling
+    BusinessException
 )
+from ...core.decorators.error import with_error_handling
 from ..responses.post import (
     PostResponse, 
     PostDetailResponse,
@@ -30,8 +30,9 @@ from ..responses.post import (
 from ...core.auth import get_current_user
 from ...core.permissions import require_active_user
 from ...db.models import User, VoteType
+from ...core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 

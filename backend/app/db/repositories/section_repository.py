@@ -8,15 +8,20 @@ from ..models.section import Section
 from ..models.user import User
 from ..models.section_moderator import SectionModerator
 from ..models.post import Post
+from ..models.category import Category
 from .base_repository import BaseRepository
 from ...core.exceptions import BusinessException
-from ...core.database import async_get_db
+# from ...core.database import async_get_db
 from ...schemas.responses.section import (
     SectionResponse, 
     SectionDetailResponse,
     SectionListResponse,
     SectionStatsResponse
 )
+import logging
+from ...core.logging import logging
+
+logger = logging.getLogger(__name__)
 
 class SectionRepository(BaseRepository):
     """版块仓库

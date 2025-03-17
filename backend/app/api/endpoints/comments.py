@@ -2,12 +2,13 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Body, Path, stat
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Dict, Any
 
-from ...schemas import comment as comment_schema
+# from ...schemas import comment as comment_schema
 from ...services.comment_service import CommentService
-from ...core.exceptions import BusinessException, NotFoundError, RequestDataError, with_error_handling
+from ...core.exceptions import BusinessException, NotFoundError, RequestDataError
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
+from ...core.decorators.error import with_error_handling
 from ...dependencies import get_comment_service
-from ...schemas.comment import CommentCreate, CommentUpdate
+from ...schemas.inputs.comment import CommentCreate, CommentUpdate
 from ..responses import (
     CommentResponse,
     CommentListResponse,

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import List, Optional
 
-from ...schemas import user as user_schema
-from ...schemas import post as post_schema
+from ...schemas.inputs import user as user_schema
+from ...schemas.inputs import post as post_schema
 from ...services import UserService, PostService, FavoriteService
 from ...dependencies import get_favorite_service, get_user_service, get_post_service
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
@@ -11,7 +11,7 @@ from ...core.exceptions import APIError, BusinessException, NotFoundError
 from ...core.logging import get_logger
 from ...db.models.user import User
 from ...core.auth import get_current_user
-from ...core.decorators import with_error_handling
+from ...core.decorators.error import handle_exceptions, with_error_handling
 
 from ..responses import (
     UserResponse, 
@@ -121,7 +121,7 @@ async def read_users(
 
 @router.get("/me", response_model=UserResponse)
 @public_endpoint(auth_required=True, custom_message="获取当前用户信息失败")
-@with_error_handling(default_error_message="获取当前用户信息失败")
+# @handle_exceptions(default_error_message="获取当前用户信息失败")
 async def read_user_me(
     request: Request,
     user: User = Depends(get_current_user),

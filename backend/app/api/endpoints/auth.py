@@ -2,17 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta
 from typing import Annotated, Union
+from ...core.logging import get_logger
 import logging
 
 # 定义logger
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 导入BusinessException
 from ...core.exceptions import BusinessException
 
 # 导入响应模型
 
-from ..responses import (
+from ...schemas.responses.auth import (
     TokenResponse,
     TokenDataResponse,
     LoginCheckResponse,
@@ -24,7 +25,7 @@ from ..responses import (
     TokenVerifyResponse
 )
 
-from ...core.permissions import get_role_permissions, Role
+from ...core.permissions import PermissionChecker, Role, permission_checker
 from ...core.security import (
     authenticate_user,
     create_access_token,
@@ -37,13 +38,13 @@ from ...core.decorators.performance import rate_limit, cache
 from ...core.decorators.logging import log_execution_time
 from ...core.config import settings
 from ...utils.captcha import CaptchaValidator
-from ...schemas import auth as auth_schema
+from ...schemas.inputs import auth as auth_schema
 from ...services.user_service import UserService
 from ...db.repositories.user_repository import UserRepository
 from fastapi.security import OAuth2PasswordRequestForm
 from ...core.decorators import public_endpoint, admin_endpoint
-from ...core.decorators import with_error_handling
-from ...core.decorators import get_current_user
+from ...core.decorators.error import with_error_handling
+from ...core.auth import get_current_user
 
 router = APIRouter()
 
@@ -135,7 +136,7 @@ async def register(
         role_name = role_name.value
     
     role = getattr(Role, role_name.upper(), Role.USER)
-    permissions = [p for p in get_role_permissions(role)]
+    permissions = [p for p in permission_checker.role_permissions[role]]
     
     # 创建访问令牌
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -228,7 +229,7 @@ async def login(
         print(f"角色枚举值: {role}")
         
         # 获取权限
-        permissions = [p for p in get_role_permissions(role)]
+        permissions = [p for p in permission_checker.role_permissions[role]]
         print(f"权限列表: {permissions}")
         
         # 创建访问令牌
@@ -303,7 +304,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             role_obj = user.get("role", "user")  # 使用get方法安全地获取，默认为"user"
             role_name = role_obj.value if hasattr(role_obj, 'value') else str(role_obj)
             role = getattr(Role, role_name.upper(), Role.USER)
-            permissions = [p for p in get_role_permissions(role)]
+            permissions = [p for p in permission_checker.role_permissions[role]]
             
             user_id = user.get("id", 0)
             username = user.get("username", "unknown")
@@ -425,7 +426,7 @@ async def swagger_login(
     # 获取用户角色和权限
     role_name = user.role.value if hasattr(user.role, 'value') else str(user.role)
     role = getattr(Role, role_name.upper(), Role.USER)
-    permissions = [p for p in get_role_permissions(role)]
+    permissions = [p for p in permission_checker.role_permissions[role]]
     
     # 生成访问令牌
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -475,7 +476,7 @@ async def swagger_auth(
             role_name = role_name.value
         
         role = getattr(Role, role_name.upper(), Role.USER)
-        permissions = [p for p in get_role_permissions(role)]
+        permissions = [p for p in permission_checker.role_permissions[role]]
         
         # 读取用户信息
         user_id = user["id"] if isinstance(user, dict) else user.id
@@ -512,7 +513,7 @@ async def swagger_auth(
 @public_endpoint(rate_limit_count=5, custom_message="请求密码重置失败")
 async def request_password_reset(
     request: Request,
-    reset_request: auth_schema.PasswordResetRequest
+    reset_request: auth_schema.PasswordResetRequestInput
 ):
     """
     请求密码重置
@@ -534,7 +535,7 @@ async def request_password_reset(
 @public_endpoint(rate_limit_count=5, custom_message="密码重置失败")
 async def reset_password(
     request: Request,
-    reset_data: auth_schema.PasswordReset
+    reset_data: auth_schema.PasswordResetInput
 ):
     """
     重置密码
@@ -570,7 +571,7 @@ async def reset_password(
 @public_endpoint(custom_message="邮箱验证失败")
 async def verify_email(
     request: Request,
-    verification_data: auth_schema.EmailVerification
+    verification_data: auth_schema.EmailVerificationInput
 ):
     """
     验证用户邮箱
@@ -679,7 +680,7 @@ async def get_api_key(
             role_name = role_name.value
         
         role = getattr(Role, role_name.upper(), Role.USER)
-        permissions = [p for p in get_role_permissions(role)]
+        permissions = [p for p in permission_checker.role_permissions[role]]
         
         # 获取用户ID和用户名
         user_id = user["id"] if isinstance(user, dict) else user.id

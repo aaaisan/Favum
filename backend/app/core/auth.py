@@ -15,7 +15,7 @@ from jose import JWTError, jwt
 # from fastapi.security.utils import get_authorization_scheme_param
 
 from .config import settings
-from ..schemas import auth as auth_schema
+# from ..schemas import auth as auth_schema
 from ..db.repositories.user_repository import UserRepository
 from ..db.models import User
 from .exceptions import UserNotFoundError, UserNotActivatedError, AuthenticationError

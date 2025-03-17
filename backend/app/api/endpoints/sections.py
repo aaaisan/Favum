@@ -11,8 +11,8 @@ from ..responses import (
 from ..responses.post import PostListResponse
 from ..responses.user import UserListResponse, UserInfoResponse
 
-from ...schemas.section import SectionCreate, Section, SectionUpdate
-from ...schemas import post as post_schema
+from ...schemas.inputs.section import SectionCreate, SectionUpdate
+# from ...schemas import post as post_schema
 from ...services.section_service import SectionService
 from ...core.exceptions import BusinessException
 from ...core.decorators import public_endpoint, admin_endpoint

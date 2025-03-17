@@ -18,7 +18,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import logging
 
 from .base_repository import BaseRepository
-from ..models import Post, User, Tag, Category, PostTag, PostVote, PostFavorite, Comment, Section
+from ..models import Post, User, Tag, Category, post_tags, PostVote, PostFavorite, Comment, Section
 from ...core.database import async_get_db
 from ...schemas.responses.post import (
     PostResponse,
@@ -124,7 +124,7 @@ class PostRepository(BaseRepository[Post, PostResponse]):
         if tag_id is not None:
             # 使用子查询获取有特定标签的帖子ID
             tag_condition = Post.id.in_(
-                select(PostTag.post_id).where(PostTag.tag_id == tag_id)
+                select(post_tags.post_id).where(post_tags.tag_id == tag_id)
             )
             conditions.append(tag_condition)
         
@@ -192,9 +192,9 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                 
                 # 获取关联的标签
                 tag_query = select(Tag).join(
-                    PostTag, Tag.id == PostTag.tag_id
+                    post_tags, Tag.id == post_tags.tag_id
                 ).where(
-                    PostTag.post_id == post_id
+                    post_tags.post_id == post_id
                 )
                 
                 tag_result = await db.execute(tag_query)
@@ -269,7 +269,7 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                 # 关联标签
                 if tag_ids and len(tag_ids) > 0:
                     for tag_id in tag_ids:
-                        post_tag = PostTag(post_id=post.id, tag_id=tag_id)
+                        post_tag = post_tags(post_id=post.id, tag_id=tag_id)
                         db.add(post_tag)
                 
                 await db.commit()
@@ -329,7 +329,7 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                     
                     # 添加新关联
                     for tag_id in tag_ids:
-                        post_tag = PostTag(post_id=post_id, tag_id=tag_id)
+                        post_tag = post_tags(post_id=post_id, tag_id=tag_id)
                         db.add(post_tag)
                 
                 await db.commit()

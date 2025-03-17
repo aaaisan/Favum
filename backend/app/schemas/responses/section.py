@@ -17,6 +17,9 @@ class SectionDetailResponse(SectionResponse):
     
     model_config = ConfigDict(from_attributes=True)
 
+class SectionStatsResponse(SectionResponse):
+    pass
+
 class SectionDeleteResponse(DeleteResponse):
     """版块删除响应模型"""
     message: str = "版块已成功删除"

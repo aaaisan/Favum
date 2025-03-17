@@ -97,7 +97,7 @@ __all__ = [
     'memo', 'async_memo', 'timed_memo', 'typed_memo',
     
     # 错误处理装饰器
-    'handle_exceptions', 'retry',
+    'handle_exceptions', 'retry', 'with_error_handling'
     
     # 日志装饰器
     'log_execution_time', 'log_exception',

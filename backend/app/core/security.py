@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 # from types import SimpleNamespace
 
 from ..core.config import settings
-from ..schemas import auth as auth_schema
-from ..core.database import get_db
+# from ..schemas.inputs import auth as auth_schema
+# from ..core.database import get_db
 from ..db.repositories.user_repository import UserRepository
 
 """

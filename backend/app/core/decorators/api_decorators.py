@@ -205,6 +205,7 @@ def public_endpoint(
 
 def owner_endpoint(
     owner_param_name: str = None,
+    owner_id_func: Optional[callable] = None,
     *exceptions: Any,
     rate_limit_count: Optional[int] = None,
     custom_message: Optional[str] = None,
@@ -228,7 +229,7 @@ def owner_endpoint(
     Returns:
         组合多个装饰器的装饰器函数
     """
-    if owner_param_name is None and resource_owner_lookup_func is None:
+    if owner_param_name is None and owner_id_func is None:
         raise ValueError("owner_param_name 和 resource_owner_lookup_func 必须至少提供一个")
         
     _exceptions = exceptions if exceptions else (SQLAlchemyError,)

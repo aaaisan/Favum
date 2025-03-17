@@ -405,7 +405,7 @@ class CategoryRepository(BaseRepository):
             
             return category_schema
     
-    async def reorder(self, parent_id: Optional[int], category_ids: List[int]) -> List[Dict[CategoryDetailResponse]]:
+    async def reorder(self, parent_id: Optional[int], category_ids: List[int]) -> List[CategoryDetailResponse]:
         """重新排序分类
         
         Args:
