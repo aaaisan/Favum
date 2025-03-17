@@ -5,17 +5,19 @@ from ...core.decorators.auth import require_roles
 from ...core.decorators.auth import validate_token, require_roles
 from ...core.decorators import admin_endpoint, public_endpoint
 from ...schemas.inputs import category as category_schema
+from ...schemas.responses.category import CategoryResponse, CategoryDetailResponse, CategoryListResponse
 from ...services.category_service import CategoryService
 from ...core.exceptions import BusinessException
 
+
 # 导入响应模型
 
-from ..responses import (
-    CategoryResponse,
-    CategoryDetailResponse,
-    CategoryListResponse,
-    CategoryTreeResponse
-)
+# from ..responses import (
+#     CategoryResponse,
+#     CategoryDetailResponse,
+#     CategoryListResponse,
+#     CategoryTreeResponse
+# )
 
 router = APIRouter()
 

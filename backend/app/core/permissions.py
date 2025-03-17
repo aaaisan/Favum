@@ -14,7 +14,7 @@ from functools import lru_cache as memo
 from enum import Enum, auto
 
 from ..db.models import User
-from .exceptions import PermissionError, UserNotFoundError
+# from .exceptions import PermissionError, UserNotFoundError
 from .auth import get_current_user, require_active_user
 
 class Role(str, Enum):

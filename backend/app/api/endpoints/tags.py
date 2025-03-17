@@ -4,14 +4,14 @@ from fastapi import Depends
 import logging
 
 # 导入响应模型
-from ..responses import (
+from ...schemas.responses.tag import (
     TagResponse,
     TagListResponse,
     TagWithPostsResponse,
     TagCloudResponse,
     # TagFollowResponse
 )
-from ..responses.post import PostListResponse
+from ...schemas.responses.post import PostListResponse
 
 from ...schemas.inputs import tag as tag_schema
 # from ...schemas import post as post_schema

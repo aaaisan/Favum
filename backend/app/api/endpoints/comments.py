@@ -9,11 +9,12 @@ from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.decorators.error import with_error_handling
 from ...dependencies import get_comment_service
 from ...schemas.inputs.comment import CommentCreate, CommentUpdate
-from ..responses import (
-    CommentResponse,
-    CommentListResponse,
-    CommentDeleteResponse
-)
+from ...schemas.responses.comment import CommentResponse, CommentListResponse, CommentDeleteResponse
+# from ..responses import (
+#     CommentResponse,
+#     CommentListResponse,
+#     CommentDeleteResponse
+# )
 from ...core.auth import get_current_user
 from ...db.models import User
 

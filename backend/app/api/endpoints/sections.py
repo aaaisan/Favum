@@ -3,13 +3,13 @@ from typing import List, Optional
 
 # 导入响应模型
 
-from ..responses import (
+from ...schemas.responses.section import (
     SectionResponse,
     SectionDetailResponse,
     SectionListResponse
 )
-from ..responses.post import PostListResponse
-from ..responses.user import UserListResponse, UserInfoResponse
+from ...schemas.responses.post import PostListResponse
+from ...schemas.responses.user import UserListResponse, UserInfoResponse
 
 from ...schemas.inputs.section import SectionCreate, SectionUpdate
 # from ...schemas import post as post_schema

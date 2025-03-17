@@ -59,7 +59,8 @@ from .cache import (
 
 from .error import (
     handle_exceptions,
-    retry
+    retry,
+    with_error_handling
 )
 
 from .logging import (

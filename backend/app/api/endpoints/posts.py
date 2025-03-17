@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, Request, Query, Depends, Body, Path, status
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-import logging
+# import logging
 
-from ...schemas.inputs.post import VoteType
+# from ...schemas.inputs.post import VoteType
 from ...schemas.inputs import post as post_schema
 from ...services.comment_service import CommentService
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
@@ -17,7 +17,7 @@ from ...core.exceptions import (
     BusinessException
 )
 from ...core.decorators.error import with_error_handling
-from ..responses.post import (
+from ...schemas.responses.post import (
     PostResponse, 
     PostDetailResponse,
     PostListResponse,
@@ -32,7 +32,7 @@ from ...core.permissions import require_active_user
 from ...db.models import User, VoteType
 from ...core.logging import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__) 
 
 router = APIRouter()
 

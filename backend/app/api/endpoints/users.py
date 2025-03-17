@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import List, Optional
 
 from ...schemas.inputs import user as user_schema
-from ...schemas.inputs import post as post_schema
+# from ...schemas.inputs import post as post_schema
 from ...services import UserService, PostService, FavoriteService
 from ...dependencies import get_favorite_service, get_user_service, get_post_service
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
@@ -13,13 +13,13 @@ from ...db.models.user import User
 from ...core.auth import get_current_user
 from ...core.decorators.error import handle_exceptions, with_error_handling
 
-from ..responses import (
+from ...schemas.responses.user import (
     UserResponse, 
     UserProfileResponse, 
     UserListResponse, 
     UserDeleteResponse,
 )
-from ..responses.post import PostListResponse
+from ...schemas.responses.post import PostListResponse
 
 # 创建logger实例
 logger = get_logger(__name__)
