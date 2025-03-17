@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from ..models.comment import Comment
 from ..models.user import User
 from .base_repository import BaseRepository
+from ...schemas.responses.comment import CommentDetailResponse
 
 class CommentRepository(BaseRepository):
     """评论仓库
@@ -17,7 +18,7 @@ class CommentRepository(BaseRepository):
         """初始化评论仓库"""
         super().__init__(Comment)
     
-    async def get_by_id(self, comment_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
+    async def get_by_id(self, comment_id: int, include_deleted: bool = False) -> Optional[CommentDetailResponse]:
         """根据ID获取评论
         
         Args:
@@ -25,7 +26,7 @@ class CommentRepository(BaseRepository):
             include_deleted: 是否包含已删除的评论
             
         Returns:
-            Optional[Dict[str, Any]]: 评论信息字典，不存在则返回None
+            Optional[CommentDetailResponse]: 评论信息对象，不存在则返回None
         """
         async with self.async_get_db() as db:
             query = (
@@ -45,11 +46,11 @@ class CommentRepository(BaseRepository):
                 
             comment, author_name = row
             
-            # 转换为字典并添加作者名称
-            comment_dict = self.model_to_dict(comment)
-            comment_dict["author_name"] = author_name
+            # 将模型实例转换为schema对象
+            comment_schema = self.to_schema(comment)
+            comment_schema.author_name = author_name
             
-            return comment_dict
+            return comment_schema
             
     async def get_comments_by_post(
         self, 
@@ -57,7 +58,7 @@ class CommentRepository(BaseRepository):
         skip: int = 0, 
         limit: int = 100,
         include_deleted: bool = False
-    ) -> Tuple[List[Dict[str, Any]], int]:
+    ) -> Tuple[List[CommentDetailResponse], int]:
         """获取帖子下的评论列表
         
         Args:
@@ -95,13 +96,13 @@ class CommentRepository(BaseRepository):
             comments = []
             for row in result:
                 comment, author_name = row
-                comment_dict = self.model_to_dict(comment)
-                comment_dict["author_name"] = author_name
-                comments.append(comment_dict)
+                comment_schema = self.to_schema(comment)
+                comment_schema.author_name = author_name
+                comments.append(comment_schema)
                 
             return comments, total
     
-    async def create(self, comment_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create(self, comment_data: Dict[str, Any]) -> CommentDetailResponse:
         """创建新评论
         
         Args:
@@ -123,12 +124,12 @@ class CommentRepository(BaseRepository):
             author_name = result.scalar_one_or_none()
             
             # 返回评论字典
-            comment_dict = self.model_to_dict(comment)
-            comment_dict["author_name"] = author_name
+            comment_schema = self.to_schema(comment)
+            comment_schema.author_name = author_name
             
-            return comment_dict
+            return comment_schema
             
-    async def update(self, comment_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def update(self, comment_id: int, data: Dict[str, Any]) -> Optional[CommentDetailResponse]:
         """更新评论
         
         Args:
@@ -158,10 +159,10 @@ class CommentRepository(BaseRepository):
             author_name = result.scalar_one_or_none()
             
             # 返回评论字典
-            comment_dict = self.model_to_dict(comment)
-            comment_dict["author_name"] = author_name
+            comment_schema = self.to_schema(comment)
+            comment_schema.author_name = author_name
             
-            return comment_dict
+            return comment_schema
             
     async def soft_delete(self, comment_id: int) -> bool:
         """软删除评论
@@ -217,21 +218,7 @@ class CommentRepository(BaseRepository):
             author_name = result.scalar_one_or_none()
             
             # 返回评论字典
-            comment_dict = self.model_to_dict(comment)
-            comment_dict["author_name"] = author_name
+            comment_schema = self.to_schema(comment)
+            comment_schema.author_name= author_name
             
-            return comment_dict
-
-    # def model_to_dict(self, model) -> Dict[str, Any]:
-    #     """将模型对象转换为字典
-        
-    #     Args:
-    #         model: 模型对象
-            
-    #     Returns:
-    #         Dict[str, Any]: 字典表示
-    #     """
-    #     result = {}
-    #     for column in model.__table__.columns:
-    #         result[column.name] = getattr(model, column.name)
-    #     return result 
+            return comment_schema

@@ -7,6 +7,8 @@ import logging
 from ..models.category import Category
 from .base_repository import BaseRepository
 from ...core.exceptions import BusinessException, SQLAlchemyError
+from ...schemas.inputs.category import CategoryCreate, CategoryUpdate
+from ...schemas.responses.category import CategoryDetailResponse
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ class CategoryRepository(BaseRepository):
         """初始化分类仓库"""
         super().__init__(Category)
     
-    async def get_by_id(self, category_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
+    async def get_by_id(self, category_id: int, include_deleted: bool = False) -> Optional[CategoryDetailResponse]:
         """根据ID获取分类
         
         Args:
@@ -50,14 +52,14 @@ class CategoryRepository(BaseRepository):
             
             children_result = await db.execute(children_query)
             children = children_result.scalars().all()
+            # 将模型实例转换为schema对象
+            category_schema = self.to_schema(category)
+            category_schema.children = [self.to_schema(child) for child in children]
+
             
-            # 转换为字典并添加子分类
-            category_dict = self.model_to_dict(category)
-            category_dict["children"] = [self.model_to_dict(child) for child in children]
-            
-            return category_dict
+            return category
     
-    async def get_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+    async def get_by_name(self, name: str) -> Optional[CategoryDetailResponse]:
         """根据名称获取分类
         
         Args:
@@ -78,9 +80,9 @@ class CategoryRepository(BaseRepository):
             if category is None:
                 return None
                 
-            return self.model_to_dict(category)
+            return self.to_schema(category)
     
-    async def get_all(self, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_all(self, skip: int = 0, limit: int = 100) -> Tuple[List[CategoryDetailResponse], int]:
         """获取所有顶级分类及其子分类
         
         Args:
@@ -121,16 +123,8 @@ class CategoryRepository(BaseRepository):
             # 获取每个分类的子分类
                 categories_data = []
                 for category in categories:
-                    category_dict = category.to_dict() if hasattr(category, 'to_dict') else {
-                        "id": category.id,
-                        "name": category.name,
-                        "description": category.description,
-                        "order": category.order,
-                        "created_at": category.created_at,
-                        "updated_at": category.updated_at if hasattr(category, 'updated_at') else None,
-                        "is_deleted": category.is_deleted,
-                        "parent_id": category.parent_id
-                    }
+                    category_schema = self.to_schema(category)
+
                 
                 # 查询子分类
                     children_query = (
@@ -145,18 +139,18 @@ class CategoryRepository(BaseRepository):
                     children = children_result.scalars().all()
                     
                     # 将子分类添加到父分类中
-                    category_dict["children"] = []
+                    category_schema.children = []
                     for child in children:
                         child_dict = self.model_to_dict(child)
-                        category_dict["children"].append(child_dict)
+                        category_schema.children.append(child_dict)
                     
-                    categories_data.append(category_dict)
+                    categories_data.append(category_schema)
                 
                 return categories_data, total
             except SQLAlchemyError as e:
                 raise e
     
-    async def create(self, category_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create(self, category_data: CategoryCreate) -> Dict[str, Any]:
         """创建分类
         
         Args:
@@ -167,7 +161,7 @@ class CategoryRepository(BaseRepository):
         """
         async with self.async_get_db() as db:
             # 检查父分类是否存在
-            if category_data.get("parent_id"):
+            if category_data.parent_id:
                 parent_query = select(Category).where(
                     Category.id == category_data["parent_id"],
                     Category.is_deleted == False
@@ -198,13 +192,13 @@ class CategoryRepository(BaseRepository):
                 )
             
             # 如果没有指定order，则设置为当前同级最大order + 1
-            if "order" not in category_data or category_data["order"] is None:
+            if "order" not in category_data or category_data.order is None:
                 order_query = select(func.max(Category.order)).where(
-                    Category.parent_id == category_data.get("parent_id")
+                    Category.parent_id == category_data.parent_id
                 )
                 order_result = await db.execute(order_query)
                 max_order = order_result.scalar() or -1
-                category_data["order"] = max_order + 1
+                category_data.order = max_order + 1
             
             # 创建分类
             category = Category(**category_data)
@@ -213,12 +207,12 @@ class CategoryRepository(BaseRepository):
             await db.refresh(category)
             
             # 返回创建的分类
-            category_dict = self.model_to_dict(category)
-            category_dict["children"] = []
+            category_dict = self.to_schema(category)
+            category_dict.children = []
             
             return category_dict
     
-    async def update(self, category_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def update(self, category_id: int, data: CategoryUpdate) -> Optional[CategoryDetailResponse]:
         """更新分类
         
         Args:
@@ -235,9 +229,9 @@ class CategoryRepository(BaseRepository):
                 return None
             
             # 检查父分类是否存在
-            if "parent_id" in data and data["parent_id"] is not None:
+            if "parent_id" in data and data.parent_id is not None:
                 # 如果父分类ID等于当前分类ID，不允许设置
-                if data["parent_id"] == category_id:
+                if data.parent_id == category_id:
                     raise BusinessException(
                         status_code=400,
                         error_code="INVALID_PARENT",
@@ -245,7 +239,7 @@ class CategoryRepository(BaseRepository):
                     )
                 
                 parent_query = select(Category).where(
-                    Category.id == data["parent_id"],
+                    Category.id == data.parent_id,
                     Category.is_deleted == False
                 )
                 parent_result = await db.execute(parent_query)
@@ -262,9 +256,9 @@ class CategoryRepository(BaseRepository):
                 # TODO: 实现更完整的循环检测
             
             # 如果更新名称，检查是否重复
-            if "name" in data and data["name"] != category.name:
+            if "name" in data and data.name != category.name:
                 name_query = select(Category).where(
-                    Category.name == data["name"],
+                    Category.name == data.name,
                     Category.is_deleted == False
                 )
                 name_result = await db.execute(name_query)
@@ -277,10 +271,10 @@ class CategoryRepository(BaseRepository):
                         message="分类名称已存在"
                     )
             
-            # 更新分类
-            for key, value in data.items():
-                if hasattr(category, key) and key != "id":
-                    setattr(category, key, value)
+            # 待修改
+            # for key, value in data.items():
+            #     if hasattr(category, key) and key != "id":
+            #         setattr(category, key, value)
             
             await db.commit()
             await db.refresh(category)
@@ -295,10 +289,10 @@ class CategoryRepository(BaseRepository):
             children = children_result.scalars().all()
             
             # 返回更新后的分类
-            category_dict = self.model_to_dict(category)
-            category_dict["children"] = [self.model_to_dict(child) for child in children]
+            category_schema = self.to_schema(category)
+            category_schema.children = [self.to_schema(child) for child in children]
             
-            return category_dict
+            return category_schema
     
     async def soft_delete(self, category_id: int) -> bool:
         """软删除分类
@@ -360,7 +354,7 @@ class CategoryRepository(BaseRepository):
             logger.error(f"软删除分类失败，分类ID: {category_id}, 错误: {str(e)}", exc_info=True)
             return False
     
-    async def restore(self, category_id: int) -> Optional[Dict[str, Any]]:
+    async def restore(self, category_id: int) -> Optional[CategoryDetailResponse]:
         """恢复已删除的分类
         
         Args:
@@ -406,12 +400,12 @@ class CategoryRepository(BaseRepository):
             children = children_result.scalars().all()
             
             # 返回恢复后的分类
-            category_dict = self.model_to_dict(category)
-            category_dict["children"] = [self.model_to_dict(child) for child in children]
+            category_schema = self.to_schema(category)
+            category_schema.children = [self.model_to_dict(child) for child in children]
             
-            return category_dict
+            return category_schema
     
-    async def reorder(self, parent_id: Optional[int], category_ids: List[int]) -> List[Dict[str, Any]]:
+    async def reorder(self, parent_id: Optional[int], category_ids: List[int]) -> List[Dict[CategoryDetailResponse]]:
         """重新排序分类
         
         Args:
@@ -450,20 +444,6 @@ class CategoryRepository(BaseRepository):
             updated_categories = []
             for category_id in category_ids:
                 category = category_map[category_id]
-                updated_categories.append(self.model_to_dict(category))
+                updated_categories.append(self.to_schema(category))
             
             return updated_categories
-
-    # def model_to_dict(self, model) -> Dict[str, Any]:
-    #     """将模型对象转换为字典
-        
-    #     Args:
-    #         model: 模型对象
-            
-    #     Returns:
-    #         Dict[str, Any]: 字典表示
-    #     """
-    #     result = {}
-    #     for column in model.__table__.columns:
-    #         result[column.name] = getattr(model, column.name)
-    #     return result 

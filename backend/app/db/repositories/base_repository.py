@@ -10,12 +10,12 @@ from pydantic import BaseModel
 from ...core.database import Base, async_get_db, AsyncSessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 from ...schemas.base import BaseSchema, DeleteResponse
-from ...schemas.responses.user import UserResponse
-from ...schemas.responses.post import PostResponse
-from ...schemas.responses.comment import CommentResponse
-from ...schemas.responses.category import CategoryResponse
-from ...schemas.responses.section import SectionResponse
-from ...schemas.responses.tag import TagResponse
+# from ...schemas.responses.user import UserResponse
+# from ...schemas.responses.post import PostResponse
+# from ...schemas.responses.comment import CommentResponse
+# from ...schemas.responses.category import CategoryResponse
+# from ...schemas.responses.section import SectionResponse
+# from ...schemas.responses.tag import TagResponse
 
 ModelType = TypeVar("ModelType", bound=Base) # type: ignore
 SchemaType = TypeVar("SchemaType", bound=BaseSchema)
@@ -47,11 +47,7 @@ class BaseRepository(Generic[ModelType, SchemaType]):
         if not model_instance:
             return None
         
-        # 将SQLAlchemy模型实例转换为字典
-        model_dict = {c.name: getattr(model_instance, c.name) for c in model_instance.__table__.columns}
-        
-        # 使用模型字典创建schema实例
-        return self.schema(**model_dict)
+        return self.schema.model_validate(model_instance)
     
     async def create(self, data: Union[Dict[str, Any], CreateSchemaType]) -> SchemaType:
         """创建记录
