@@ -19,7 +19,8 @@ import logging
 from datetime import datetime
 
 from ..core.base_service import BaseService
-from ..db.models import Post, Tag, VoteType
+from ..db.models import Post, Tag
+from ..core.enums import VoteType
 from ..db.repositories.post_repository import PostRepository
 from ..core.exceptions import BusinessException, BusinessErrorCode
 from ..services.favorite_service import FavoriteService

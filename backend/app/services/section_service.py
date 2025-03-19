@@ -4,6 +4,21 @@ import logging
 
 from ..db.repositories.section_repository import SectionRepository
 from ..core.exceptions import BusinessException
+from ..schemas.inputs.section import SectionCreate, SectionUpdate, SectionDelete, SectionRestore, SectionModeratorAdd, SectionModeratorRemove, SectionModeratorRestore
+from ..schemas.responses.section import (
+    SectionDetailResponse, 
+    SectionListResponse, 
+    SectionCreateResponse, 
+    SectionUpdateResponse, 
+    SectionDeleteResponse, 
+    SectionRestoreResponse, 
+    SectionModeratorAddResponse, 
+    SectionModeratorRemoveResponse, 
+    SectionModeratorRestoreResponse, 
+    SectionPostListResponse, 
+    SectionModeratorListResponse,
+    SectionModeratorList
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +32,7 @@ class SectionService:
         """初始化版块服务"""
         self.section_repository = SectionRepository()
     
-    async def get_section_detail(self, section_id: int, include_deleted: bool = False) -> Dict[str, Any]:
+    async def get_section_detail(self, section_id: int, include_deleted: bool = False) -> SectionDetailResponse:
         """获取版块详情
         
         Args:
@@ -41,7 +56,7 @@ class SectionService:
             
         return section
     
-    async def get_sections(self, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_sections(self, skip: int = 0, limit: int = 100) -> Tuple[SectionListResponse, int]:
         """获取版块列表
         
         Args:
@@ -53,7 +68,7 @@ class SectionService:
         """
         return await self.section_repository.get_all(skip, limit)
     
-    async def create_section(self, section_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_section(self, section_data: SectionCreate) -> SectionDetailResponse:
         """创建版块
         
         Args:
@@ -91,7 +106,7 @@ class SectionService:
                 message="创建版块失败"
             )
     
-    async def update_section(self, section_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_section(self, section_id: int, data: SectionUpdate) -> SectionDetailResponse:
         """更新版块
         
         Args:
@@ -142,7 +157,7 @@ class SectionService:
                 message="更新版块失败"
             )
     
-    async def delete_section(self, section_id: int) -> Dict[str, Any]:
+    async def delete_section(self, section_id: int) -> SectionDeleteResponse:
         """删除版块
         
         Args:
@@ -177,7 +192,7 @@ class SectionService:
                 message="删除版块失败"
             )
     
-    async def restore_section(self, section_id: int) -> Dict[str, Any]:
+    async def restore_section(self, section_id: int) -> SectionDetailResponse:
         """恢复已删除的版块
         
         Args:
@@ -212,7 +227,7 @@ class SectionService:
                 message="恢复版块失败"
             )
     
-    async def add_moderator(self, section_id: int, user_id: int) -> Dict[str, Any]:
+    async def add_moderator(self, section_id: int, user_id: int) -> SectionModeratorAddResponse:
         """添加版主
         
         Args:
@@ -248,7 +263,7 @@ class SectionService:
                 message="添加版主失败"
             )
     
-    async def remove_moderator(self, section_id: int, user_id: int) -> Dict[str, Any]:
+    async def remove_moderator(self, section_id: int, user_id: int) -> SectionModeratorRemoveResponse:
         """移除版主
         
         Args:
@@ -284,7 +299,7 @@ class SectionService:
                 message="移除版主失败"
             )
     
-    async def restore_moderator(self, section_id: int, user_id: int) -> Dict[str, Any]:
+    async def restore_moderator(self, section_id: int, user_id: int) -> SectionModeratorRestoreResponse:
         """恢复版主
         
         Args:
@@ -320,7 +335,7 @@ class SectionService:
                 message="恢复版主失败"
             )
     
-    async def get_section_posts(self, section_id: int, skip: int = 0, limit: int = 20) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_section_posts(self, section_id: int, skip: int = 0, limit: int = 20) -> Tuple[List[SectionDetailResponse], int]:
         """获取版块下的帖子
         
         Args:
@@ -349,7 +364,7 @@ class SectionService:
                 message="获取版块帖子失败"
             )
     
-    async def get_section_moderators(self, section_id: int) -> List[Dict[str, Any]]:
+    async def get_section_moderators(self, section_id: int) -> SectionModeratorList:
         """获取版块的版主列表
         
         Args:

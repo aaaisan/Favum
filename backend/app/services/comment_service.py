@@ -3,6 +3,8 @@ import logging
 
 from ..db.repositories.comment_repository import CommentRepository
 from ..core.exceptions import BusinessException
+from ..schemas.inputs.comment import CommentCreate, CommentUpdate
+from ..schemas.responses.comment import CommentDetailResponse, CommentListResponse, CommentDeleteResponse
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class CommentService:
         """初始化评论服务"""
         self.comment_repository = CommentRepository()
     
-    async def get_comment_detail(self, comment_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
+    async def get_comment_detail(self, comment_id: int, include_deleted: bool = False) -> Optional[CommentDetailResponse]:
         """获取评论详情
         
         Args:
@@ -46,7 +48,7 @@ class CommentService:
         skip: int = 0, 
         limit: int = 100,
         include_deleted: bool = False
-    ) -> Tuple[List[Dict[str, Any]], int]:
+    ) -> Tuple[CommentListResponse, int]:
         """获取帖子下的评论列表
         
         Args:
@@ -65,7 +67,7 @@ class CommentService:
             include_deleted=include_deleted
         )
     
-    async def create_comment(self, comment_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_comment(self, comment_data: CommentCreate) -> CommentDetailResponse:
         """创建新评论
         
         Args:
@@ -107,7 +109,7 @@ class CommentService:
                 message="创建评论失败"
             )
     
-    async def update_comment(self, comment_id: int, user_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_comment(self, comment_id: int, user_id: int, data: CommentUpdate) -> CommentDetailResponse:
         """更新评论
         
         Args:
@@ -157,7 +159,7 @@ class CommentService:
             
         return updated_comment
     
-    async def delete_comment(self, comment_id: int, user_id: int, is_admin: bool = False) -> Dict[str, Any]:
+    async def delete_comment(self, comment_id: int, user_id: int, is_admin: bool = False) -> CommentDeleteResponse:
         """删除评论
         
         Args:
@@ -199,7 +201,7 @@ class CommentService:
             
         return {"message": "评论已删除", "id": comment_id}
     
-    async def restore_comment(self, comment_id: int) -> Dict[str, Any]:
+    async def restore_comment(self, comment_id: int) -> CommentDetailResponse:
         """恢复已删除的评论
         
         Args:

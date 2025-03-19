@@ -151,7 +151,7 @@ class CategoryRepository(BaseRepository):
             except SQLAlchemyError as e:
                 raise e
     
-    async def create(self, category_data: CategoryCreate) -> Dict[str, Any]:
+    async def create(self, category_data: CategoryCreate) -> CategoryCreate:
         """创建分类
         
         Args:

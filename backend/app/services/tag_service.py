@@ -3,6 +3,8 @@ import logging
 
 from ..db.repositories.tag_repository import TagRepository
 from ..core.exceptions import BusinessException
+from ..schemas.inputs.tag import TagCreate, TagUpdate
+from ..schemas.responses.tag import TagDetailResponse, TagResponse, TagDeleteResponse, TagWithPostsResponse
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class TagService:
         """初始化标签服务"""
         self.tag_repository = TagRepository()
     
-    async def get_tag_detail(self, tag_id: int, include_deleted: bool = False) -> Dict[str, Any]:
+    async def get_tag_detail(self, tag_id: int, include_deleted: bool = False) -> TagDetailResponse:
         """获取标签详情
         
         Args:
@@ -40,7 +42,7 @@ class TagService:
             
         return tag
     
-    async def get_tag_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+    async def get_tag_by_name(self, name: str) -> Optional[TagDetailResponse]:
         """根据名称获取标签
         
         Args:
@@ -51,7 +53,7 @@ class TagService:
         """
         return await self.tag_repository.get_by_name(name)
     
-    async def get_tags(self, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_tags(self, skip: int = 0, limit: int = 100) -> Tuple[TagDetailResponse, int]:
         """获取标签列表
         
         Args:
@@ -63,7 +65,7 @@ class TagService:
         """
         return await self.tag_repository.get_all(skip, limit)
     
-    async def get_popular_tags(self, limit: int = 10) -> List[Dict[str, Any]]:
+    async def get_popular_tags(self, limit: int = 10) -> List[TagResponse]:
         """获取热门标签
         
         Args:
@@ -74,7 +76,7 @@ class TagService:
         """
         return await self.tag_repository.get_popular_tags(limit)
     
-    async def get_recent_tags(self, limit: int = 10) -> List[Dict[str, Any]]:
+    async def get_recent_tags(self, limit: int = 10) -> List[TagResponse]:
         """获取最近使用的标签
         
         Args:
@@ -85,7 +87,7 @@ class TagService:
         """
         return await self.tag_repository.get_recent_tags(limit)
     
-    async def create_tag(self, tag_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_tag(self, tag_data: TagCreate) -> TagDetailResponse:
         """创建标签
         
         Args:
@@ -121,7 +123,7 @@ class TagService:
                 message="创建标签失败"
             )
     
-    async def update_tag(self, tag_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_tag(self, tag_id: int, data: TagUpdate) -> TagDetailResponse:
         """更新标签
         
         Args:
@@ -165,7 +167,7 @@ class TagService:
                 message="更新标签失败"
             )
     
-    async def delete_tag(self, tag_id: int) -> Dict[str, Any]:
+    async def delete_tag(self, tag_id: int) -> TagDeleteResponse:
         """删除标签
         
         Args:
@@ -200,7 +202,7 @@ class TagService:
                 message="删除标签失败"
             )
     
-    async def restore_tag(self, tag_id: int) -> Dict[str, Any]:
+    async def restore_tag(self, tag_id: int) -> TagDetailResponse:
         """恢复已删除的标签
         
         Args:
@@ -270,7 +272,7 @@ class TagService:
                 message="更新标签统计信息失败"
             )
     
-    async def get_posts_by_tag(self, tag_id: int, skip: int = 0, limit: int = 20) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_posts_by_tag(self, tag_id: int, skip: int = 0, limit: int = 20) -> Tuple[TagWithPostsResponse, int]:
         """获取指定标签的帖子
         
         Args:

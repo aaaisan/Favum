@@ -26,6 +26,9 @@ from ..core.security import get_password_hash, verify_password
 from ..core.exceptions import BusinessError
 from ..core.logging import get_logger
 from ..core.config import settings
+from ..schemas.responses.user import UserResponse, UserInfoResponse
+from ..schemas.inputs.user import UserCreate, UserUpdate
+from ..schemas.responses.post import PostListResponse
 # 导入邮件任务
 from ..tasks.email import send_welcome_email, send_reset_password_email, send_verification_email
 
@@ -54,7 +57,7 @@ class UserService(BaseService):
         self.repository = user_repository
         self.post_repository = post_repository
     
-    async def authenticate(self, username: str, password: str) -> Optional[Dict[str, Any]]:
+    async def authenticate(self, username: str, password: str) -> Optional[UserRepository]:
         """验证用户凭据
         
         Args:
@@ -84,7 +87,7 @@ class UserService(BaseService):
             
         return user
     
-    async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_user(self, user_data: UserCreate) -> UserInfoResponse:
         """创建新用户
         
         处理用户名和邮箱的唯一性校验、密码哈希等业务规则
@@ -197,7 +200,7 @@ class UserService(BaseService):
         logger.info(f"用户 {user['username']} 成功验证邮箱")
         return True
         
-    async def update_user(self, user_id: int, user_data: Dict[str, Any], current_user_id: int = None) -> Optional[Dict[str, Any]]:
+    async def update_user(self, user_id: int, user_data: UserUpdate, current_user_id: int = None) -> Optional[UserResponse]:
         """更新用户信息
         
         处理密码更新、邮箱唯一性检查等业务规则
@@ -232,7 +235,7 @@ class UserService(BaseService):
         # 更新用户信息
         return await self.update(user_id, user_data)
         
-    async def get_user_posts(self, user_id: int, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_user_posts(self, user_id: int, skip: int = 0, limit: int = 100) -> Tuple[PostListResponse, int]:
         """获取用户的帖子列表
         
         Args:
@@ -316,7 +319,7 @@ class UserService(BaseService):
         # 执行软删除
         return await self.repository.soft_delete(user_id)
     
-    async def restore_user(self, user_id: int) -> Dict[str, Any]:
+    async def restore_user(self, user_id: int) -> UserResponse:
         """恢复已删除的用户
         
         Args:
@@ -342,7 +345,7 @@ class UserService(BaseService):
         restored_user = await self.repository.get_by_id(user_id)
         return restored_user
         
-    async def get_user_profile(self, user_id: int) -> Dict[str, Any]:
+    async def get_user_profile(self, user_id: int) -> UserInfoResponse:
         """获取用户的详细资料
         
         获取用户的详细资料，包括基本信息和统计数据（帖子数、评论数等）
@@ -367,7 +370,7 @@ class UserService(BaseService):
             
         return user_profile 
     
-    async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_by_id(self, user_id: int) -> Optional[UserResponse]:
         """通过ID获取用户信息
         
         Args:

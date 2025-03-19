@@ -3,6 +3,8 @@ import logging
 
 from ..db.repositories.category_repository import CategoryRepository
 from ..core.exceptions import BusinessException
+from ..schemas.inputs.category import CategoryBase, CategoryCreate, CategoryUpdate
+from ..schemas.responses.category import CategoryDetailResponse, CategoryDeleteResponse, CategoryListResponse
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ class CategoryService:
         """初始化分类服务"""
         self.category_repository = CategoryRepository()
     
-    async def get_category_detail(self, category_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
+    async def get_category_detail(self, category_id: int, include_deleted: bool = False) -> Optional[CategoryDetailResponse]:
         """获取分类详情
         
         Args:
@@ -33,7 +35,7 @@ class CategoryService:
             logger.error(f"获取分类详情失败，分类ID: {category_id}, 错误: {str(e)}", exc_info=True)
             return None
     
-    async def get_category_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+    async def get_category_by_name(self, name: str) -> Optional[CategoryDetailResponse]:
         """根据名称获取分类
         
         Args:
@@ -44,7 +46,7 @@ class CategoryService:
         """
         return await self.category_repository.get_by_name(name)
     
-    async def get_categories(self, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+    async def get_categories(self, skip: int = 0, limit: int = 100) -> Tuple[List[CategoryBase], int]:
         """获取分类列表
         
         Args:
@@ -52,11 +54,11 @@ class CategoryService:
             limit: 返回的最大记录数
             
         Returns:
-            Tuple[List[Dict[str, Any]], int]: 分类列表和总数
+            Tuple[List[CategoryBase], int]: 分类列表和总数
         """
         return await self.category_repository.get_all(skip, limit)
     
-    async def create_category(self, category_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_category(self, category_data: CategoryCreate) -> CategoryCreate:
         """创建分类
         
         Args:
@@ -92,7 +94,7 @@ class CategoryService:
                 message="创建分类失败"
             )
     
-    async def update_category(self, category_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_category(self, category_id: int, data: CategoryUpdate) -> CategoryRepository:
         """更新分类
         
         Args:
@@ -136,7 +138,7 @@ class CategoryService:
                 message="更新分类失败"
             )
     
-    async def delete_category(self, category_id: int) -> Dict[str, Any]:
+    async def delete_category(self, category_id: int) -> CategoryDeleteResponse:
         """删除分类
         
         Args:
@@ -171,7 +173,7 @@ class CategoryService:
                 message="删除分类失败"
             )
     
-    async def restore_category(self, category_id: int) -> Dict[str, Any]:
+    async def restore_category(self, category_id: int) -> CategoryDetailResponse:
         """恢复已删除的分类
         
         Args:
@@ -223,7 +225,7 @@ class CategoryService:
                 message="恢复分类失败"
             )
     
-    async def reorder_categories(self, parent_id: Optional[int], category_ids: List[int]) -> List[Dict[str, Any]]:
+    async def reorder_categories(self, parent_id: Optional[int], category_ids: List[int]) -> CategoryListResponse:
         """重新排序分类
         
         Args:

@@ -29,7 +29,8 @@ from ...schemas.responses.post import (
 )
 from ...core.auth import get_current_user
 from ...core.permissions import require_active_user
-from ...db.models import User, VoteType
+from ...db.models import User
+from ...core.enums import VoteType
 from ...core.logging import get_logger
 
 logger = get_logger(__name__) 

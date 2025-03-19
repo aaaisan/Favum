@@ -2,7 +2,8 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, UniqueCons
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-from .base import Base, VoteType
+from .base import Base
+from ...core.enums import VoteType
 
 class PostVote(Base):
     __tablename__ = "post_votes"

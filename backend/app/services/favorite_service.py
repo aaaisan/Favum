@@ -5,6 +5,8 @@ import logging
 from ..db.repositories.favorite_repository import FavoriteRepository
 from ..db.repositories.post_repository import PostRepository
 from ..core.exceptions import BusinessException
+from ..schemas.responses.favorite import FavoriteListResponse, FavoriteDetailResponse, FavoriteDeleteResponse
+from ..schemas.inputs.favorite import FavoriteCreate, FavoriteDelete
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,7 @@ class FavoriteService:
         self.favorite_repository = FavoriteRepository()
         self.post_repository = PostRepository()
     
-    async def get_user_favorites(self, user_id: int, skip: int = 0, limit: int = 100, only_public: bool = False) -> Dict[str, Any]:
+    async def get_user_favorites(self, user_id: int, skip: int = 0, limit: int = 100, only_public: bool = False) -> FavoriteListResponse:
         """获取用户收藏的帖子列表
         
         Args:
@@ -65,7 +67,7 @@ class FavoriteService:
             # 在查询状态时，如果发生错误，默认返回未收藏状态
             return False
     
-    async def add_favorite(self, post_id: int, user_id: int) -> Dict[str, Any]:
+    async def add_favorite(self, post_id: int, user_id: int) -> FavoriteDetailResponse:
         """添加帖子到用户收藏
         
         Args:
@@ -92,7 +94,7 @@ class FavoriteService:
                 message="添加收藏失败"
             )
     
-    async def remove_favorite(self, post_id: int, user_id: int) -> Dict[str, Any]:
+    async def remove_favorite(self, post_id: int, user_id: int) -> FavoriteDeleteResponse:
         """从用户收藏中移除帖子
         
         Args:
@@ -135,7 +137,7 @@ class FavoriteService:
             logger.error(f"检查帖子存在性失败: {str(e)}")
             return False
     
-    async def get_favorite(self, post_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_favorite(self, post_id: int, user_id: int) -> Optional[FavoriteDetailResponse]:
         """获取收藏记录
         
         Args:
@@ -151,7 +153,7 @@ class FavoriteService:
             logger.error(f"获取收藏记录失败: {str(e)}")
             return None
     
-    async def favorite_post(self, post_id: int, user_id: int) -> Dict[str, Any]:
+    async def favorite_post(self, favorite_data: FavoriteCreate) -> FavoriteDetailResponse:
         """收藏帖子
         
         Args:
@@ -166,7 +168,7 @@ class FavoriteService:
         """
         try:
             # 添加收藏
-            result = await self.favorite_repository.add_favorite(post_id, user_id)
+            result = await self.favorite_repository.add_favorite(favorite_data.post_id, favorite_data.user_id)
             
             if not result.get("success"):
                 raise BusinessException(
@@ -176,7 +178,7 @@ class FavoriteService:
                 )
             
             # 获取收藏记录
-            favorite = await self.get_favorite(post_id, user_id)
+            favorite = await self.get_favorite(favorite_data.post_id, favorite_data.user_id)
             if not favorite:
                 raise BusinessException(
                     status_code=500,

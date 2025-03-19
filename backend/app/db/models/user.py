@@ -2,7 +2,8 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-from .base import Base, UserRole
+from .base import Base
+from app.core.enums import Role
 
 class User(Base):
     __tablename__ = "users"
@@ -12,7 +13,7 @@ class User(Base):
     email = Column(String(100), unique=True, index=True)
     hashed_password = Column(String(255))
     is_active = Column(Boolean, default=True)
-    role = Column(String(20), default=UserRole.USER)
+    role = Column(String(20), default=Role.USER)
     avatar_url = Column(String(255), nullable=True)  # 用户头像URL
     bio = Column(Text, nullable=True)  # 用户简介
     created_at = Column(DateTime, default=datetime.now)
