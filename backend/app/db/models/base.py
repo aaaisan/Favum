@@ -1,7 +1,7 @@
 from __future__ import annotations
 # from sqlalchemy import Integer, String, Text, ForeignKey, DateTime, Boolean, Enum, Table, func
 # from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, Enum, Table, func
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from datetime import timezone, timedelta
 # from datetime import datetime, timezone, timedelta
 import enum
@@ -13,12 +13,12 @@ CHINA_TZ = timezone(timedelta(hours=8))
 Base = declarative_base()
 
 # 用户角色枚举
-class UserRole(str, enum.Enum):
-    ADMIN = "admin"
-    MODERATOR = "moderator"
-    USER = "user"
+# class UserRole(str, enum.Enum):
+#     ADMIN = "admin"
+#     MODERATOR = "moderator"
+#     USER = "user"
 
-# 点赞类型枚举
-class VoteType(str, enum.Enum):
-    UPVOTE = "upvote"    # 点赞
-    DOWNVOTE = "downvote"  # 反对 
+# # 点赞类型枚举
+# class VoteType(str, enum.Enum):
+#     UPVOTE = "upvote"    # 点赞
+#     DOWNVOTE = "downvote"  # 反对 

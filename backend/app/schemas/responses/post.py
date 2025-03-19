@@ -4,26 +4,9 @@ from pydantic import BaseModel, ConfigDict
 from ..base import BaseSchema, DeleteResponse
 from .user import UserInfoResponse
 from .comment import CommentResponse
-
-class TagInfo(BaseSchema):
-    """标签信息模型"""
-    name: str
-    
-    model_config = ConfigDict(from_attributes=True)
-
-class CategoryInfo(BaseSchema):
-    """分类信息模型"""
-    name: str
-    description: Optional[str] = None
-    
-    model_config = ConfigDict(from_attributes=True)
-
-class SectionInfo(BaseSchema):
-    """版块信息模型"""
-    name: str
-    description: Optional[str] = None
-    
-    model_config = ConfigDict(from_attributes=True)
+from .tag import TagResponse
+from .section import SectionResponse
+from .category import CategoryResponse
 
 class PostResponse(BaseSchema):
     """帖子响应模型"""
@@ -38,9 +21,9 @@ class PostResponse(BaseSchema):
     upvote_count: int = 0
     downvote_count: int = 0
     author: Optional[UserInfoResponse] = None
-    category: Optional[CategoryInfo] = None
-    section: Optional[SectionInfo] = None
-    tags: List[TagInfo] = []
+    category: Optional[CategoryResponse] = None
+    section: Optional[SectionResponse] = None
+    tags: List[TagResponse] = []
     
     model_config = ConfigDict(from_attributes=True)
 

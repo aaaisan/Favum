@@ -39,3 +39,8 @@ class Permission(str, Enum):
     MANAGE_CONTENT = "manage_content"
     MANAGE_SECTIONS = "manage_sections"
     MANAGE_SYSTEM = "manage_system" 
+
+class VoteType(str, Enum):
+    """点赞类型枚举"""
+    UPVOTE = "upvote"    # 点赞
+    DOWNVOTE = "downvote"  # 反对

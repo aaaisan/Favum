@@ -55,7 +55,7 @@ class SectionRepository(BaseRepository):
             if section is None:
                 return None
                 
-            return self.model_to_dict(section)
+            return self.to_schema(section)
     
     async def get_all(self, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
         """获取所有版块
@@ -85,7 +85,7 @@ class SectionRepository(BaseRepository):
             total = count_result.scalar() or 0
             
             # 处理结果
-            sections_list = [self.model_to_dict(section) for section in sections]
+            sections_list = [self.to_schema(section) for section in sections]
                 
             return sections_list, total
     
@@ -121,7 +121,7 @@ class SectionRepository(BaseRepository):
             await db.refresh(section)
             
             # 返回创建的版块
-            return self.model_to_dict(section)
+            return self.to_schema(section)
     
     async def update(self, section_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """更新版块
@@ -164,7 +164,7 @@ class SectionRepository(BaseRepository):
             await db.refresh(section)
             
             # 返回更新后的版块
-            return self.model_to_dict(section)
+            return self.to_schema(section)
     
     async def soft_delete(self, section_id: int) -> bool:
         """软删除版块
@@ -233,7 +233,7 @@ class SectionRepository(BaseRepository):
             await db.refresh(section)
             
             # 返回恢复后的版块
-            return self.model_to_dict(section)
+            return self.to_schema(section)
     
     async def add_moderator(self, section_id: int, user_id: int) -> bool:
         """添加版主
@@ -471,7 +471,7 @@ class SectionRepository(BaseRepository):
             posts_list = []
             for post in posts:
                 try:
-                    post_dict = self.model_to_dict(post)
+                    post_obj = self.to_schema(post)
                     
                     # 添加分类信息
                     if post.category:
@@ -481,9 +481,9 @@ class SectionRepository(BaseRepository):
                             "description": post.category.description or "",
                             "created_at": post.category.created_at.isoformat() if hasattr(post.category.created_at, 'isoformat') else post.category.created_at
                         }
-                        post_dict["category"] = category_dict
+                        post_obj.category = category_dict
                     else:
-                        post_dict["category"] = None
+                        post_obj.category = None
                         
                     # 添加版块信息
                     if post.section:
@@ -493,23 +493,23 @@ class SectionRepository(BaseRepository):
                             "description": post.section.description or "",
                             "created_at": post.section.created_at.isoformat() if hasattr(post.section.created_at, 'isoformat') else post.section.created_at
                         }
-                        post_dict["section"] = section_dict
+                        post_obj.section = section_dict
                     else:
-                        post_dict["section"] = None
+                        post_obj.section = None
                         
                     # 添加标签信息
                     if post.tags:
-                        post_dict["tags"] = [{
+                        post_obj.tags = [{
                             "id": tag.id,
                             "name": tag.name,
                             "created_at": tag.created_at.isoformat() if hasattr(tag.created_at, 'isoformat') else tag.created_at,
                             "post_count": tag.post_count if hasattr(tag, 'post_count') else 0
                         } for tag in post.tags]
                     else:
-                        post_dict["tags"] = []
+                        post_obj.tags = []
                     
-                    post_dict["comments"] = None
-                    posts_list.append(post_dict)
+                    post_obj.comments = None
+                    posts_list.append(post_obj)
                 except Exception as e:
                     # 记录错误但继续处理其他帖子
                     import logging
@@ -615,7 +615,8 @@ class SectionRepository(BaseRepository):
                 # 转换为响应对象
                 section_responses = []
                 for section in sections:
-                    section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                    section_obj = self.to_schema(section.__table__.columns)
+                    # section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
                     
                     # 如果需要包含帖子数量
                     if include_post_count:
@@ -627,9 +628,9 @@ class SectionRepository(BaseRepository):
                         )
                         posts_count_result = await db.execute(posts_count_query)
                         posts_count = posts_count_result.scalar_one() or 0
-                        section_dict["posts_count"] = posts_count
+                        section_obj.posts_count = posts_count
                     
-                    section_responses.append(SectionResponse(**section_dict))
+                    section_responses.append(SectionResponse(section_obj))
                 
                 return section_responses, total
             except Exception as e:
@@ -691,11 +692,12 @@ class SectionRepository(BaseRepository):
                         }
                 
                 # 转换为响应对象
-                section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
-                section_dict["posts_count"] = posts_count
-                section_dict["category"] = category_info
+                section_obj = self.to_schema(section.__table__.columns)
+                # section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                section_obj.posts_count = posts_count
+                section_obj.category = category_info
                 
-                return SectionDetailResponse(**section_dict)
+                return SectionDetailResponse(section_obj)
             except Exception as e:
                 logger.error(f"获取版块详情失败: {str(e)}")
                 return None
@@ -733,8 +735,9 @@ class SectionRepository(BaseRepository):
                 await db.refresh(section)
                 
                 # 转换为响应对象
-                section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
-                return SectionResponse(**section_dict)
+                section_obj = self.to_schema(section.__table__.columns)
+                # section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                return SectionResponse(section_obj)
             except Exception as e:
                 await db.rollback()
                 logger.error(f"创建版块失败: {str(e)}")
@@ -796,8 +799,9 @@ class SectionRepository(BaseRepository):
                 await db.refresh(section)
                 
                 # 转换为响应对象
-                section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
-                return SectionResponse(**section_dict)
+                section_obj = self.to_schema(section.__table__.columns)
+                # section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                return SectionResponse(section_obj)
             except Exception as e:
                 await db.rollback()
                 logger.error(f"更新版块失败: {str(e)}")
@@ -875,11 +879,12 @@ class SectionRepository(BaseRepository):
                         category_name = category_result.scalar_one_or_none()
                     
                     # 构建统计对象
-                    section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
-                    section_dict["posts_count"] = posts_count
-                    section_dict["category_name"] = category_name
+                    section_obj = self.to_schema(section.__table__.columns)
+                    # section_dict = {c.name: getattr(section, c.name) for c in section.__table__.columns}
+                    section_obj.posts_count = posts_count
+                    section_obj.category_name = category_name
                     
-                    stats_list.append(SectionStatsResponse(**section_dict))
+                    stats_list.append(SectionStatsResponse(section_obj))
                 
                 # 按照帖子数量降序排序
                 stats_list.sort(key=lambda x: x.posts_count, reverse=True)

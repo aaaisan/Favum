@@ -66,7 +66,7 @@ class FavoriteRepository(BaseRepository):
             posts = result.scalars().all()
             
             # 转换帖子为字典形式
-            posts_list = [self.model_to_dict(post) for post in posts]
+            posts_list = [self.to_schema(post) for post in posts]
             
             return posts_list, total
     
@@ -114,15 +114,16 @@ class FavoriteRepository(BaseRepository):
                 
                 if existing:
                     # 已经收藏过，返回现有记录
-                    favorite_dict = {c.name: getattr(existing, c.name) for c in existing.__table__.columns}
-                    return PostFavoriteResponse(
-                        id=favorite_dict["id"],
-                        user_id=favorite_dict["user_id"],
-                        post_id=favorite_dict["post_id"],
-                        created_at=favorite_dict["created_at"],
-                        is_favorited=True,
-                        message="帖子已经收藏过了"
-                    )
+                    favorite_obj = self.to_schema(existing.__table__.columns)
+                    # favorite_dict = {c.name: getattr(existing, c.name) for c in existing.__table__.columns}
+                    return PostFavoriteResponse(favorite_obj)
+                    #     id=favorite_dict["id"],
+                    #     user_id=favorite_dict["user_id"],
+                    #     post_id=favorite_dict["post_id"],
+                    #     created_at=favorite_dict["created_at"],
+                    #     is_favorited=True,
+                    #     message="帖子已经收藏过了"
+                    # )
                 
                 # 检查帖子是否存在
                 post_query = select(Post).where(
@@ -152,14 +153,14 @@ class FavoriteRepository(BaseRepository):
                 await db.refresh(favorite)
                 
                 # 构建响应
-                return PostFavoriteResponse(
-                    id=favorite.id,
-                    user_id=favorite.user_id,
-                    post_id=favorite.post_id,
-                    created_at=favorite.created_at,
-                    is_favorited=True,
-                    message="帖子收藏成功"
-                )
+                return PostFavoriteResponse(existing.__table__.columns)
+                #     id=favorite.id,
+                #     user_id=favorite.user_id,
+                #     post_id=favorite.post_id,
+                #     created_at=favorite.created_at,
+                #     is_favorited=True,
+                #     message="帖子收藏成功"
+                # )
             except Exception as e:
                 await db.rollback()
                 logger.error(f"添加收藏失败: {str(e)}")
@@ -306,8 +307,9 @@ class FavoriteRepository(BaseRepository):
                 # 转换为响应对象
                 post_responses = []
                 for post in posts:
-                    post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
-                    post_responses.append(PostResponse(**post_dict))
+                    post_obj = self.to_schema(post)
+                    # post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
+                    post_responses.append(PostResponse(post_obj))
                 
                 # 确保按照收藏顺序排序
                 sorted_responses = []

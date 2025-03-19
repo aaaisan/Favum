@@ -66,9 +66,10 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                     return None
                 
                 # 将帖子对象转换为字典
-                post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
+                post_obj = self.to_schema(post)
+                # post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
                 
-                return PostDetailResponse(**post_dict)
+                return PostDetailResponse(post_obj)
             except Exception as e:
                 logger.error(f"获取帖子详情失败: {str(e)}")
                 return None
@@ -159,8 +160,9 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                 # 将查询结果转换为响应模型
                 post_responses = []
                 for post in posts:
-                    post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
-                    post_responses.append(PostResponse(**post_dict))
+                    post_obj = self.to_schema(post)
+                    # post_obj = {c.name: getattr(post, c.name) for c in post.__table__.columns}
+                    post_responses.append(PostResponse(post_obj))
                 
                 return post_responses, total
             except Exception as e:
@@ -201,13 +203,15 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                 tags = tag_result.scalars().all()
                 
                 # 转换为响应对象
-                post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
-                post_response = PostResponse(**post_dict)
+                post_obj = self.to_schema(post)
+                # post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
+                post_response = PostResponse(post_obj)
                 
                 tag_responses = []
                 for tag in tags:
-                    tag_dict = {c.name: getattr(tag, c.name) for c in tag.__table__.columns}
-                    tag_responses.append(TagResponse(**tag_dict))
+                    tag_obj = self.to_schema(tag)
+                    # tag_dict = {c.name: getattr(tag, c.name) for c in tag.__table__.columns}
+                    tag_responses.append(TagResponse(tag_obj))
                 
                 return post_response, tag_responses
             except Exception as e:
@@ -276,8 +280,9 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                 await db.refresh(post)
                 
                 # 转换为响应对象
-                post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
-                return PostResponse(**post_dict)
+                post_obj = self.to_schema(post)
+                # post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
+                return PostResponse(post_obj)
             except SQLAlchemyError as e:
                 await db.rollback()
                 logger.error(f"创建帖子失败: {str(e)}")
@@ -336,8 +341,9 @@ class PostRepository(BaseRepository[Post, PostResponse]):
                 await db.refresh(post)
                 
                 # 转换为响应对象
-                post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
-                return PostResponse(**post_dict)
+                post_obj = self.to_schema(post)
+                # post_dict = {c.name: getattr(post, c.name) for c in post.__table__.columns}
+                return PostResponse(post_obj)
             except SQLAlchemyError as e:
                 await db.rollback()
                 logger.error(f"更新帖子失败: {str(e)}")

@@ -141,8 +141,9 @@ class CategoryRepository(BaseRepository):
                     # 将子分类添加到父分类中
                     category_schema.children = []
                     for child in children:
-                        child_dict = self.model_to_dict(child)
-                        category_schema.children.append(child_dict)
+                        child_obj = self.to_schema(child)
+                        # child_dict = self.model_to_dict(child)
+                        category_schema.children.append(child_obj)
                     
                     categories_data.append(category_schema)
                 

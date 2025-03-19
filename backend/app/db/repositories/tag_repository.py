@@ -44,7 +44,7 @@ class TagRepository(BaseRepository):
             if tag is None:
                 return None
                 
-            return self.model_to_dict(tag)
+            return self.to_schema(tag)
     
     async def get_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """根据名称获取标签
@@ -67,7 +67,7 @@ class TagRepository(BaseRepository):
             if tag is None:
                 return None
                 
-            return self.model_to_dict(tag)
+            return self.to_schema(tag)
     
     async def get_all(self, skip: int = 0, limit: int = 100) -> Tuple[List[Dict[str, Any]], int]:
         """获取所有标签
@@ -137,7 +137,7 @@ class TagRepository(BaseRepository):
             result = await db.execute(query)
             tags = result.scalars().all()
             
-            return [self.model_to_dict(tag) for tag in tags]
+            return [self.to_schema(tag) for tag in tags]
     
     async def get_recent_tags(self, limit: int = 10) -> List[Dict[str, Any]]:
         """获取最近使用的标签
@@ -164,7 +164,7 @@ class TagRepository(BaseRepository):
             result = await db.execute(query)
             tags = result.scalars().all()
             
-            return [self.model_to_dict(tag) for tag in tags]
+            return [self.to_schema(tag) for tag in tags]
     
     async def create(self, tag_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建标签
@@ -198,7 +198,7 @@ class TagRepository(BaseRepository):
             await db.refresh(tag)
             
             # 返回创建的标签
-            return self.model_to_dict(tag)
+            return self.to_schema(tag)
     
     async def update(self, tag_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """更新标签
@@ -241,7 +241,7 @@ class TagRepository(BaseRepository):
             await db.refresh(tag)
             
             # 返回更新后的标签
-            return self.model_to_dict(tag)
+            return self.to_schema(tag)
     
     async def soft_delete(self, tag_id: int) -> bool:
         """软删除标签
@@ -326,7 +326,7 @@ class TagRepository(BaseRepository):
             await db.refresh(tag)
             
             # 返回恢复后的标签
-            return self.model_to_dict(tag)
+            return self.to_schema(tag)
     
     async def update_stats(self, tag_id: int) -> Optional[Dict[str, Any]]:
         """更新标签统计信息
@@ -363,7 +363,7 @@ class TagRepository(BaseRepository):
             await db.refresh(tag)
             
             # 返回更新后的标签
-            return self.model_to_dict(tag)
+            return self.to_schema(tag)
     
     async def get_posts_by_tag(self, tag_id: int, skip: int = 0, limit: int = 20) -> Tuple[List[Dict[str, Any]], int]:
         """获取带有指定标签的帖子
@@ -541,7 +541,7 @@ class TagRepository(BaseRepository):
             total = count_result.scalar() or 0
             
             # 处理结果
-            tags_list = [self.model_to_dict(tag) for tag in tags]
+            tags_list = [self.to_schema(tag) for tag in tags]
                 
             return tags_list, total
     
@@ -642,7 +642,7 @@ class TagRepository(BaseRepository):
                 total = count_result.scalar() or 0
                 
                 # 处理结果
-                return [self.model_to_dict(tag) for tag in tags], total
+                return [self.to_schema(tag) for tag in tags], total
         except Exception as e:
             logger.error(f"关键词搜索标签失败: {str(e)}", exc_info=True)
             return [], 0

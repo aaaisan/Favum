@@ -240,8 +240,9 @@ class UserRepository(BaseRepository[User, UserResponse]):
                 # 转换为字典列表
                 comment_dicts = []
                 for comment in comments:
-                    comment_dict = {c.name: getattr(comment, c.name) for c in comment.__table__.columns}
-                    comment_dicts.append(comment_dict)
+                    comment_obj = self.to_schema(comment)
+                    # comment_dict = {c.name: getattr(comment, c.name) for c in comment.__table__.columns}
+                    comment_dicts.append(comment_obj)
                 
                 return comment_dicts, total
             except Exception as e:

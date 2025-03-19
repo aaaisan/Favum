@@ -1,11 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from enum import Enum
+from app.core.enums import VoteType
 
-class VoteType(str, Enum):
-    """点赞类型枚举"""
-    UPVOTE = "upvote"    # 点赞
-    DOWNVOTE = "downvote"  # 反对
 
 class PostBase(BaseModel):
     """帖子基础输入模型"""

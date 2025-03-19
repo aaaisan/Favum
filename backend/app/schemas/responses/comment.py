@@ -13,7 +13,7 @@ class CommentResponse(BaseSchema):
     reply_count: int = 0
     author: Optional[UserInfoResponse] = None
     replies: List['CommentResponse'] = []
-    
+        
     model_config = ConfigDict(from_attributes=True)
 
 class CommentDetailResponse(CommentResponse):
