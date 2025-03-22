@@ -7,7 +7,7 @@ import logging
 from ..models.category import Category
 from .base_repository import BaseRepository
 from ...core.exceptions import BusinessException, SQLAlchemyError
-from ...schemas.inputs.category import CategoryCreate, CategoryUpdate
+from ...schemas.inputs.category import CategorySchema
 from ...schemas.responses.category import CategoryDetailResponse
 
 logger = logging.getLogger(__name__)
@@ -151,7 +151,7 @@ class CategoryRepository(BaseRepository):
             except SQLAlchemyError as e:
                 raise e
     
-    async def create(self, category_data: CategoryCreate) -> CategoryCreate:
+    async def create(self, category_data: CategorySchema) -> CategorySchema:
         """创建分类
         
         Args:
@@ -213,7 +213,7 @@ class CategoryRepository(BaseRepository):
             
             return category_dict
     
-    async def update(self, category_id: int, data: CategoryUpdate) -> Optional[CategoryDetailResponse]:
+    async def update(self, category_id: int, data: CategorySchema) -> Optional[CategoryDetailResponse]:
         """更新分类
         
         Args:

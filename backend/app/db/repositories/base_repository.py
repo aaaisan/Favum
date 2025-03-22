@@ -10,12 +10,7 @@ from pydantic import BaseModel
 from ...core.database import Base, async_get_db, AsyncSessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 from ...schemas.base import BaseSchema, DeleteResponse
-# from ...schemas.responses.user import UserResponse
-# from ...schemas.responses.post import PostResponse
-# from ...schemas.responses.comment import CommentResponse
-# from ...schemas.responses.category import CategoryResponse
-# from ...schemas.responses.section import SectionResponse
-# from ...schemas.responses.tag import TagResponse
+
 
 ModelType = TypeVar("ModelType", bound=Base) # type: ignore
 SchemaType = TypeVar("SchemaType", bound=BaseSchema)

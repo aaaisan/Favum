@@ -69,7 +69,7 @@ async def get_post_owner(post_id: int, post_service: PostService = Depends(get_p
 @with_error_handling(default_error_message="创建帖子失败")
 async def create_post(
     request: Request,
-    post: post_schema.PostCreate,
+    post: post_schema.PostSchema,
     user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):
@@ -336,7 +336,7 @@ async def read_post(
 async def update_post(
     request: Request,
     post_id: int = Path(..., title="帖子ID", description="要更新的帖子ID"),
-    post: post_schema.PostUpdate = Body(...),
+    post: post_schema.PostSchema = Body(...),
     user: User = Depends(get_current_user),
     post_service: PostService = Depends(get_post_service)
 ):

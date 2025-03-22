@@ -32,7 +32,7 @@ router = APIRouter()
 @admin_endpoint(custom_message="创建标签失败")
 async def create_tag(
     request: Request,
-    tag: tag_schema.TagCreate
+    tag: tag_schema.TagSchema
 ):
     """创建新标签
     
@@ -259,7 +259,7 @@ async def read_tag(
 async def update_tag(
     request: Request,
     tag_id: int,
-    tag: tag_schema.TagUpdate
+    tag: tag_schema.TagSchema
 ):
     """更新标签信息
     

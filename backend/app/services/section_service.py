@@ -4,7 +4,7 @@ import logging
 
 from ..db.repositories.section_repository import SectionRepository
 from ..core.exceptions import BusinessException
-from ..schemas.inputs.section import SectionCreate, SectionUpdate, SectionDelete, SectionRestore, SectionModeratorAdd, SectionModeratorRemove, SectionModeratorRestore
+from ..schemas.inputs.section import SectionSchema
 from ..schemas.responses.section import (
     SectionDetailResponse, 
     SectionListResponse, 
@@ -68,7 +68,7 @@ class SectionService:
         """
         return await self.section_repository.get_all(skip, limit)
     
-    async def create_section(self, section_data: SectionCreate) -> SectionDetailResponse:
+    async def create_section(self, section_data: SectionSchema) -> SectionDetailResponse:
         """创建版块
         
         Args:
@@ -106,7 +106,7 @@ class SectionService:
                 message="创建版块失败"
             )
     
-    async def update_section(self, section_id: int, data: SectionUpdate) -> SectionDetailResponse:
+    async def update_section(self, section_id: int, data: SectionSchema) -> SectionDetailResponse:
         """更新版块
         
         Args:

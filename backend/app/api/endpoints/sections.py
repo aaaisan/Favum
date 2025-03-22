@@ -11,7 +11,7 @@ from ...schemas.responses.section import (
 from ...schemas.responses.post import PostListResponse
 from ...schemas.responses.user import UserListResponse, UserInfoResponse
 
-from ...schemas.inputs.section import SectionCreate, SectionUpdate
+from ...schemas.inputs.section import SectionSchema
 # from ...schemas import post as post_schema
 from ...services.section_service import SectionService
 from ...core.exceptions import BusinessException
@@ -23,7 +23,7 @@ router = APIRouter()
 @admin_endpoint(custom_message="创建版块失败")
 async def create_section(
     request: Request,
-    section: SectionCreate
+    section: SectionSchema
 ):
     """创建新版块
     
@@ -135,7 +135,7 @@ async def read_section(
 async def update_section(
     request: Request,
     section_id: int,
-    section: SectionUpdate
+    section: SectionSchema
 ):
     """更新版块信息
     

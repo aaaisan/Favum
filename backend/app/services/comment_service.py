@@ -3,7 +3,7 @@ import logging
 
 from ..db.repositories.comment_repository import CommentRepository
 from ..core.exceptions import BusinessException
-from ..schemas.inputs.comment import CommentCreate, CommentUpdate
+from ..schemas.inputs.comment import CommentSchema
 from ..schemas.responses.comment import CommentDetailResponse, CommentListResponse, CommentDeleteResponse
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class CommentService:
             include_deleted=include_deleted
         )
     
-    async def create_comment(self, comment_data: CommentCreate) -> CommentDetailResponse:
+    async def create_comment(self, comment_data: CommentSchema) -> CommentDetailResponse:
         """创建新评论
         
         Args:
@@ -109,7 +109,7 @@ class CommentService:
                 message="创建评论失败"
             )
     
-    async def update_comment(self, comment_id: int, user_id: int, data: CommentUpdate) -> CommentDetailResponse:
+    async def update_comment(self, comment_id: int, user_id: int, data: CommentSchema) -> CommentDetailResponse:
         """更新评论
         
         Args:

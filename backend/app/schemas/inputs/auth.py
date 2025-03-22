@@ -1,25 +1,24 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 
+class CaptchaInput(BaseModel):
+    """验证码输入模型"""
+    captcha_id: str  # 验证码ID
+    captcha_code: str  # 验证码
+
 class LoginInput(BaseModel):
     """登录输入模型"""
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6)
 
-class Login(BaseModel):
+class Login(LoginInput, CaptchaInput):
     """登录输入模型（包含验证码）"""
-    username: str
-    password: str
-    captcha_id: str  # 验证码ID
-    captcha_code: str  # 验证码
+    pass
     
-class UserRegister(BaseModel):
+class UserRegister(LoginInput, CaptchaInput):
     """用户注册输入模型"""
-    username: str = Field(..., min_length=3, max_length=50)
-    email: EmailStr
-    password: str = Field(..., min_length=6)
-    captcha_id: str  # 验证码ID
-    captcha_code: str  # 验证码
+    pass
+
 
 class TokenRefreshInput(BaseModel):
     """Token刷新输入模型"""

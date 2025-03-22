@@ -4,7 +4,7 @@ from enum import Enum
 from app.core.enums import VoteType
 
 
-class PostBase(BaseModel):
+class PostSchema(BaseModel):
     """帖子基础输入模型"""
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
@@ -12,17 +12,17 @@ class PostBase(BaseModel):
     section_id: Optional[int] = None
     tags: Optional[List[str]] = []
 
-class PostCreate(PostBase):
-    """帖子创建输入模型"""
-    pass
+# class PostCreate(PostBase):
+#     """帖子创建输入模型"""
+#     pass
 
-class PostUpdate(BaseModel):
-    """帖子更新输入模型"""
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
-    content: Optional[str] = Field(None, min_length=1)
-    category_id: Optional[int] = None
-    section_id: Optional[int] = None
-    tags: Optional[List[str]] = None
+# class PostUpdate(BaseModel):
+#     """帖子更新输入模型"""
+#     title: Optional[str] = Field(None, min_length=1, max_length=200)
+#     content: Optional[str] = Field(None, min_length=1)
+#     category_id: Optional[int] = None
+#     section_id: Optional[int] = None
+#     tags: Optional[List[str]] = None
 
 class PostVoteCreate(BaseModel):
     """帖子投票创建输入模型"""

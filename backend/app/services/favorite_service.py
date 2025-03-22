@@ -6,7 +6,7 @@ from ..db.repositories.favorite_repository import FavoriteRepository
 from ..db.repositories.post_repository import PostRepository
 from ..core.exceptions import BusinessException
 from ..schemas.responses.favorite import FavoriteListResponse, FavoriteDetailResponse, FavoriteDeleteResponse
-from ..schemas.inputs.favorite import FavoriteCreate, FavoriteDelete
+from ..schemas.inputs.favorite import FavoriteSchema
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ class FavoriteService:
             logger.error(f"获取收藏记录失败: {str(e)}")
             return None
     
-    async def favorite_post(self, favorite_data: FavoriteCreate) -> FavoriteDetailResponse:
+    async def favorite_post(self, favorite_data: FavoriteSchema) -> FavoriteDetailResponse:
         """收藏帖子
         
         Args:

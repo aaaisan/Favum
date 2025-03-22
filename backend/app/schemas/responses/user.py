@@ -27,8 +27,8 @@ class UserResponse(UserInfoResponse):
 class UserProfileResponse(UserResponse):
     """用户资料响应模型"""
     bio: Optional[str] = None
-    location: Optional[str] = None
-    website: Optional[str] = None
+    # location: Optional[str] = None
+    # website: Optional[str] = None
     joined_at: datetime
     
     model_config = ConfigDict(from_attributes=True)

@@ -193,7 +193,7 @@ async def read_user(
 async def update_user(
     request: Request,
     user_id: int,
-    user_update: user_schema.UserUpdate,
+    user_update: user_schema.UserSchema,
     user_service: UserService = Depends(get_user_service)
 ):
     """更新用户信息

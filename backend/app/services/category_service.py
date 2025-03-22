@@ -3,7 +3,7 @@ import logging
 
 from ..db.repositories.category_repository import CategoryRepository
 from ..core.exceptions import BusinessException
-from ..schemas.inputs.category import CategoryBase, CategoryCreate, CategoryUpdate
+from ..schemas.inputs.category import CategorySchema
 from ..schemas.responses.category import CategoryDetailResponse, CategoryDeleteResponse, CategoryListResponse
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class CategoryService:
         """
         return await self.category_repository.get_by_name(name)
     
-    async def get_categories(self, skip: int = 0, limit: int = 100) -> Tuple[List[CategoryBase], int]:
+    async def get_categories(self, skip: int = 0, limit: int = 100) -> Tuple[List[CategorySchema], int]:
         """获取分类列表
         
         Args:
@@ -58,7 +58,7 @@ class CategoryService:
         """
         return await self.category_repository.get_all(skip, limit)
     
-    async def create_category(self, category_data: CategoryCreate) -> CategoryCreate:
+    async def create_category(self, category_data: CategorySchema) -> CategorySchema:
         """创建分类
         
         Args:
@@ -94,7 +94,7 @@ class CategoryService:
                 message="创建分类失败"
             )
     
-    async def update_category(self, category_id: int, data: CategoryUpdate) -> CategoryRepository:
+    async def update_category(self, category_id: int, data: CategorySchema) -> CategoryRepository:
         """更新分类
         
         Args:

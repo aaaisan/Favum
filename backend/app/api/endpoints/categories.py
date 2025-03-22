@@ -25,7 +25,7 @@ router = APIRouter()
 @admin_endpoint(custom_message="创建分类失败")
 async def create_category(
     request: Request,
-    category: category_schema.CategoryCreate
+    category: category_schema.CategorySchema
 ):
     """创建新分类
     
@@ -140,7 +140,7 @@ async def read_category(
 async def update_category(
     request: Request,
     category_id: int,
-    category: category_schema.CategoryUpdate
+    category: category_schema.CategorySchema
 ):
     """更新分类信息
     

@@ -3,7 +3,7 @@ import logging
 
 from ..db.repositories.tag_repository import TagRepository
 from ..core.exceptions import BusinessException
-from ..schemas.inputs.tag import TagCreate, TagUpdate
+from ..schemas.inputs.tag import TagSchema
 from ..schemas.responses.tag import TagDetailResponse, TagResponse, TagDeleteResponse, TagWithPostsResponse
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class TagService:
         """
         return await self.tag_repository.get_recent_tags(limit)
     
-    async def create_tag(self, tag_data: TagCreate) -> TagDetailResponse:
+    async def create_tag(self, tag_data: TagSchema) -> TagDetailResponse:
         """创建标签
         
         Args:
@@ -123,7 +123,7 @@ class TagService:
                 message="创建标签失败"
             )
     
-    async def update_tag(self, tag_id: int, data: TagUpdate) -> TagDetailResponse:
+    async def update_tag(self, tag_id: int, data: TagSchema) -> TagDetailResponse:
         """更新标签
         
         Args:

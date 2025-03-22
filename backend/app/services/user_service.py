@@ -27,7 +27,7 @@ from ..core.exceptions import BusinessError
 from ..core.logging import get_logger
 from ..core.config import settings
 from ..schemas.responses.user import UserResponse, UserInfoResponse
-from ..schemas.inputs.user import UserCreate, UserUpdate
+from ..schemas.inputs.user import UserCreate
 from ..schemas.responses.post import PostListResponse
 # 导入邮件任务
 from ..tasks.email import send_welcome_email, send_reset_password_email, send_verification_email
@@ -78,11 +78,11 @@ class UserService(BaseService):
             return None
             
         # 检查用户是否被禁用
-        if not user.get("is_active", False):
+        if not user.is_active:
             return None
             
         # 验证密码
-        if not verify_password(password, user.get("hashed_password", "")):
+        if not verify_password(password, user.hashed_password):
             return None
             
         return user
@@ -102,26 +102,25 @@ class UserService(BaseService):
             BusinessError: 当用户名或邮箱已存在时
         """
         # 检查用户名是否已存在
-        existing_user = await self.repository.get_by_username(user_data.get("username"))
+        existing_user = await self.repository.get_by_username(user_data.username)
         if existing_user:
             raise BusinessError(message="用户名已存在", code="username_exists")
             
         # 检查邮箱是否已存在
-        existing_email = await self.repository.get_by_email(user_data.get("email"))
+        existing_email = await self.repository.get_by_email(user_data.email)
         if existing_email:
             raise BusinessError(message="邮箱已被注册", code="email_exists")
             
         # 处理密码 - 转换为哈希密码
         if "password" in user_data:
-            hashed_password = get_password_hash(user_data.pop("password"))
-            user_data["hashed_password"] = hashed_password
+            user_data.hashed_password = get_password_hash(user_data.password)
             
         # 设置默认值
         if "role" not in user_data:
-            user_data["role"] = "user"  # 默认普通用户角色
+            user_data.role = "user"  # 默认普通用户角色
             
         # 新用户默认为未激活状态，需要通过邮箱验证激活
-        user_data["is_active"] = False
+        user_data.is_active = False
             
         # 创建用户
         new_user = await self.create(user_data)
@@ -130,16 +129,16 @@ class UserService(BaseService):
         verify_token = self._generate_token()
         
         # 存储令牌到Redis
-        await self.repository.set_verification_token(user_data.get("email"), verify_token, expires=172800)  # 48小时有效
+        await self.repository.set_verification_token(user_data.email, verify_token, expires=172800)  # 48小时有效
         
         # 发送验证邮件
         try:
             await send_verification_email.delay(
-                user_email=user_data.get("email"),
-                username=user_data.get("username"),
+                user_email=user_data.email,
+                username=user_data.username,
                 verify_token=verify_token
             )
-            logger.info(f"已为用户 {user_data.get('username')} 发送邮箱验证邮件")
+            logger.info(f"已为用户 {user_data.username} 发送邮箱验证邮件")
         except Exception as e:
             # 邮件发送失败不影响用户注册流程
             logger.error(f"邮箱验证邮件发送失败: {str(e)}")
@@ -147,10 +146,10 @@ class UserService(BaseService):
         # 发送欢迎邮件
         try:
             await send_welcome_email.delay(
-                user_email=user_data.get("email"),
-                username=user_data.get("username")
+                user_email=user_data.email,
+                username=user_data.username
             )
-            logger.info(f"已为用户 {user_data.get('username')} 发送欢迎邮件")
+            logger.info(f"已为用户 {user_data.username} 发送欢迎邮件")
         except Exception as e:
             # 邮件发送失败不影响用户注册流程
             logger.error(f"欢迎邮件发送失败: {str(e)}")
@@ -200,7 +199,7 @@ class UserService(BaseService):
         logger.info(f"用户 {user['username']} 成功验证邮箱")
         return True
         
-    async def update_user(self, user_id: int, user_data: UserUpdate, current_user_id: int = None) -> Optional[UserResponse]:
+    async def update_user(self, user_id: int, user_data: UserCreate, current_user_id: int = None) -> Optional[UserResponse]:
         """更新用户信息
         
         处理密码更新、邮箱唯一性检查等业务规则

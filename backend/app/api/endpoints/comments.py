@@ -8,7 +8,7 @@ from ...core.exceptions import BusinessException, NotFoundError, RequestDataErro
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.decorators.error import with_error_handling
 from ...dependencies import get_comment_service
-from ...schemas.inputs.comment import CommentCreate, CommentUpdate
+from ...schemas.inputs.comment import CommentSchema
 from ...schemas.responses.comment import CommentResponse, CommentListResponse, CommentDeleteResponse
 # from ..responses import (
 #     CommentResponse,
@@ -52,7 +52,7 @@ async def get_comment_owner(comment_id: int, comment_service: CommentService = D
 @with_error_handling(default_error_message="创建评论失败")
 async def create_comment(
     request: Request,
-    comment: CommentCreate,
+    comment: CommentSchema,
     user: User = Depends(get_current_user),
     comment_service: CommentService = Depends(get_comment_service)
 ):
@@ -123,7 +123,7 @@ async def read_comment(
 async def update_comment(
     request: Request,
     comment_id: int,
-    comment: CommentUpdate,
+    comment: CommentSchema,
     user: User = Depends(get_current_user),
     comment_service: CommentService = Depends(get_comment_service)
 ):
