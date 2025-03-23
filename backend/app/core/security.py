@@ -19,7 +19,7 @@ from ..core.config import settings
 # from ..schemas.inputs import auth as auth_schema
 # from ..core.database import get_db
 from ..db.repositories.user_repository import UserRepository
-
+from ..db.models import User
 """
 安全相关功能模块
 提供密码加密、JWT令牌生成和验证、用户认证等功能
@@ -61,7 +61,7 @@ def get_password_hash(password: str) -> str:
     """
     return pwd_context.hash(password)
 
-async def authenticate_user(username: str, password: str) -> Union[Dict[str, Any], bool]:
+async def authenticate_user(username: str, password: str) -> Union[Optional[User], bool]:
     """
     验证用户凭据
     
@@ -74,11 +74,14 @@ async def authenticate_user(username: str, password: str) -> Union[Dict[str, Any
     """
     user_repository = UserRepository()
     user = await user_repository.get_by_username(username=username)
+    print(user.username)
+    print(user.role)
+    print(type(user))
+    print(user.hashed_password)
     if not user:
         return False
-    if not verify_password(password, user["hashed_password"]):
+    if not verify_password(password, user.hashed_password):
         return False
-    
     # 直接返回用户字典
     return user
 

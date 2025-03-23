@@ -221,15 +221,14 @@ class UserService(BaseService):
             return None
             
         # 检查邮箱唯一性
-        if "email" in user_data and user_data["email"] != user["email"]:
-            existing = await self.repository.get_by_email(user_data["email"])
-            if existing and existing["id"] != user_id:
+        if "email" in user_data and user_data.email != user.email:
+            existing = await self.repository.get_by_email(user_data.email)
+            if existing:
                 raise BusinessError(message="邮箱已被其他用户使用", code="email_exists")
                 
         # 处理密码更新
         if "password" in user_data:
-            hashed_password = get_password_hash(user_data.pop("password"))
-            user_data["hashed_password"] = hashed_password
+            user_data.hashed_password = get_password_hash(user_data.pop("password"))
             
         # 更新用户信息
         return await self.update(user_id, user_data)

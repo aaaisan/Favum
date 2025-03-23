@@ -667,6 +667,7 @@ async def get_api_key(
     """
     try:
         user = await authenticate_user(username, password)
+        # print(user)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -674,17 +675,20 @@ async def get_api_key(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        # print(user.role)
         # 获取用户角色和权限
-        role_name = user["role"] if isinstance(user, dict) else user.role
+        role_name = user.role
+        # print(role_name)
         if hasattr(role_name, 'value'):
             role_name = role_name.value
+        
         
         role = getattr(Role, role_name.upper(), Role.USER)
         permissions = [p for p in permission_checker.role_permissions[role]]
         
         # 获取用户ID和用户名
-        user_id = user["id"] if isinstance(user, dict) else user.id
-        username = user["username"] if isinstance(user, dict) else user.username
+        user_id = user.id
+        username = user.username
         
         # 生成访问令牌
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

@@ -20,7 +20,7 @@ class UserResponse(UserInfoResponse):
     comment_count: int = 0
     vote_count: int = 0
     favorite_count: int = 0
-    is_banned: bool = False
+    hashed_password: str
     
     model_config = ConfigDict(from_attributes=True)
 

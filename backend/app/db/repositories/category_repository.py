@@ -164,7 +164,7 @@ class CategoryRepository(BaseRepository):
             # 检查父分类是否存在
             if category_data.parent_id:
                 parent_query = select(Category).where(
-                    Category.id == category_data["parent_id"],
+                    Category.id == category_data.parent_id,
                     Category.is_deleted == False
                 )
                 parent_result = await db.execute(parent_query)
@@ -179,7 +179,7 @@ class CategoryRepository(BaseRepository):
             
             # 检查分类名称是否已存在
             name_query = select(Category).where(
-                Category.name == category_data["name"],
+                Category.name == category_data.name,
                 Category.is_deleted == False
             )
             name_result = await db.execute(name_query)
@@ -208,10 +208,10 @@ class CategoryRepository(BaseRepository):
             await db.refresh(category)
             
             # 返回创建的分类
-            category_dict = self.to_schema(category)
-            category_dict.children = []
+            category_obj = self.to_schema(category)
+            category_obj.children = []
             
-            return category_dict
+            return category_obj
     
     async def update(self, category_id: int, data: CategorySchema) -> Optional[CategoryDetailResponse]:
         """更新分类

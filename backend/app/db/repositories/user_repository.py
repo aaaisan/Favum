@@ -42,23 +42,23 @@ class UserRepository(BaseRepository[User, UserResponse]):
         super().__init__(User, UserResponse)
     
     # 重写model_to_dict方法，排除敏感字段
-    def model_to_dict(self, model) -> Dict[str, Any]:
-        """将用户模型对象转换为字典，排除敏感字段
+    # def model_to_dict(self, model) -> Dict[str, Any]:
+    #     """将用户模型对象转换为字典，排除敏感字段
         
-        Args:
-            model: 用户模型对象
+    #     Args:
+    #         model: 用户模型对象
             
-        Returns:
-            Dict[str, Any]: 不包含敏感信息的字典
-        """
-        result = super().model_to_dict(model)
+    #     Returns:
+    #         Dict[str, Any]: 不包含敏感信息的字典
+    #     """
+    #     result = super().model_to_dict(model)
         
-        # 从结果中移除敏感字段
-        sensitive_fields = "hashed_password"
-        if hasattr(result, sensitive_fields):
-            del result[sensitive_fields]
+    #     # 从结果中移除敏感字段
+    #     sensitive_fields = "hashed_password"
+    #     if hasattr(result, sensitive_fields):
+    #         del result[sensitive_fields]
                 
-        return result
+    #     return result
     
     async def get_user_post_count(self, user_id: int) -> int:
         """获取用户的帖子数量
@@ -106,7 +106,7 @@ class UserRepository(BaseRepository[User, UserResponse]):
                 logger.error(f"获取评论数量失败: {str(e)}")
                 return 0
     
-    async def get_by_username(self, username: str) -> Optional[UserResponse]:
+    async def get_by_username(self, username: str) -> Optional[UserInfoResponse]:
         """通过用户名获取用户
         
         Args:
@@ -124,12 +124,13 @@ class UserRepository(BaseRepository[User, UserResponse]):
                     )
                 )
                 user = result.scalar_one_or_none()
+                print(user)
                 return self.to_schema(user)
             except Exception as e:
                 logger.error(f"获取用户失败: {str(e)}")
                 return None
     
-    async def get_by_email(self, email: str) -> Optional[UserResponse]:
+    async def get_by_email(self, email: str) -> Optional[UserInfoResponse]:
         """通过邮箱获取用户
         
         Args:
@@ -387,7 +388,7 @@ class UserRepository(BaseRepository[User, UserResponse]):
             join_date=user.created_at
         )
     
-    async def get_by_id(self, user_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:
+    async def get_by_id(self, user_id: int, include_deleted: bool = False) -> Optional[UserInfoResponse]:
         """通过ID查询用户
         
         Args:
@@ -409,7 +410,7 @@ class UserRepository(BaseRepository[User, UserResponse]):
             try:
                 result = await db.execute(query)
                 user = result.scalar_one_or_none()
-                return self.model_to_dict(user)
+                return self.to_schema(user)
             except Exception as e:
                 logger.error(f"获取用户失败: {str(e)}")
                 return None

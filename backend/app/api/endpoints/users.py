@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import List, Optional
 
-from ...schemas.inputs import user as user_schema
-# from ...schemas.inputs import post as post_schema
+from ...schemas.responses.user import UserInfoResponse
+from ...schemas.inputs.user import UserCreate, UserSchema
+# from ...schemas.inputs import post as post_schema 
 from ...services import UserService, PostService, FavoriteService
-from ...dependencies import get_favorite_service, get_user_service, get_post_service
+from ...dependencies import get_current_user, get_favorite_service, get_user_service, get_post_service
 from ...core.decorators import public_endpoint, admin_endpoint, owner_endpoint
 from ...core.enums import Role, Permission
 from ...core.exceptions import APIError, BusinessException, NotFoundError
 from ...core.logging import get_logger
 from ...db.models.user import User
-from ...core.auth import get_current_user
 from ...core.decorators.error import handle_exceptions, with_error_handling
 
 from ...schemas.responses.user import (
@@ -30,7 +30,7 @@ router = APIRouter()
 @admin_endpoint(custom_message="创建用户失败")
 async def create_user(
     # request: Request,
-    user: user_schema.UserCreate,
+    user: UserCreate,
     user_service: UserService = Depends(get_user_service)
 ):
     """创建新用户
@@ -53,7 +53,7 @@ async def create_user(
         HTTPException: 当用户名或邮箱已存在、或创建过程中出现其他错误时抛出
     """
     try:
-        result = await user_service.create_user(user.model_dump())
+        result = await user_service.create_user(user)
         return result
     except BusinessException as e:
         # 将业务异常转换为HTTPException
@@ -63,7 +63,7 @@ async def create_user(
         )
 
 @router.get("", response_model=UserListResponse)
-@public_endpoint(auth_required=True, custom_message="获取用户列表失败")
+@admin_endpoint(custom_message="获取用户列表失败")
 async def read_users(
     # request: Request,
     skip: int = 0,
@@ -119,7 +119,7 @@ async def read_users(
             detail="获取用户列表失败"
         )
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserInfoResponse)
 @public_endpoint(auth_required=True, custom_message="获取当前用户信息失败")
 # @handle_exceptions(default_error_message="获取当前用户信息失败")
 async def read_user_me(
@@ -139,6 +139,7 @@ async def read_user_me(
     Returns:
         UserResponse: 当前用户的详细信息
     """
+    # print(user)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -146,7 +147,8 @@ async def read_user_me(
         )
     
     # 获取用户详细信息
-    user_detail = await user_service.get_user_detail(user.id)
+    user_detail = await user_service.get_user_profile(user.id)
+    print(user_detail)
     if not user_detail:
         raise NotFoundError(code="user_not_found", message="用户不存在")
     
@@ -193,7 +195,7 @@ async def read_user(
 async def update_user(
     request: Request,
     user_id: int,
-    user_update: user_schema.UserSchema,
+    user_update: UserSchema,
     user_service: UserService = Depends(get_user_service)
 ):
     """更新用户信息
@@ -307,7 +309,7 @@ async def restore_user(
         # 恢复用户
         restored_user = await user_service.restore_user(user_id)
 
-        return user_service.model_to_dict(restored_user)
+        return user_service.to_schema(restored_user)
     except BusinessException as e:
         raise HTTPException(
             status_code=e.status_code,
@@ -382,7 +384,7 @@ async def read_user_posts(
         # 处理帖子数据，确保日期时间字段为字符串格式
         processed_posts = []
         for post in posts:
-            processed_post = post_service.model_to_dict(post)
+            processed_post = post_service.to_schema(post)
             processed_posts.append(processed_post)
         
         # 构建符合PostListResponse的返回结构

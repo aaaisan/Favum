@@ -27,7 +27,7 @@ from ...schemas.responses.post import (
     PostVoteResponse,
     PostFavoriteResponse
 )
-from ...core.auth import get_current_user
+from ...dependencies.auth import get_current_user
 from ...core.permissions import require_active_user
 from ...db.models import User
 from ...core.enums import VoteType

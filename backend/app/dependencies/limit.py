@@ -4,7 +4,7 @@ from datetime import timedelta
 from ..core.cache import RateLimiter
 from ..core.logging import get_logger
 from ..db.models import User
-from .auth import get_current_user
+from ..dependencies.auth import get_current_user
 
 logger = get_logger(__name__)
 
